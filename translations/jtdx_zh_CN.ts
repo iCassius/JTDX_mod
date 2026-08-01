@@ -8103,13 +8103,13 @@ Right click for insert and delete options.</source>
     </message>
     <message>
         <location filename="../Configuration.ui" line="3878"/>
-        <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Treat RR73/73 messages in the same way as CQ messages for auto selection.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
-        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;以与 CQ 信息相同的方式处理 RR73/73 信息, 以便自动选择.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+        <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Treat RRR, RR73, and 73 messages in the same way as CQ messages for auto selection.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
+        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;将 RRR、RR73 和 73 信息与 CQ 信息同样处理，用于自动选择。&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
     <message>
         <location filename="../Configuration.ui" line="3884"/>
-        <source>RR73/73           </source>
-        <translation></translation>
+        <source>RRR/RR73/73       </source>
+        <translation>RRR/RR73/73</translation>
     </message>
     <message>
         <location filename="../Configuration.ui" line="3897"/>
@@ -8967,5 +8967,39 @@ soundcard changes</source>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Double click a color to edit it.&lt;/p&gt;&lt;p&gt;Right click to insert or delete colors.&lt;/p&gt;&lt;p&gt;Colors at the top represent weak signals&lt;/p&gt;&lt;p&gt;and colors at the bottom represent strong&lt;/p&gt;&lt;p&gt;signals. You can have up to 256 colors.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;双击一种颜色进行编辑.&lt;/p&gt;&lt;p&gt;右键单击可插入或删除颜色.&lt;/p&gt;&lt;p&gt;顶部的颜色代表微弱的信号&lt;/p&gt;&lt;p&gt;底部的颜色代表强烈&lt;/p&gt;&lt;p&gt;信号. 您最多可以有256种颜色.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
     </message>
+</context>
+<context>
+    <name>CallsignLocation</name>
+    <message><source>Beijing</source><translation>北京</translation></message>
+    <message><source>Heilongjiang</source><translation>黑龙江</translation></message>
+    <message><source>Jilin</source><translation>吉林</translation></message>
+    <message><source>Liaoning</source><translation>辽宁</translation></message>
+    <message><source>Tianjin</source><translation>天津</translation></message>
+    <message><source>Inner Mongolia</source><translation>内蒙古</translation></message>
+    <message><source>Hebei</source><translation>河北</translation></message>
+    <message><source>Shanxi</source><translation>山西</translation></message>
+    <message><source>Shanghai</source><translation>上海</translation></message>
+    <message><source>Shandong</source><translation>山东</translation></message>
+    <message><source>Jiangsu</source><translation>江苏</translation></message>
+    <message><source>Zhejiang</source><translation>浙江</translation></message>
+    <message><source>Jiangxi</source><translation>江西</translation></message>
+    <message><source>Fujian</source><translation>福建</translation></message>
+    <message><source>Anhui</source><translation>安徽</translation></message>
+    <message><source>Henan</source><translation>河南</translation></message>
+    <message><source>Hubei</source><translation>湖北</translation></message>
+    <message><source>Hunan</source><translation>湖南</translation></message>
+    <message><source>Guangdong</source><translation>广东</translation></message>
+    <message><source>Guangxi</source><translation>广西</translation></message>
+    <message><source>Hainan</source><translation>海南</translation></message>
+    <message><source>Sichuan</source><translation>四川</translation></message>
+    <message><source>Chongqing</source><translation>重庆</translation></message>
+    <message><source>Guizhou</source><translation>贵州</translation></message>
+    <message><source>Yunnan</source><translation>云南</translation></message>
+    <message><source>Shaanxi</source><translation>陕西</translation></message>
+    <message><source>Gansu</source><translation>甘肃</translation></message>
+    <message><source>Ningxia</source><translation>宁夏</translation></message>
+    <message><source>Qinghai</source><translation>青海</translation></message>
+    <message><source>Xinjiang</source><translation>新疆</translation></message>
+    <message><source>Tibet</source><translation>西藏</translation></message>
 </context>
 </TS>

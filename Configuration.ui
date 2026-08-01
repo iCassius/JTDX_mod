@@ -4102,13 +4102,13 @@ Right click for insert and delete options.</string>
                 </sizepolicy>
                </property>
                <property name="toolTip">
-                <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Treat RR73/73 messages in the same way as CQ messages for auto selection.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+                <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Treat RRR, RR73, and 73 messages in the same way as CQ messages for auto selection.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
                </property>
                <property name="layoutDirection">
                 <enum>Qt::RightToLeft</enum>
                </property>
                <property name="text">
-                <string>RR73/73           </string>
+                <string>RRR/RR73/73       </string>
                </property>
               </widget>
              </item>

@@ -222,6 +222,7 @@ set (jt9_CXXSRCS
 
 set (wsjtx_CXXSRCS
   logbook/adif.cpp
+  logbook/callsignlocation.cpp
   logbook/countrydat.cpp
   logbook/logbook.cpp
   qsohistory.cpp
@@ -1549,6 +1550,16 @@ if (NOT is_debug_build)
   endif (APPLE OR WIN32)
 
 endif (NOT is_debug_build)
+
+option (JTDX_BUILD_LOCAL_TESTS "Build focused local source tests" OFF)
+if (JTDX_BUILD_LOCAL_TESTS)
+  enable_testing ()
+  add_executable (callsignlocation_test
+    tests/callsignlocation_test.cpp
+    logbook/callsignlocation.cpp)
+  target_link_libraries (callsignlocation_test Qt5::Core)
+  add_test (NAME callsignlocation_test COMMAND callsignlocation_test)
+endif ()
 
 
 #

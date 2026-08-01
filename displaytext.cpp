@@ -13,6 +13,7 @@
 
 #include "Configuration.hpp"
 #include "qt_helpers.hpp"
+#include "logbook/callsignlocation.h"
 
 #include "moc_displaytext.cpp"
 
@@ -466,7 +467,15 @@ int DisplayText::displayDecodedText(DecodedText* decodedText, QString myCall, QS
                     } else {
                         checkCall = "";
                     }
-                    if (!checkCall.isEmpty () && RR73Marker_ && (decodedText->message().contains("RR73") || decodedText->message().contains(" 73"))) {
+                    // A completed QSO may be advertised by a station that is now free to
+                    // call.  Keep this on the existing AutoSeq candidate path: it is only
+                    // considered after the complete decode interval and never pre-empts an
+                    // active QSO (the branches above clear checkCall for that case).
+                    //
+                    // Use decoded tokens rather than a substring so a free-text message
+                    // containing these characters cannot become an automatic candidate.
+                    if (!checkCall.isEmpty () && RR73Marker_
+                        && (parts.contains ("RRR") || parts.contains ("RR73") || parts.contains ("73"))) {
                         std_type = 4;
                         txtColor = color_CQ_;
                         status = QsoHistory::RFIN;
@@ -930,6 +939,10 @@ int DisplayText::displayDecodedText(DecodedText* decodedText, QString myCall, QS
             } else {
                 // do some obvious abbreviations, don't care if we using just prefixes here, not big deal to run some replace's
                 cntry = items[2];
+                const QString province = CallsignLocation::chinaProvince(checkCall, mpx);
+                if (!province.isEmpty()) {
+                    cntry += QString::fromUtf8(" · ") + province;
+                }
             }
         }
         if (!bwantedCall && !bwantedPrefix && !bwantedGrid && !bwantedCountry) {
