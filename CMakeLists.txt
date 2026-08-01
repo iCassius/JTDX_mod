@@ -1127,7 +1127,7 @@ generate_version_info (jtdxjt9_VERSION_RESOURCES
   FILE_DESCRIPTION "jtdxjt9 - JTDX slow mode decoder"
   )
 
-add_executable (jtdxjt9 lib/jt9.f90 lib/jt9a.f90 ${jt9_CXXSRCS} jtdx.rc ${jtdjt9_VERSION_RESOURCES})
+add_executable (jtdxjt9 lib/jt9.f90 lib/jt9a.f90 ${jt9_CXXSRCS} ${jtdjt9_VERSION_RESOURCES})
 if (${OPENMP_FOUND} OR APPLE)
   if (APPLE)
     # On  Mac  we don't  have  working  OpenMP  support in  the  C/C++
@@ -1180,7 +1180,6 @@ generate_version_info (jtdx_VERSION_RESOURCES
 add_executable (jtdx MACOSX_BUNDLE
   ${wsjtx_CXXSRCS}
   ${wsjtx_GENUISRCS}
-  jtdx.rc
   ${WSJTX_ICON_FILE}
   ${wsjtx_RESOURCES_RCC}
   ${jtdx_VERSION_RESOURCES}
@@ -1246,7 +1245,6 @@ generate_version_info (udp_daemon_jtdx_VERSION_RESOURCES
 
 add_executable (udp_daemon_jtdx
   ${UDPDaemon_CXXSRCS}
-  jtdx.rc
   ${udp_daemon_jtdx_VERSION_RESOURCES}
   )
 target_link_libraries (udp_daemon_jtdx Qt5::Core Qt5::Network Qt5::Gui)
