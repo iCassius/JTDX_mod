@@ -28,7 +28,7 @@
 TX-5DR 安装版本 `1.0.0-nightly.202607211542+g7ddced2` 使用 BigCTY
 `cty.csv`，数据版本 `VER20260430`，并采用：精确全呼号优先、最长前缀、便携呼号处理、`/MM` 和 `/AM` 未知、及 WSJT-X KG4 特例。
 
-JTDX 的 `CountryDat` 已有精确全呼号优先、最长前缀和 KG4 兼容逻辑，且支持用户在 DataLocation 放置 `cty.dat` 覆盖内置数据。后续将：
+JTDX 的 `CountryDat` 已有精确全呼号优先、最长前缀和 KG4 兼容逻辑，且支持用户在 DataLocation 放置 `cty.dat` 覆盖内置数据。本次已实现中国普通 B 字头呼号的省级分配提示，严格采用安装版 TX-5DR 可观察到的普通呼号匹配规则；该提示只附在显示名称后，不参与 DXCC、日志或 AutoSeq。后续将：
 
 1. 将 BigCTY 数据版本、来源和 SHA-256 作为可审计元数据记录；
 2. 在不复制 TX-5DR 代码的前提下补齐其可观察到的呼号规则；
@@ -37,7 +37,7 @@ JTDX 的 `CountryDat` 已有精确全呼号优先、最长前缀和 KG4 兼容�
 
 ## 验证边界
 
-- 当前机器初始没有 CMake、Qt 开发包、MinGW/GFortran、Hamlib 开发包或 OmniRig 注册组件，不能编译。
+- 当前机器初始没有 CMake、Qt 开发包、MinGW/GFortran、Hamlib 开发包或 OmniRig 注册组件；现已在隔离路径安装并验证构建链。
 - 构建环境使用独立的 MSYS2 MinGW64 路径，测试输出放到独立 build/install 路径，绝不覆盖 `C:\JTDX64\159\bin`。
-- 在构建完成前，只能进行静态审查和源级验证；没有任何 HIL 或发射验证。
+- 完整 CMake/Ninja 构建已通过，`callsignlocation_test` 已通过；没有任何 HIL 或发射验证。
 - 自动发射功能的实机验证必须在你明确授权后单独进行。
