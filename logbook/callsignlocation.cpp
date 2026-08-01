@@ -8,22 +8,22 @@ QString provinceFor(const QString& area, const QString& suffix)
 {
   struct Range { const char* first; const char* last; const char* province; };
   static const Range ranges[] = {
-    { "AA", "XZ", "Beijing" },
-    { "AA", "HZ", "Heilongjiang" }, { "IA", "PZ", "Jilin" }, { "QA", "XZ", "Liaoning" },
-    { "AA", "FZ", "Tianjin" }, { "GA", "LZ", "Inner Mongolia" }, { "MA", "RZ", "Hebei" }, { "SA", "XZ", "Shanxi" },
-    { "AA", "HZ", "Shanghai" }, { "IA", "PZ", "Shandong" }, { "QA", "XZ", "Jiangsu" },
-    { "AA", "HZ", "Zhejiang" }, { "IA", "PZ", "Jiangxi" }, { "QA", "XZ", "Fujian" },
-    { "AA", "HZ", "Anhui" }, { "IA", "PZ", "Henan" }, { "QA", "XZ", "Hubei" },
-    { "AA", "HZ", "Hunan" }, { "IA", "PZ", "Guangdong" }, { "QA", "XZ", "Guangxi" }, { "YA", "ZZ", "Hainan" },
-    { "AA", "FZ", "Sichuan" }, { "GA", "LZ", "Chongqing" }, { "MA", "RZ", "Guizhou" }, { "SA", "XZ", "Yunnan" },
-    { "AA", "FZ", "Shaanxi" }, { "GA", "LZ", "Gansu" }, { "MA", "RZ", "Ningxia" }, { "SA", "XZ", "Qinghai" },
-    { "AA", "FZ", "Xinjiang" }, { "GA", "LZ", "Tibet" }
+    { "AA", "XZ", "北京" },
+    { "AA", "HZ", "黑龙江" }, { "IA", "PZ", "吉林" }, { "QA", "XZ", "辽宁" },
+    { "AA", "FZ", "天津" }, { "GA", "LZ", "内蒙古" }, { "MA", "RZ", "河北" }, { "SA", "XZ", "山西" },
+    { "AA", "HZ", "上海" }, { "IA", "PZ", "山东" }, { "QA", "XZ", "江苏" },
+    { "AA", "HZ", "浙江" }, { "IA", "PZ", "江西" }, { "QA", "XZ", "福建" },
+    { "AA", "HZ", "安徽" }, { "IA", "PZ", "河南" }, { "QA", "XZ", "湖北" },
+    { "AA", "HZ", "湖南" }, { "IA", "PZ", "广东" }, { "QA", "XZ", "广西" }, { "YA", "ZZ", "海南" },
+    { "AA", "FZ", "四川" }, { "GA", "LZ", "重庆" }, { "MA", "RZ", "贵州" }, { "SA", "XZ", "云南" },
+    { "AA", "FZ", "陕西" }, { "GA", "LZ", "甘肃" }, { "MA", "RZ", "宁夏" }, { "SA", "XZ", "青海" },
+    { "AA", "FZ", "新疆" }, { "GA", "LZ", "西藏" }
   };
 
   int first = 0;
   int last = 0;
   switch (area.toInt()) {
-  case 1: return CallsignLocation::tr("Beijing");
+  case 1: return QString::fromUtf8("北京");
   case 2: first = 1;  last = 3;  break;
   case 3: first = 4;  last = 7;  break;
   case 4: first = 8;  last = 10; break;
@@ -39,7 +39,7 @@ QString provinceFor(const QString& area, const QString& suffix)
   const QString allocation = suffix.left(2);
   for (int index = first; index <= last; ++index) {
     if (allocation >= QLatin1String(ranges[index].first) && allocation <= QLatin1String(ranges[index].last)) {
-      return CallsignLocation::tr(ranges[index].province);
+      return QString::fromUtf8(ranges[index].province);
     }
   }
   return QString();

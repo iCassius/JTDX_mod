@@ -119,6 +119,7 @@ public:
   bool answerInCallCount() const;
   bool sentRReportCount() const;
   bool sentRR7373Count() const;
+  bool autoCallRareTargets() const;
   bool strictdirCQ() const;
   bool halttxreplyother() const;
   bool hidefree() const;

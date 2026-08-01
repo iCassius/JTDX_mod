@@ -2310,6 +2310,16 @@ both here.</string>
                     </property>
                    </widget>
                   </item>
+                  <item row="6" column="0">
+                   <widget class="QCheckBox" name="autoCallRareTargets_check_box">
+                    <property name="toolTip">
+                     <string>启用后，空闲时 AutoSeq 仅会自动选择新 DXCC、新 DXCC 波段/模式或新网格（含网格波段/模式），且对方必须发送 CQ、RRR 或 RR73。新呼号、新前缀、CQ/ITU 区及普通已做呼号不会触发自动起呼。仍需手动开启 AutoSeq 和 Enable Tx 才会发射。</string>
+                    </property>
+                    <property name="text">
+                     <string>自动起呼稀有目标（仅新 DXCC / 新波段模式 / 新网格）</string>
+                    </property>
+                   </widget>
+                  </item>
                  </layout>
                 </item>
                 <item>

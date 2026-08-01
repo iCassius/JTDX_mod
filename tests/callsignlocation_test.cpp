@@ -21,9 +21,9 @@ int main(int argc, char *argv[])
 {
   QCoreApplication application(argc, argv);
 
-  expectEqual(CallsignLocation::chinaProvince("BA3MAB", "B"), "Hebei", "BA3MAB");
-  expectEqual(CallsignLocation::chinaProvince("BG0ABC", "B"), "Xinjiang", "BG0ABC");
-  expectEqual(CallsignLocation::chinaProvince("BA3SAB", "B"), "Shanxi", "BA3SAB");
+  expectEqual(CallsignLocation::chinaProvince("BA3MAB", "B"), QString::fromUtf8("河北"), "BA3MAB");
+  expectEqual(CallsignLocation::chinaProvince("BG0ABC", "B"), QString::fromUtf8("新疆"), "BG0ABC");
+  expectEqual(CallsignLocation::chinaProvince("BA3SAB", "B"), QString::fromUtf8("山西"), "BA3SAB");
   expectEqual(CallsignLocation::chinaProvince("BA3M", "B"), "", "short suffix");
   expectEqual(CallsignLocation::chinaProvince("BA3MAB/P", "B"), "", "portable suffix");
   expectEqual(CallsignLocation::chinaProvince("VR2ABC", "B"), "", "non B-prefix call");

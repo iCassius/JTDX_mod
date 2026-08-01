@@ -3528,6 +3528,7 @@ void MainWindow::process_Auto()
   QString grid = m_hisGrid;
   QString mode = "";
   unsigned time = 0;
+  bool rareTargetRejected = false;
   int rx = ui->RxFreqSpinBox->value ();
   int tx = ui->TxFreqSpinBox->value ();
   QStringList StrStatus = {"NONE","RFIN","RCQ","SCQ","RCALL","SCALL","RREPORT","SREPORT","RRREPORT","SRREPORT","RRR","SRR","RRR73","SRR73","R73","S73","FIN"};
@@ -3624,6 +3625,24 @@ void MainWindow::process_Auto()
     if (m_rprtPriority) time |= 16;
     if (m_maxDistance) time |= 32;
     m_status = m_qsoHistory.autoseq(hisCall,grid,rpt,rx,tx,time,count,prio,mode);
+    // This optional policy applies only when we are looking for a new station
+    // to call. It never interferes with an in-progress QSO or an incoming
+    // call addressed to this station. DisplayText assigns 20..23 to new
+    // DXCC/DXCC band-or-mode and 13..16 to new grid/grid band-or-mode.
+    if (m_config.autoCallRareTargets ()
+        && (m_status == QsoHistory::RCQ || m_status == QsoHistory::RFIN)
+        && !((prio >= 20 && prio <= 23) || (prio >= 13 && prio <= 16))) {
+      if (m_config.write_decoded_debug ()) {
+        writeToALLTXT("Rare-target AutoSeq ignored " + hisCall
+                      + " (priority " + QString::number(prio) + ")");
+      }
+      hisCall.clear ();
+      grid.clear ();
+      rpt.clear ();
+      mode.clear ();
+      m_status = QsoHistory::NONE;
+      rareTargetRejected = true;
+    }
     if(m_config.write_decoded_debug()) {
       QString StrDirection = "";
       if(m_status == QsoHistory::FIN) StrDirection = " auto sequence is finished;";
@@ -3651,7 +3670,7 @@ void MainWindow::process_Auto()
       ui->TxFreqSpinBox->setValue (rx);
       }
       if (!rpt.isEmpty () && rpt == m_rpt) m_rpt = "-60";
-    } else  if (m_transmittedQSOProgress != CALLING){
+    } else if (!rareTargetRejected && m_transmittedQSOProgress != CALLING){
         on_txb6_clicked();
         if(ui->tabWidget->currentIndex()==1) ui->genMsg->setText(ui->tx6->text());
     }

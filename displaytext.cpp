@@ -97,6 +97,7 @@ void DisplayText::setConfiguration(Configuration const * config)
   highlightDXCall_ = config->highlightDXCall();
   highlightDXGrid_ = config->highlightDXGrid();
   RR73Marker_ = config->RR73Marker();
+  autoCallRareTargets_ = config->autoCallRareTargets();
   otherMessagesMarker_ = config->otherMessagesMarker();
   enableCountryFilter_ = config->enableCountryFilter();
   enableCallsignFilter_ = config->enableCallsignFilter();
@@ -474,8 +475,12 @@ int DisplayText::displayDecodedText(DecodedText* decodedText, QString myCall, QS
                     //
                     // Use decoded tokens rather than a substring so a free-text message
                     // containing these characters cannot become an automatic candidate.
-                    if (!checkCall.isEmpty () && RR73Marker_
-                        && (parts.contains ("RRR") || parts.contains ("RR73") || parts.contains ("73"))) {
+                    // The rare-target AutoSeq option deliberately accepts only the
+                    // completion forms requested by the operator.  Preserve legacy
+                    // plain-73 candidate behaviour when that option is off.
+                    const bool completedMessage = parts.contains ("RRR") || parts.contains ("RR73")
+                        || (!autoCallRareTargets_ && parts.contains ("73"));
+                    if (!checkCall.isEmpty () && RR73Marker_ && completedMessage) {
                         std_type = 4;
                         txtColor = color_CQ_;
                         status = QsoHistory::RFIN;

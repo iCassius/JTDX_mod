@@ -99,6 +99,7 @@ private:
     bool highlightDXCall_;
     bool highlightDXGrid_;
     bool RR73Marker_;
+    bool autoCallRareTargets_;
     bool otherMessagesMarker_;
     bool enableCountryFilter_;
     bool enableCallsignFilter_;
