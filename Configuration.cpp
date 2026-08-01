@@ -718,7 +718,9 @@ private:
   bool answerInCallCount_;
   bool sentRReportCount_;
   bool sentRR7373Count_;
-  bool autoCallRareTargets_;
+  bool autoCallNewDXCC_;
+  bool autoCallNewDXCCBandMode_;
+  bool autoCallNewGrid_;
   bool strictdirCQ_;
   bool halttxreplyother_;
   bool hidefree_;
@@ -994,7 +996,13 @@ bool Configuration::answerCQCount () const {return m_->answerCQCount_;}
 bool Configuration::answerInCallCount () const {return m_->answerInCallCount_;}
 bool Configuration::sentRReportCount () const {return m_->sentRReportCount_;}
 bool Configuration::sentRR7373Count () const {return m_->sentRR7373Count_;}
-bool Configuration::autoCallRareTargets () const {return m_->autoCallRareTargets_;}
+bool Configuration::autoCallNewDXCC () const {return m_->autoCallNewDXCC_;}
+bool Configuration::autoCallNewDXCCBandMode () const {return m_->autoCallNewDXCCBandMode_;}
+bool Configuration::autoCallNewGrid () const {return m_->autoCallNewGrid_;}
+bool Configuration::autoCallRareTargets () const {return m_->autoCallNewDXCC_ || m_->autoCallNewDXCCBandMode_ || m_->autoCallNewGrid_;}
+void Configuration::setAutoCallNewDXCC (bool enabled) {m_->autoCallNewDXCC_ = enabled; m_->settings_->setValue ("SeqAutoCallNewDXCC", enabled);}
+void Configuration::setAutoCallNewDXCCBandMode (bool enabled) {m_->autoCallNewDXCCBandMode_ = enabled; m_->settings_->setValue ("SeqAutoCallNewDXCCBandMode", enabled);}
+void Configuration::setAutoCallNewGrid (bool enabled) {m_->autoCallNewGrid_ = enabled; m_->settings_->setValue ("SeqAutoCallNewGrid", enabled);}
 bool Configuration::strictdirCQ () const {return m_->strictdirCQ_;}
 bool Configuration::halttxreplyother () const {return m_->halttxreplyother_;}
 bool Configuration::hidefree () const {return m_->hidefree_;}
@@ -2031,7 +2039,9 @@ Radio::convert_dark("#fafbfe",useDarkStyle_),Radio::convert_dark("#dcdef1",useDa
   ui_->answerInCallCount_checkBox->setChecked (answerInCallCount_);
   ui_->sentRReportCount_checkBox->setChecked (sentRReportCount_);
   ui_->sentRR7373Count_checkBox->setChecked (sentRR7373Count_);
-  ui_->autoCallRareTargets_check_box->setChecked (autoCallRareTargets_);
+  ui_->autoCallNewDXCC_check_box->setChecked (autoCallNewDXCC_);
+  ui_->autoCallNewDXCCBandMode_check_box->setChecked (autoCallNewDXCCBandMode_);
+  ui_->autoCallNewGrid_check_box->setChecked (autoCallNewGrid_);
   ui_->strictDirCQ_checkBox->setChecked (strictdirCQ_);
   ui_->haltTxReplyOther_checkBox->setChecked (halttxreplyother_);
   ui_->HideFree_check_box->setChecked (hidefree_);
@@ -2347,7 +2357,10 @@ void Configuration::impl::read_settings ()
   answerInCallCount_ = settings_->value ("SeqAnswerInCallCount", false).toBool ();
   sentRReportCount_ = settings_->value ("SeqSentRReportCount", false).toBool ();
   sentRR7373Count_ = settings_->value ("SeqSentRR7373Count", false).toBool ();
-  autoCallRareTargets_ = settings_->value ("SeqAutoCallRareTargets", false).toBool ();
+  const bool legacyAutoCallRareTargets = settings_->value ("SeqAutoCallRareTargets", false).toBool ();
+  autoCallNewDXCC_ = settings_->value ("SeqAutoCallNewDXCC", legacyAutoCallRareTargets).toBool ();
+  autoCallNewDXCCBandMode_ = settings_->value ("SeqAutoCallNewDXCCBandMode", legacyAutoCallRareTargets).toBool ();
+  autoCallNewGrid_ = settings_->value ("SeqAutoCallNewGrid", legacyAutoCallRareTargets).toBool ();
   strictdirCQ_ = settings_->value ("StrictDirectionalCQ", false).toBool ();
   halttxreplyother_ = settings_->value ("SeqHaltTxReplyOther", true).toBool ();
 
@@ -2792,7 +2805,9 @@ void Configuration::impl::write_settings ()
   settings_->setValue ("SeqAnswerInCallCount", answerInCallCount_);
   settings_->setValue ("SeqSentRReportCount", sentRReportCount_);
   settings_->setValue ("SeqSentRR7373Count", sentRR7373Count_);
-  settings_->setValue ("SeqAutoCallRareTargets", autoCallRareTargets_);
+  settings_->setValue ("SeqAutoCallNewDXCC", autoCallNewDXCC_);
+  settings_->setValue ("SeqAutoCallNewDXCCBandMode", autoCallNewDXCCBandMode_);
+  settings_->setValue ("SeqAutoCallNewGrid", autoCallNewGrid_);
   settings_->setValue ("StrictDirectionalCQ", strictdirCQ_);
   settings_->setValue ("SeqHaltTxReplyOther", halttxreplyother_);
   settings_->setValue ("HideFreeMsgs", hidefree_);
@@ -3480,7 +3495,9 @@ void Configuration::impl::accept ()
   answerInCallCount_ = ui_->answerInCallCount_checkBox->isChecked ();
   sentRReportCount_ = ui_->sentRReportCount_checkBox->isChecked ();
   sentRR7373Count_ = ui_->sentRR7373Count_checkBox->isChecked ();
-  autoCallRareTargets_ = ui_->autoCallRareTargets_check_box->isChecked ();
+  autoCallNewDXCC_ = ui_->autoCallNewDXCC_check_box->isChecked ();
+  autoCallNewDXCCBandMode_ = ui_->autoCallNewDXCCBandMode_check_box->isChecked ();
+  autoCallNewGrid_ = ui_->autoCallNewGrid_check_box->isChecked ();
   strictdirCQ_ = ui_->strictDirCQ_checkBox->isChecked ();
   halttxreplyother_ = ui_->haltTxReplyOther_checkBox->isChecked ();
   hidefree_ = ui_->HideFree_check_box->isChecked ();

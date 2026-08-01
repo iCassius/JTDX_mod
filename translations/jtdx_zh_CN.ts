@@ -8916,6 +8916,30 @@ soundcard changes</source>
 重置无线电设备接口并应用任何
 声卡更改</translation>
     </message>
+    <message>
+        <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;IMPORTANT NOTE:&lt;/p&gt;&lt;p&gt;Use of this feature requires that your computer is equipped with two sound cards. Enable Play alerts only when your Rig is NOT connected via 'Default'audio device !!! This is fulfilled when your rig is connected via USB audio (FT-991, IC-7300, etc.). Alert sounds will be played on the 'Default' audio device (usually the loudspeaker of your PC).&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
+        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;重要提示：&lt;/p&gt;&lt;p&gt;此功能需要电脑配备两块声卡。只有当电台未通过“默认”音频设备连接时，才启用提示音。电台通过 USB 音频连接（如 FT-991、IC-7300 等）即可满足此条件。提示音会通过“默认”音频设备（通常为电脑扬声器）播放。&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+    </message>
+    <message>
+        <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;IMPORTANT NOTE:&lt;/p&gt;&lt;p&gt;Use of this feature requires that your computer is equipped with two sound cards. Enable Play alerts only when your Rig is NOT connected via 'Default'audio device !!!  This is fulfilled when your rig is connected via USB audio (FT-991, IC-7300, etc.). Alert sounds will be played on the 'Default' audio device (usually the loudspeaker of your PC).&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
+        <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;重要提示：&lt;/p&gt;&lt;p&gt;此功能需要电脑配备两块声卡。只有当电台未通过“默认”音频设备连接时，才启用提示音。电台通过 USB 音频连接（如 FT-991、IC-7300 等）即可满足此条件。提示音会通过“默认”音频设备（通常为电脑扬声器）播放。&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>
+    </message>
+    <message><source>via 'Default' audio device !!! Connect your rig via USB audio</source><translation>“默认”音频设备！！！请通过 USB 音频连接电台</translation></message>
+    <message><source>Play alert sound</source><translation>播放提示音</translation></message>
+    <message><source>Alert on DX Call</source><translation>出现 DX 呼号时提示</translation></message>
+    <message><source>Important: Play alerts only when your Rig is NOT connected</source><translation>重要：仅当电台未连接到</translation></message>
+    <message><source>and don't name this audio sink 'Default'.</source><translation>的音频设备时播放提示音；请勿将该音频输出命名为“默认”。</translation></message>
+    <message><source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Use different background color for / my call in message&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source><translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;当报文中含“/我的呼号”时使用不同背景色。&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation></message>
+    <message><source>Use different background color for / my call in message </source><translation>报文中含“/我的呼号”时使用不同背景色</translation></message>
+    <message><source>Alert on my call</source><translation>出现我的呼号时提示</translation></message>
+    <message><source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Use cyan background color&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source><translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;使用青色背景。&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation></message>
+    <message><source>cyan</source><translation>青色</translation></message>
+    <message><source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Use yellow background color&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source><translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;使用黄色背景。&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation></message>
+    <message><source>yellow</source><translation>黄色</translation></message>
+    <message><source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Highlight messages with DX Call&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source><translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;突出显示包含 DX 呼号的报文。&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation></message>
+    <message><source>Highlight messages with DX Call</source><translation>突出显示包含 DX 呼号的报文</translation></message>
+    <message><source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Highlight messages with DX Grid&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source><translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;突出显示包含 DX 网格的报文。&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation></message>
+    <message><source>Highlight messages with DX Grid</source><translation>突出显示包含 DX 网格的报文</translation></message>
 </context>
 <context>
     <name>main</name>

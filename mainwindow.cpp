@@ -1491,6 +1491,9 @@ void MainWindow::readSettings()
   ui->actionAnswerWorkedB4->setChecked(m_settings->value("AnswerWorkedB4",false).toBool());
   ui->actionCallWorkedB4->setChecked(m_settings->value("CallWorkedB4",false).toBool());
   ui->actionCallHigherNewCall->setChecked(m_settings->value("CallHigherNewCall",false).toBool());
+  ui->actionAutoCallNewDXCC->setChecked(m_config.autoCallNewDXCC());
+  ui->actionAutoCallNewDXCCBandMode->setChecked(m_config.autoCallNewDXCCBandMode());
+  ui->actionAutoCallNewGrid->setChecked(m_config.autoCallNewGrid());
   ui->actionSingleShot->setChecked(m_settings->value("SingleShotQSO",false).toBool());
   ui->actionAutoFilter->setChecked(m_settings->value("AutoFilter",false).toBool());
   ui->actionEnable_hound_mode->setChecked(m_settings->value("EnableHoundMode",false).toBool());
@@ -2079,6 +2082,9 @@ void MainWindow::on_actionSettings_triggered()               //Setup Dialog
       if(m_config.write_decoded_debug()) writeToALLTXT("Configuration settings change accepted");
       ui->decodedTextBrowser->setConfiguration (&m_config);
       ui->decodedTextBrowser2->setConfiguration (&m_config);
+      ui->actionAutoCallNewDXCC->setChecked(m_config.autoCallNewDXCC());
+      ui->actionAutoCallNewDXCCBandMode->setChecked(m_config.autoCallNewDXCCBandMode());
+      ui->actionAutoCallNewGrid->setChecked(m_config.autoCallNewGrid());
       if (m_config.useDarkStyle() != m_useDarkStyle) {
         m_useDarkStyle = m_config.useDarkStyle();
         styleChanged();
@@ -3134,6 +3140,9 @@ void MainWindow::on_actionMaxDistance_toggled(bool checked)
 void MainWindow::on_actionAnswerWorkedB4_toggled(bool checked) { m_answerWorkedB4=checked; ui->AnsB4Button->setChecked(checked); }
 void MainWindow::on_actionCallWorkedB4_toggled(bool checked) { m_callWorkedB4=checked; }
 void MainWindow::on_actionCallHigherNewCall_toggled(bool checked) { m_callHigherNewCall=checked; }
+void MainWindow::on_actionAutoCallNewDXCC_toggled(bool checked) { m_config.setAutoCallNewDXCC(checked); ui->decodedTextBrowser->setConfiguration(&m_config); ui->decodedTextBrowser2->setConfiguration(&m_config); }
+void MainWindow::on_actionAutoCallNewDXCCBandMode_toggled(bool checked) { m_config.setAutoCallNewDXCCBandMode(checked); ui->decodedTextBrowser->setConfiguration(&m_config); ui->decodedTextBrowser2->setConfiguration(&m_config); }
+void MainWindow::on_actionAutoCallNewGrid_toggled(bool checked) { m_config.setAutoCallNewGrid(checked); ui->decodedTextBrowser->setConfiguration(&m_config); ui->decodedTextBrowser2->setConfiguration(&m_config); }
 
 void MainWindow::on_actionSingleShot_toggled(bool checked)
 {
@@ -3629,9 +3638,12 @@ void MainWindow::process_Auto()
     // to call. It never interferes with an in-progress QSO or an incoming
     // call addressed to this station. DisplayText assigns 20..23 to new
     // DXCC/DXCC band-or-mode and 13..16 to new grid/grid band-or-mode.
+    const bool allowedRareTarget = (m_config.autoCallNewDXCC () && prio >= 22 && prio <= 23)
+        || (m_config.autoCallNewDXCCBandMode () && prio >= 20 && prio <= 21)
+        || (m_config.autoCallNewGrid () && prio >= 13 && prio <= 16);
     if (m_config.autoCallRareTargets ()
         && (m_status == QsoHistory::RCQ || m_status == QsoHistory::RFIN)
-        && !((prio >= 20 && prio <= 23) || (prio >= 13 && prio <= 16))) {
+        && !allowedRareTarget) {
       if (m_config.write_decoded_debug ()) {
         writeToALLTXT("Rare-target AutoSeq ignored " + hisCall
                       + " (priority " + QString::number(prio) + ")");

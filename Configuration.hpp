@@ -119,7 +119,13 @@ public:
   bool answerInCallCount() const;
   bool sentRReportCount() const;
   bool sentRR7373Count() const;
+  bool autoCallNewDXCC() const;
+  bool autoCallNewDXCCBandMode() const;
+  bool autoCallNewGrid() const;
   bool autoCallRareTargets() const;
+  void setAutoCallNewDXCC(bool enabled);
+  void setAutoCallNewDXCCBandMode(bool enabled);
+  void setAutoCallNewGrid(bool enabled);
   bool strictdirCQ() const;
   bool halttxreplyother() const;
   bool hidefree() const;

@@ -23,7 +23,7 @@
    </size>
   </property>
   <property name="windowTitle">
-   <string>Settings</string>
+   <string>设置</string>
   </property>
   <layout class="QGridLayout" name="gridLayout_31">
    <property name="spacing">
@@ -32,17 +32,17 @@
    <item row="0" column="0">
     <widget class="QTabWidget" name="configuration_tabs">
      <property name="toolTip">
-      <string>Select tab to change configuration parameters.</string>
+      <string>选择选项卡以修改配置参数。</string>
      </property>
      <property name="currentIndex">
       <number>0</number>
      </property>
      <widget class="QWidget" name="general_tab">
       <attribute name="title">
-       <string>Genera&amp;l</string>
+       <string>常规</string>
       </attribute>
       <attribute name="toolTip">
-       <string>General station details and settings.</string>
+       <string>电台基本信息和设置。</string>
       </attribute>
       <layout class="QVBoxLayout" name="verticalLayout_4">
        <item>
@@ -54,7 +54,7 @@
           </sizepolicy>
          </property>
          <property name="title">
-          <string>Station Details</string>
+          <string>电台信息</string>
          </property>
          <layout class="QGridLayout" name="gridLayout_14">
           <property name="leftMargin">
@@ -75,7 +75,7 @@
           <item row="0" column="0">
            <widget class="QLabel" name="callsign_label">
             <property name="text">
-             <string>My C&amp;all:</string>
+             <string>我的呼号：</string>
             </property>
             <property name="buddy">
              <cstring>callsign_line_edit</cstring>
@@ -85,7 +85,7 @@
           <item row="0" column="1">
            <widget class="QLineEdit" name="callsign_line_edit">
             <property name="toolTip">
-             <string>Station callsign.</string>
+             <string>本台呼号。</string>
             </property>
            </widget>
           </item>
@@ -105,7 +105,7 @@
           <item row="0" column="3">
            <widget class="QLabel" name="grid_label">
             <property name="text">
-             <string>M&amp;y Grid:</string>
+             <string>我的网格：</string>
             </property>
             <property name="buddy">
              <cstring>grid_line_edit</cstring>
@@ -115,14 +115,14 @@
           <item row="0" column="4">
            <widget class="QLineEdit" name="grid_line_edit">
             <property name="toolTip">
-             <string>Maidenhead locator (only the first four characters are required).</string>
+             <string>Maidenhead 网格定位（至少填写前四位）。</string>
             </property>
            </widget>
           </item>
           <item row="0" column="5">
            <widget class="QLabel" name="label_121">
             <property name="text">
-             <string>IARU Region:</string>
+             <string>IARU 区域：</string>
             </property>
             <property name="buddy">
              <cstring>region_combo_box</cstring>
@@ -132,7 +132,7 @@
           <item row="0" column="6">
            <widget class="QComboBox" name="region_combo_box">
             <property name="toolTip">
-             <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Select your IARU region.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+             <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;选择您的 IARU 区域。&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
             </property>
            </widget>
           </item>
@@ -149,17 +149,17 @@
             </property>
             <item>
              <property name="text">
-              <string>Full call in Tx1</string>
+              <string>Tx1 中使用完整呼号</string>
              </property>
             </item>
             <item>
              <property name="text">
-              <string>Full call in Tx3</string>
+              <string>Tx3 中使用完整呼号</string>
              </property>
             </item>
             <item>
              <property name="text">
-              <string>Full call in Tx5 only</string>
+              <string>仅 Tx5 使用完整呼号</string>
              </property>
             </item>
            </widget>
@@ -167,7 +167,7 @@
           <item row="1" column="0" colspan="6">
            <widget class="QLabel" name="label_5">
             <property name="text">
-             <string>Message generation for type 2 compound callsign holders:</string>
+             <string>2 型复合呼号的报文生成方式：</string>
             </property>
             <property name="alignment">
              <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -189,7 +189,7 @@
           </size>
          </property>
          <property name="title">
-          <string>Logbook filtering</string>
+          <string>日志簿筛选</string>
          </property>
          <layout class="QGridLayout" name="gridLayout_42">
           <property name="leftMargin">
@@ -217,7 +217,7 @@
               <item>
                <widget class="QCheckBox" name="callNotif_check_box">
                 <property name="text">
-                 <string>Use current &amp;callsign</string>
+                 <string>使用当前呼号</string>
                 </property>
                </widget>
               </item>
@@ -237,7 +237,7 @@
               <item>
                <widget class="QCheckBox" name="gridNotif_check_box">
                 <property name="text">
-                 <string>Use curr&amp;ent grid</string>
+                 <string>使用当前网格</string>
                 </property>
                </widget>
               </item>
@@ -261,7 +261,7 @@
               <item>
                <widget class="QLabel" name="label_25">
                 <property name="text">
-                 <string>Filter logbook starting from date/time (YYYYMMDDHHMMSS)</string>
+                 <string>从此日期/时间开始筛选日志簿（YYYYMMDDHHMMSS）</string>
                 </property>
                </widget>
               </item>
@@ -301,7 +301,7 @@
           </sizepolicy>
          </property>
          <property name="title">
-          <string>Display</string>
+          <string>显示</string>
          </property>
          <layout class="QGridLayout" name="gridLayout_4">
           <property name="leftMargin">
@@ -330,20 +330,20 @@
             <item row="1" column="2">
              <widget class="QCheckBox" name="scroll_check_box">
               <property name="toolTip">
-               <string>Scroll message windows down not up.</string>
+               <string>消息窗口向下而不是向上滚动。</string>
               </property>
               <property name="text">
-               <string>&amp;Scroll message windows down</string>
+               <string>消息窗口向下滚动</string>
               </property>
              </widget>
             </item>
             <item row="4" column="0">
              <widget class="QCheckBox" name="cb_showDistance">
               <property name="toolTip">
-               <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;If a station sends locator, calculate and show the distance in Band Activity pane.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+               <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;当台站发送网格定位时，在波段活动窗格计算并显示距离。&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
               </property>
               <property name="text">
-               <string>Show distance in messages with grid</string>
+               <string>在带网格的消息中显示距离</string>
               </property>
              </widget>
             </item>
@@ -353,10 +353,10 @@
                <bool>true</bool>
               </property>
               <property name="toolTip">
-               <string>Show outgoing transmitted messages in the Rx frequency window.</string>
+               <string>在接收频率窗口显示已发送的报文。</string>
               </property>
               <property name="text">
-               <string>&amp;Tx messages to Rx frequency window</string>
+               <string>在接收频率窗口显示发射报文</string>
               </property>
               <property name="checked">
                <bool>false</bool>
@@ -366,40 +366,40 @@
             <item row="3" column="0">
              <widget class="QCheckBox" name="countryName_check_box">
               <property name="toolTip">
-               <string>Append DXCC names to decoded messages.</string>
+               <string>在已解码报文后附加 DXCC 名称。</string>
               </property>
               <property name="text">
-               <string>Show &amp;DXCC names</string>
+               <string>显示 DXCC 名称</string>
               </property>
              </widget>
             </item>
             <item row="0" column="4">
              <widget class="QPushButton" name="font_push_button">
               <property name="toolTip">
-               <string>Set the font characteristics for the application.</string>
+               <string>设置程序字体。</string>
               </property>
               <property name="text">
-               <string>Application Font...</string>
+               <string>程序字体...</string>
               </property>
              </widget>
             </item>
             <item row="1" column="4">
              <widget class="QPushButton" name="decoded_text_font_push_button">
               <property name="toolTip">
-               <string>Set the font characteristics for the Band Activity and Rx Frequency areas.</string>
+               <string>设置波段活动和接收频率区域的字体。</string>
               </property>
               <property name="text">
-               <string>Decoded Text Font...</string>
+               <string>解码文本字体...</string>
               </property>
              </widget>
             </item>
             <item row="3" column="2">
              <widget class="QCheckBox" name="countryPrefix_check_box">
               <property name="toolTip">
-               <string>Append prefix instead of name.</string>
+               <string>附加前缀而不是名称。</string>
               </property>
               <property name="text">
-               <string>Show &amp;prefix not name</string>
+               <string>显示前缀而非名称</string>
               </property>
              </widget>
             </item>
@@ -409,7 +409,7 @@
                <string>Show distance to DX station in miles rather than kilometers.</string>
               </property>
               <property name="text">
-               <string>Display dista&amp;nce in miles</string>
+               <string>以英里显示距离</string>
               </property>
              </widget>
             </item>
@@ -419,17 +419,17 @@
                <string>Include a separator line between periods in the band activity window.</string>
               </property>
               <property name="text">
-               <string>&amp;Blank line between decoding periods</string>
+               <string>解码时段之间插入空行</string>
               </property>
              </widget>
             </item>
             <item row="4" column="2">
              <widget class="QCheckBox" name="cb_showAzimuth">
               <property name="toolTip">
-               <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;If a station sends a valid Maidenhead locator, calculate and show the great-circle azimuth in Band Activity pane.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+               <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;当台站发送有效的 Maidenhead 网格定位时，在波段活动窗格计算并显示大圆方位角。&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
               </property>
               <property name="text">
-               <string>Show azimuth in messages with grid</string>
+               <string>在带网格的消息中显示方位角</string>
               </property>
              </widget>
             </item>
@@ -439,7 +439,7 @@
                <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;When TX message is changed previous message will not be shown if it was transmitted for less than 2 seconds.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
               </property>
               <property name="text">
-               <string>&amp;Hide partially transmitted messages</string>
+               <string>隐藏部分已发射报文</string>
               </property>
              </widget>
             </item>
@@ -448,7 +448,7 @@
               <item>
                <widget class="QCheckBox" name="useDarkStyle_check_box">
                 <property name="text">
-                 <string>Use dar&amp;k style</string>
+                 <string>使用深色样式</string>
                 </property>
                </widget>
               </item>
@@ -472,17 +472,17 @@
               <item>
                <widget class="QCheckBox" name="cb_Align">
                 <property name="toolTip">
-                 <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Align the text for DXCC, distance and azimuth.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+                 <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;对齐 DXCC、距离和方位角文本。&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
                 </property>
                 <property name="text">
-                 <string>Align DXCC / distance / azimuth</string>
+                 <string>对齐 DXCC / 距离 / 方位角</string>
                 </property>
                </widget>
               </item>
               <item>
                <widget class="QSpinBox" name="align_spin_box">
                 <property name="toolTip">
-                 <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Increase or decrease the space between DXCC and distance/azimuth.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+                 <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;增减 DXCC 与距离/方位角之间的间距。&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
                 </property>
                 <property name="minimum">
                  <number>-2</number>
@@ -518,7 +518,7 @@
        <item>
         <widget class="QGroupBox" name="behaviour_group_box">
          <property name="title">
-          <string>Behavior</string>
+          <string>行为</string>
          </property>
          <layout class="QGridLayout" name="gridLayout_8">
           <property name="leftMargin">
@@ -547,7 +547,7 @@
                <string>Don't start decoding until the monitor button is clicked.</string>
               </property>
               <property name="text">
-               <string>Mon&amp;itor off at startup</string>
+               <string>启动时关闭监控</string>
               </property>
               <property name="checked">
                <bool>false</bool>
@@ -573,7 +573,7 @@
                <bool>true</bool>
               </property>
               <property name="text">
-               <string>Tx watchdog timer</string>
+               <string>发射看门狗计时器</string>
               </property>
              </widget>
             </item>
@@ -586,10 +586,10 @@
                <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Number of minutes before unattended transmissions are aborted&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
               </property>
               <property name="specialValueText">
-               <string>Disabled</string>
+               <string>禁用</string>
               </property>
               <property name="suffix">
-               <string> minutes</string>
+               <string> 分钟</string>
               </property>
               <property name="value">
                <number>6</number>
@@ -603,7 +603,7 @@
             <item>
              <widget class="QCheckBox" name="decode_at_52s_check_box">
               <property name="text">
-               <string>Decode at t = 52 s</string>
+               <string>在 t = 52 秒时解码</string>
               </property>
              </widget>
             </item>
@@ -623,7 +623,7 @@
             <item>
              <widget class="QLabel" name="label_32">
               <property name="text">
-               <string>Tune timer</string>
+               <string>调谐计时器</string>
               </property>
              </widget>
             </item>
@@ -636,7 +636,7 @@
                <string>Disabled</string>
               </property>
               <property name="suffix">
-               <string> seconds</string>
+               <string> 秒</string>
               </property>
               <property name="minimum">
                <number>0</number>
@@ -660,7 +660,7 @@
              <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Some rigs are not able to process CAT commands while transmitting. This means that if you are operating in split mode you may have to uncheck this option.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
             </property>
             <property name="text">
-             <string>Allo&amp;w Tx frequency changes while transmitting</string>
+             <string>发射时允许改变 Tx 频率</string>
             </property>
            </widget>
           </item>
@@ -670,7 +670,7 @@
              <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Check this if you wish to automatically return to the last monitored frequency when monitor is enabled, leave it unchecked if you wish to have the current rig frequency maintained.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
             </property>
             <property name="text">
-             <string>Monitor returns to last used fre&amp;quency</string>
+             <string>监控时返回上次使用的频率</string>
             </property>
            </widget>
           </item>
@@ -682,7 +682,7 @@
                <string>Send a CW ID after every 73 or free text message.</string>
               </property>
               <property name="text">
-               <string>CW ID a&amp;fter 73</string>
+               <string>73 后发送 CW 识别码</string>
               </property>
              </widget>
             </item>
@@ -708,7 +708,7 @@
                </sizepolicy>
               </property>
               <property name="text">
-               <string>Periodic CW ID Inter&amp;val:</string>
+               <string>周期性 CW 识别码间隔：</string>
               </property>
               <property name="buddy">
                <cstring>CW_id_interval_spin_box</cstring>
@@ -2311,12 +2311,32 @@ both here.</string>
                    </widget>
                   </item>
                   <item row="6" column="0">
-                   <widget class="QCheckBox" name="autoCallRareTargets_check_box">
+                   <widget class="QCheckBox" name="autoCallNewDXCC_check_box">
                     <property name="toolTip">
-                     <string>启用后，空闲时 AutoSeq 仅会自动选择新 DXCC、新 DXCC 波段/模式或新网格（含网格波段/模式），且对方必须发送 CQ、RRR 或 RR73。新呼号、新前缀、CQ/ITU 区及普通已做呼号不会触发自动起呼。仍需手动开启 AutoSeq 和 Enable Tx 才会发射。</string>
+                     <string>空闲时只对新 DXCC 的 CQ、RRR 或 RR73 自动起呼。仍需开启 AutoSeq 和 Enable Tx 才会发射。</string>
                     </property>
                     <property name="text">
-                     <string>自动起呼稀有目标（仅新 DXCC / 新波段模式 / 新网格）</string>
+                     <string>自动起呼新 DXCC</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="7" column="0">
+                   <widget class="QCheckBox" name="autoCallNewDXCCBandMode_check_box">
+                    <property name="toolTip">
+                     <string>空闲时只对 DXCC 新波段或新模式的 CQ、RRR 或 RR73 自动起呼。仍需开启 AutoSeq 和 Enable Tx 才会发射。</string>
+                    </property>
+                    <property name="text">
+                     <string>自动起呼 DXCC 新波段/模式</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="8" column="0">
+                   <widget class="QCheckBox" name="autoCallNewGrid_check_box">
+                    <property name="toolTip">
+                     <string>空闲时只对新网格（包括新网格波段/模式）的 CQ、RRR 或 RR73 自动起呼。仍需开启 AutoSeq 和 Enable Tx 才会发射。</string>
+                    </property>
+                    <property name="text">
+                     <string>自动起呼新网格</string>
                     </property>
                    </widget>
                   </item>
