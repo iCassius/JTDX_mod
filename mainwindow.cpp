@@ -3633,6 +3633,9 @@ void MainWindow::process_Auto()
     else if (m_callHigherNewCall) time |= 256;
     if (m_rprtPriority) time |= 16;
     if (m_maxDistance) time |= 32;
+    if (m_config.autoCallNewDXCC ()) time |= QsoHistory::AutoCallNewDXCC;
+    if (m_config.autoCallNewDXCCBandMode ()) time |= QsoHistory::AutoCallNewDXCCBandMode;
+    if (m_config.autoCallNewGrid ()) time |= QsoHistory::AutoCallNewGrid;
     m_status = m_qsoHistory.autoseq(hisCall,grid,rpt,rx,tx,time,count,prio,mode);
     // This optional policy applies only when we are looking for a new station
     // to call. It never interferes with an in-progress QSO or an incoming

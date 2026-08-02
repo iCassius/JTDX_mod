@@ -480,7 +480,10 @@ int DisplayText::displayDecodedText(DecodedText* decodedText, QString myCall, QS
                     // plain-73 candidate behaviour when that option is off.
                     const bool completedMessage = parts.contains ("RRR") || parts.contains ("RR73")
                         || (!autoCallRareTargets_ && parts.contains ("73"));
-                    if (!checkCall.isEmpty () && RR73Marker_ && completedMessage) {
+                    // Automatic rare-target calling must not depend on the optional
+                    // display marker.  The marker still controls legacy presentation,
+                    // while this path promotes RRR/RR73 to an AutoSeq candidate.
+                    if (!checkCall.isEmpty () && (RR73Marker_ || autoCallRareTargets_) && completedMessage) {
                         std_type = 4;
                         txtColor = color_CQ_;
                         status = QsoHistory::RFIN;

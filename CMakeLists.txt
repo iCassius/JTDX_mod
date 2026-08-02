@@ -1557,6 +1557,9 @@ if (JTDX_BUILD_LOCAL_TESTS)
     logbook/callsignlocation.cpp)
   target_link_libraries (callsignlocation_test Qt5::Core)
   add_test (NAME callsignlocation_test COMMAND callsignlocation_test)
+  add_executable (autocall_policy_test tests/autocall_policy_test.cpp)
+  target_link_libraries (autocall_policy_test Qt5::Core)
+  add_test (NAME autocall_policy_test COMMAND autocall_policy_test)
 endif ()
 
 

@@ -184,7 +184,7 @@ QsoHistory::Status QsoHistory::autoseq(QString &callsign, QString &grid, QString
               tt=_data[key];
               if (on_black == 0 && tt.time == max_r_time && !tt.continent.isEmpty() && (!lastcalled || tt.time == tt.b_time) &&
                   (tt.status == RCALL || tt.status == RREPORT || tt.status == RRREPORT || tt.status == RRR || tt.status == RRR73 || 
-                    ((tt.status == RCQ || tt.status == RFIN) && !mycall && ((tt.priority > 16 && tt.priority < 20))))) {
+                    ((tt.status == RCQ || tt.status == RFIN) && !mycall && autoCallPriorityAllowed (tt.priority, algo)))) {
                 if (!lastcalled && tt.time == tt.b_time) priority = a_init;
                 if (tt.priority > priority || 
                       (priority > a_init && (((tt.status == RCALL || tt.status == RREPORT || tt.status == RRREPORT) && !mycall) || (tt.priority == priority &&
@@ -235,7 +235,7 @@ QsoHistory::Status QsoHistory::autoseq(QString &callsign, QString &grid, QString
               tt=_data[key];
               if (on_black == 0 && ((tt.time - _CQ.time < 300 && tt.time >= 300) || (tt.time < 300 && tt.time - (_CQ.time - 86100) < 300))  && !tt.continent.isEmpty() && (!lastcalled || tt.time == tt.b_time) &&
                   (tt.status == RCALL || tt.status == RREPORT || tt.status == RRREPORT || tt.status == RRR || tt.status == RRR73 || 
-                    ((tt.status == RCQ || tt.status == RFIN) && !mycall && ((tt.priority > 16 && tt.priority < 20))))) {
+                    ((tt.status == RCQ || tt.status == RFIN) && !mycall && autoCallPriorityAllowed (tt.priority, algo)))) {
                 if (!lastcalled && tt.time == tt.b_time) priority = a_init;
                 if (tt.priority > priority || 
                       (priority > a_init && (((tt.status == RCALL || tt.status == RREPORT || tt.status == RRREPORT) && !mycall) || (tt.priority == priority &&
@@ -274,7 +274,8 @@ QsoHistory::Status QsoHistory::autoseq(QString &callsign, QString &grid, QString
             }
           }
 
-          if (algo&1 && myas_active && _data.size() > 0){ // their CQ answers
+          unsigned const rare_auto_call = algo & (AutoCallNewDXCC | AutoCallNewDXCCBandMode | AutoCallNewGrid);
+          if ((algo & 1 || rare_auto_call) && myas_active && _data.size() > 0){ // their CQ answers
             QSO tt,t;
             int priority = b_init;
             rep = "-60";
@@ -286,7 +287,7 @@ QsoHistory::Status QsoHistory::autoseq(QString &callsign, QString &grid, QString
               is_called.time=0;
               is_called=_calldata.value(key,is_called);
               tt=_data[key];
-              if ((is_called.rep == -35 || is_called.rep < tt.s_rep.toInt() || (tt.b_time > 300 && tt.b_time - is_called.time > 300) || (tt.b_time <= 300 && is_called.time - tt.b_time < 86100)) && on_black == 0 && tt.time == max_r_time && (tt.status == RCQ || (tt.status == RFIN && tt.priority > 0)) && !tt.continent.isEmpty()) {
+              if ((is_called.rep == -35 || is_called.rep < tt.s_rep.toInt() || (tt.b_time > 300 && tt.b_time - is_called.time > 300) || (tt.b_time <= 300 && is_called.time - tt.b_time < 86100)) && on_black == 0 && tt.time == max_r_time && (tt.status == RCQ || (tt.status == RFIN && tt.priority > 0)) && (!rare_auto_call || autoCallPriorityAllowed (tt.priority, algo)) && !tt.continent.isEmpty()) {
 //                printf("autosel:%s %d %d (%d,%d,%s,%d)\n",tt.call.toStdString().c_str(),ret,algo,tt.status,tt.priority,tt.s_rep.toStdString().c_str(),tt.distance);
                 if (tt.priority > priority || 
                     (priority > b_init && tt.priority == priority && 

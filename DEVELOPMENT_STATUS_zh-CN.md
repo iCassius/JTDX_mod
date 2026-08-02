@@ -29,6 +29,8 @@
 - 对本台的来呼和已开始的 QSO 不受这个筛选影响，仍使用既有 AutoSeq 自动应答；
 - 仍必须手工开启 AutoSeq 和 Enable Tx，功能不会绕过停止、频率保护或发射开关。
 
+候选选择器已按这三个开关放行精确的优先级范围，而不是只在候选已经选出后再过滤：新 DXCC 为 22–23、DXCC 新波段/模式为 20–21、新网格为 13–16。因此新 DXCC 不会再被原 JTDX 的 17–19 优先级门槛挡住。启用自动起呼后，RRR/RR73 的候选识别不再依赖“显示通知”页的 RRR/RR73 显示标记。
+
 完成联络候选的识别由原先的 `RR73/73` 扩展为 `RRR/RR73/73`；但严格“稀有目标”模式不接受普通 `73`：
 
 - CQ 已是 `RCQ` 候选；
@@ -53,5 +55,5 @@ JTDX 的 `CountryDat` 已有精确全呼号优先、最长前缀和 KG4 兼容�
 
 - 当前机器初始没有 CMake、Qt 开发包、MinGW/GFortran、Hamlib 开发包或 OmniRig 注册组件；现已在隔离路径安装并验证构建链。
 - 构建环境使用独立的 MSYS2 MinGW64 路径，测试输出放到独立 build/install 路径，绝不覆盖 `C:\JTDX64\159\bin`。
-- 完整 CMake/Ninja 构建已通过，`callsignlocation_test` 已通过；没有任何 HIL 或发射验证。
+- 完整 CMake/Ninja 构建已通过，`callsignlocation_test` 和 `autocall_policy_test` 已通过；没有任何 HIL 或发射验证。
 - 自动发射功能的实机验证必须在你明确授权后单独进行。

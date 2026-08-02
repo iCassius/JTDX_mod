@@ -19,6 +19,21 @@ class QsoHistory
  public:
 //                  0     1    2    3      4      5        6        7         8         9   10   11     12     13   14   15   16
 	enum Status {NONE, RFIN, RCQ, SCQ, RCALL, SCALL, RREPORT, SREPORT, RRREPORT, SRREPORT, RRR, SRR, RRR73, SRR73, R73, S73, FIN};
+	// Bits passed in the existing autoseq time/options argument.  They keep
+	// the per-target AutoSeq policy at the candidate-selection boundary.
+	enum AutoCallFlag : unsigned {
+	  AutoCallNewDXCC = 1u << 9,
+	  AutoCallNewDXCCBandMode = 1u << 10,
+	  AutoCallNewGrid = 1u << 11
+	};
+	static bool autoCallPriorityAllowed (int priority, unsigned options)
+	{
+	  unsigned const rare_options = options & (AutoCallNewDXCC | AutoCallNewDXCCBandMode | AutoCallNewGrid);
+	  if (!rare_options) return priority > 16 && priority < 20;
+	  return ((rare_options & AutoCallNewDXCC) && priority >= 22 && priority <= 23)
+	      || ((rare_options & AutoCallNewDXCCBandMode) && priority >= 20 && priority <= 21)
+	      || ((rare_options & AutoCallNewGrid) && priority >= 13 && priority <= 16);
+	}
 	void init();
 	void message(QString const& callsign, Status status, int priority, QString const& param, QString const& tyyp, QString const& continent, QString const& mpx, unsigned time, QString const& rep, int freq,  QString const& mode);
 	void rx(QString const& callsign, int freq);
