@@ -50,7 +50,10 @@ QString CallsignLocation::chinaProvince(const QString& callsign, const QString& 
 {
   // Keep the effective pattern intentionally identical to the installed
   // TX-5DR build: only ordinary B-prefixed 2/3-letter suffix calls qualify.
-  if (masterPrefix.toUpper() != QLatin1String("B")) {
+  // CountryDat supplies the CTY master prefix here.  TX-5DR selects this
+  // parser when its CTY entity is China (DXCC 318); in JTDX that entity's
+  // master prefix is "BY", not merely the leading B in an amateur callsign.
+  if (masterPrefix.toUpper() != QLatin1String("BY")) {
     return QString();
   }
   static const QRegularExpression pattern(
