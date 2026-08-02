@@ -3658,6 +3658,15 @@ void MainWindow::process_Auto()
       m_status = QsoHistory::NONE;
       rareTargetRejected = true;
     }
+    // A configured rare target is an unattended operating request: select the
+    // standard call and arm transmission for the next permitted Tx interval.
+    // Existing JTDX band, frequency, watchdog and PTT guards still decide
+    // whether a transmission can actually start.
+    if (m_autoseq && m_callMode > 0 && m_config.autoCallRareTargets () && allowedRareTarget
+        && (m_status == QsoHistory::RCQ || m_status == QsoHistory::RFIN)) {
+      txwatchdog (false);
+      if (!m_enableTx) ui->enableTxButton->click ();
+    }
     if(m_config.write_decoded_debug()) {
       QString StrDirection = "";
       if(m_status == QsoHistory::FIN) StrDirection = " auto sequence is finished;";
