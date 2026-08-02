@@ -3541,6 +3541,11 @@ void MainWindow::process_Auto()
   int rx = ui->RxFreqSpinBox->value ();
   int tx = ui->TxFreqSpinBox->value ();
   QStringList StrStatus = {"NONE","RFIN","RCQ","SCQ","RCALL","SCALL","RREPORT","SREPORT","RRREPORT","SRREPORT","RRR","SRR","RRR73","SRR73","R73","S73","FIN"};
+  auto const configuredRareTarget = [this] (int priority) {
+    return (m_config.autoCallNewDXCC () && priority >= 22 && priority <= 23)
+        || (m_config.autoCallNewDXCCBandMode () && priority >= 20 && priority <= 21)
+        || (m_config.autoCallNewGrid () && priority >= 13 && priority <= 16);
+  };
   if (!hisCall.isEmpty ()) {
     if (m_houndMode) count = -1; //marker for changing status to FIN when status is RRR73
     m_status = m_qsoHistory.autoseq(hisCall,grid,rpt,rx,tx,time,count,prio,mode);
@@ -3574,6 +3579,20 @@ void MainWindow::process_Auto()
       hisCall = m_hisCall;
       grid = m_hisGrid;
       m_status = QsoHistory::NONE;
+    } else if ((m_status == QsoHistory::RCQ || m_status == QsoHistory::SCALL)
+        && m_config.autoCallRareTargets () && configuredRareTarget (prio)
+        && m_config.answerCQCount() && m_config.nAnswerCQCounter() <= count) {
+      // Automatic rare-target calls are bounded by the existing "answered
+      // someone's CQ with no response" counter.  Unlike the legacy branch,
+      // their terminal state is standby, not a return to CQ transmission.
+      QString const failedRareTarget = hisCall;
+      autoStopTx("Rare-target AutoSeq retry limit reached ");
+      clearDX(" cleared, rare-target AutoSeq retry limit reached");
+      m_qsoHistory.reset_count(failedRareTarget);
+      hisCall = m_hisCall;
+      grid = m_hisGrid;
+      m_status = QsoHistory::NONE;
+      counters = false;
     } else if ((m_status == QsoHistory::RCQ || m_status == QsoHistory::SCALL || (m_status == QsoHistory::SREPORT && m_skipTx1 && !m_houndMode)) && m_config.answerCQCount() &&
         ((prio > 4 && prio < 17) || prio < 2 || m_strictdirCQ) && (m_config.nAnswerCQCounter() <= count || m_reply_other)) {
       clearDX (" cleared, RCQ/SCALL/SREPORT count reached");
@@ -3641,9 +3660,7 @@ void MainWindow::process_Auto()
     // to call. It never interferes with an in-progress QSO or an incoming
     // call addressed to this station. DisplayText assigns 20..23 to new
     // DXCC/DXCC band-or-mode and 13..16 to new grid/grid band-or-mode.
-    const bool allowedRareTarget = (m_config.autoCallNewDXCC () && prio >= 22 && prio <= 23)
-        || (m_config.autoCallNewDXCCBandMode () && prio >= 20 && prio <= 21)
-        || (m_config.autoCallNewGrid () && prio >= 13 && prio <= 16);
+    const bool allowedRareTarget = configuredRareTarget (prio);
     if (m_config.autoCallRareTargets ()
         && (m_status == QsoHistory::RCQ || m_status == QsoHistory::RFIN)
         && !allowedRareTarget) {

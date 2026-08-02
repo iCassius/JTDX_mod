@@ -2313,7 +2313,7 @@ both here.</string>
                   <item row="6" column="0">
                    <widget class="QCheckBox" name="autoCallNewDXCC_check_box">
                     <property name="toolTip">
-                     <string>空闲时只对新 DXCC 的 CQ、RRR 或 RR73 自动起呼。命中后自动开启 Enable Tx；仍需手工开启 AutoSeq。</string>
+                     <string>空闲时只对新 DXCC 的 CQ、RRR 或 RR73 自动起呼。命中后自动开启 Enable Tx；无回应次数使用“多次回复别台的 CQ 呼叫没有反应”设置，达到后停止并清除 DX。仍需手工开启 AutoSeq。</string>
                     </property>
                     <property name="text">
                      <string>自动起呼新 DXCC</string>
@@ -2323,7 +2323,7 @@ both here.</string>
                   <item row="7" column="0">
                    <widget class="QCheckBox" name="autoCallNewDXCCBandMode_check_box">
                     <property name="toolTip">
-                     <string>空闲时只对 DXCC 新波段或新模式的 CQ、RRR 或 RR73 自动起呼。命中后自动开启 Enable Tx；仍需手工开启 AutoSeq。</string>
+                     <string>空闲时只对 DXCC 新波段或新模式的 CQ、RRR 或 RR73 自动起呼。命中后自动开启 Enable Tx；无回应次数使用“多次回复别台的 CQ 呼叫没有反应”设置，达到后停止并清除 DX。仍需手工开启 AutoSeq。</string>
                     </property>
                     <property name="text">
                      <string>自动起呼 DXCC 新波段/模式</string>
@@ -2333,7 +2333,7 @@ both here.</string>
                   <item row="8" column="0">
                    <widget class="QCheckBox" name="autoCallNewGrid_check_box">
                     <property name="toolTip">
-                     <string>空闲时只对新网格（包括新网格波段/模式）的 CQ、RRR 或 RR73 自动起呼。命中后自动开启 Enable Tx；仍需手工开启 AutoSeq。</string>
+                     <string>空闲时只对新网格（包括新网格波段/模式）的 CQ、RRR 或 RR73 自动起呼。命中后自动开启 Enable Tx；无回应次数使用“多次回复别台的 CQ 呼叫没有反应”设置，达到后停止并清除 DX。仍需手工开启 AutoSeq。</string>
                     </property>
                     <property name="text">
                      <string>自动起呼新网格</string>
