@@ -69,11 +69,13 @@ QString version (bool include_patch)
   QString v {WSJTX_STRINGIZE (WSJTX_VERSION_MAJOR) "." WSJTX_STRINGIZE (WSJTX_VERSION_MINOR)};
   if (include_patch)
     {
-      v += "." WSJTX_STRINGIZE (WSJTX_VERSION_PATCH)
-# if defined (WSJTX_RC)
-        + "-rc" WSJTX_STRINGIZE (WSJTX_RC)
+      v += "." WSJTX_STRINGIZE (WSJTX_VERSION_PATCH);
+# if defined (WSJTX_VERSION_TWEAK)
+      v += "." WSJTX_STRINGIZE (WSJTX_VERSION_TWEAK);
 # endif
-        ;
+# if defined (WSJTX_RC)
+      v += "-rc" WSJTX_STRINGIZE (WSJTX_RC);
+# endif
     }
 #else
   QString v {"Not for Release"};
@@ -83,6 +85,7 @@ QString version (bool include_patch)
 
 QString program_title (QString const& revision)
 {
-  QString id {QCoreApplication::applicationName () + "  by HF community                                         v" + QCoreApplication::applicationVersion ()};
-  return id + " " + revision + ", derivative work based on WSJT-X by K1JT";
+  Q_UNUSED (revision);
+  return QCoreApplication::applicationName () + " v" + QCoreApplication::applicationVersion ()
+      + QString::fromUtf8(" 自动起呼版 By BI7KGD");
 }

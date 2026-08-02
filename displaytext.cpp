@@ -949,7 +949,7 @@ int DisplayText::displayDecodedText(DecodedText* decodedText, QString myCall, QS
                 cntry = items[2];
                 const QString province = CallsignLocation::chinaProvince(checkCall, mpx);
                 if (!province.isEmpty()) {
-                    cntry += QString::fromUtf8(" · ") + province;
+                    cntry += QLatin1Char(' ') + province;
                 }
             }
         }
