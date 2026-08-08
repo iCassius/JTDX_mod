@@ -2340,6 +2340,26 @@ both here.</string>
                     </property>
                    </widget>
                   </item>
+                  <item row="9" column="0">
+                   <widget class="QCheckBox" name="autoCallNewCall_check_box">
+                    <property name="toolTip">
+                     <string>空闲时只对日志中从未通联过的呼号的 CQ、RRR、RR73 或独立 73 自动起呼。命中后自动开启 Enable Tx；无回应次数使用“多次回复别台的 CQ 呼叫没有反应”设置，达到后停止并清除 DX。仍需手工开启 AutoSeq。</string>
+                    </property>
+                    <property name="text">
+                     <string>自动起呼新呼号</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="10" column="0">
+                   <widget class="QCheckBox" name="autoCallNewCallBand_check_box">
+                    <property name="toolTip">
+                     <string>空闲时只对当前波段从未通联过的呼号的 CQ、RRR、RR73 或独立 73 自动起呼。命中后自动开启 Enable Tx；无回应次数使用“多次回复别台的 CQ 呼叫没有反应”设置，达到后停止并清除 DX。仍需手工开启 AutoSeq。</string>
+                    </property>
+                    <property name="text">
+                     <string>自动起呼新呼号波段</string>
+                    </property>
+                   </widget>
+                  </item>
                  </layout>
                 </item>
                 <item>

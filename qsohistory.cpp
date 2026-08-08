@@ -274,7 +274,8 @@ QsoHistory::Status QsoHistory::autoseq(QString &callsign, QString &grid, QString
             }
           }
 
-          unsigned const rare_auto_call = algo & (AutoCallNewDXCC | AutoCallNewDXCCBandMode | AutoCallNewGrid);
+          unsigned const rare_auto_call = algo & (AutoCallNewDXCC | AutoCallNewDXCCBandMode | AutoCallNewGrid
+                                                   | AutoCallNewCall | AutoCallNewCallBand);
           if ((algo & 1 || rare_auto_call) && myas_active && _data.size() > 0){ // their CQ answers
             QSO tt,t;
             int priority = b_init;

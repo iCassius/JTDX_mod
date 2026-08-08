@@ -39,6 +39,7 @@
 #include "JTDXMessageBox.hpp"
 #include "qsohistory.h"
 #include "JTDXDateTime.h"
+#include "recovery_policy.hpp"
 
 
 //--------------------------------------------------------------- MainWindow
@@ -95,7 +96,7 @@ public slots:
   void doubleClickOnCall(bool alt, bool ctrl);
   void doubleClickOnCall2(bool alt, bool ctrl);
   void readFromStdout();
-  void process_Auto();
+  void process_Auto(bool forceCandidate = false);
   void p1ReadFromStdout();
   void setXIT(int n, Frequency base = 0u);
   void setFreq4(int rxFreq, int txFreq);
@@ -189,6 +190,8 @@ private slots:
   void on_actionAutoCallNewDXCC_toggled(bool checked);
   void on_actionAutoCallNewDXCCBandMode_toggled(bool checked);
   void on_actionAutoCallNewGrid_toggled(bool checked);
+  void on_actionAutoCallNewCall_toggled(bool checked);
+  void on_actionAutoCallNewCallBand_toggled(bool checked);
   void on_actionSingleShot_toggled(bool checked);
   void on_actionAutoFilter_toggled(bool checked);
   void on_actionEnable_hound_mode_toggled(bool checked);
@@ -260,6 +263,7 @@ private slots:
   void on_txb5_clicked();
   void on_txb6_clicked();
   void on_lookupButton_clicked();
+  void on_qrzLookupCallsign(QString const& call);
   void on_addButton_clicked();
   void on_dxCallEntry_textChanged(const QString &arg1);
   void on_dxGridEntry_textChanged(const QString &arg1);
@@ -330,6 +334,7 @@ private slots:
   void on_skipGrid_clicked(bool checked);
   void on_outAttenuation_valueChanged (int);
   void rigOpen ();
+  void retryRigOpen ();
   void handle_transceiver_update (Transceiver::TransceiverState const&);
   void handle_transceiver_failure (QString const& reason);
   void on_actionShort_list_of_add_on_prefixes_and_suffixes_triggered();
@@ -561,6 +566,7 @@ private:
   bool    m_bSimplex; // not using split even if it is available
   bool	  m_logqso73;
   bool	  m_processAuto_done;
+  bool    m_newGridAutoCallDone = false;
   bool    m_haltTrans;
   bool	  m_crossbandOptionEnabled;
   bool	  m_crossbandHLOptionEnabled;
@@ -604,6 +610,7 @@ private:
   bool m_bandChanged;
   bool m_useDarkStyle;
   bool m_lostaudio;
+  bool m_soundOutputError;
   bool m_lasthint;
   bool m_monitoroff;
   bool m_savedRRR;
@@ -674,6 +681,8 @@ private:
   QTimer StopTuneTimer;
   QTimer minuteTimer;
   QTimer RxQSYTimer;
+  QTimer m_rigRecoveryTimer;
+  RecoveryPolicy m_rigRecovery;
 
   QString m_path;
   QString m_baseCall;

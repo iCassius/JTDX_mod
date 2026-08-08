@@ -28,6 +28,10 @@
 #include <QButtonGroup>
 #include <QUdpSocket>
 #include <QtMath>
+#include <QDateTime>
+#include <QFile>
+#include <QFileInfo>
+#include <QTextStream>
 #if QT_VERSION >= QT_VERSION_CHECK (5, 15, 0)
 #include <QRandomGenerator>
 #endif
@@ -57,6 +61,8 @@
 #include "HelpTextWindow.hpp"
 #include "SampleDownloader.hpp"
 #include "Audio/BWFFile.hpp"
+#include "qrz_lookup.hpp"
+#include "startup_policy.hpp"
 
 #include "ui_mainwindow.h"
 #include "moc_mainwindow.cpp"
@@ -119,6 +125,28 @@ QVector<QColor> g_ColorTbl;
 
 namespace
 {
+  void appendRecoveryLog (QDir const& dataDirectory, QString area, QString message)
+  {
+    auto const path = dataDirectory.absoluteFilePath ("jtdx_recovery.log");
+    QFileInfo const info {path};
+    if (info.exists () && info.size () >= 256 * 1024)
+      {
+        QFile::remove (path + ".1");
+        QFile::rename (path, path + ".1");
+      }
+
+    area.replace ('\r', ' ').replace ('\n', ' ');
+    message.replace ('\r', ' ').replace ('\n', ' ');
+    QFile log {path};
+    if (log.open (QIODevice::WriteOnly | QIODevice::Text | QIODevice::Append))
+      {
+        QTextStream stream {&log};
+        stream.setCodec ("UTF-8");
+        stream << QDateTime::currentDateTime ().toString (Qt::ISODateWithMs)
+               << " [" << area << "] " << message << '\n';
+      }
+  }
+
   Radio::Frequency constexpr default_frequency {14076000};
   QRegularExpression message_alphabet {"[- @A-Za-z0-9+./?#<>]*"};
   QRegularExpression messagespec_alphabet {"[- @A-Za-z0-9+./?#<>;]*"};
@@ -329,6 +357,7 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
   m_bandChanged {false},
   m_useDarkStyle {false},
   m_lostaudio {false},
+  m_soundOutputError {false},
   m_lasthint {false},
   m_monitoroff {false},
   m_savedRRR {false},
@@ -489,6 +518,7 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
   // hook up sound output stream slots & signals and disposal
   connect (this, &MainWindow::initializeAudioOutputStream, m_soundOutput, &SoundOutput::setFormat);
   connect (m_soundOutput, &SoundOutput::error, this, &MainWindow::showSoundOutError);
+  connect (m_soundOutput, &SoundOutput::ready, this, [this] {m_soundOutputError = false;});
   // connect (m_soundOutput, &SoundOutput::status, this, &MainWindow::showStatusMessage);
   connect (this, &MainWindow::outAttenuationChanged, m_soundOutput, &SoundOutput::setAttenuation);
   connect (&m_audioThread, &QThread::finished, m_soundOutput, &QObject::deleteLater);
@@ -727,6 +757,8 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
   connect(txMsgButtonGroup,SIGNAL(buttonClicked(int)),SLOT(set_ntx(int)));
   connect(ui->decodedTextBrowser2,SIGNAL(selectCallsign(bool,bool)),this,SLOT(doubleClickOnCall(bool,bool)));
   connect(ui->decodedTextBrowser,SIGNAL(selectCallsign(bool,bool)),this,SLOT(doubleClickOnCall2(bool,bool)));
+  connect(ui->decodedTextBrowser2, &DisplayText::lookupCallsign, this, &MainWindow::on_qrzLookupCallsign);
+  connect(ui->decodedTextBrowser, &DisplayText::lookupCallsign, this, &MainWindow::on_qrzLookupCallsign);
   connect(ui->decodedTextBrowser->horizontalScrollBar(),SIGNAL(sliderMoved(int)),SLOT(ScrollBarPosition(int)));
 
   // initialise decoded text font and hook up change signal
@@ -855,6 +887,8 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
   connect (&m_config, &Configuration::transceiver_TCIframesWritten, this, &MainWindow::dataSink);
   connect (&m_config, &Configuration::transceiver_TCImodActive, this, &MainWindow::tci_mod_active);
   connect (&m_config, &Configuration::transceiver_failure, this, &MainWindow::handle_transceiver_failure);
+  m_rigRecoveryTimer.setSingleShot (true);
+  connect (&m_rigRecoveryTimer, &QTimer::timeout, this, &MainWindow::retryRigOpen);
   connect (&m_config, &Configuration::udp_server_changed, m_messageClient, &MessageClient::set_server);
   connect (&m_config, &Configuration::udp_server_port_changed, m_messageClient, &MessageClient::set_server_port);
 
@@ -1054,9 +1088,13 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
   enable_DXCC_entity ();  // sets text window proportions and (re)inits the logbook
   if(m_config.monitor_off_at_startup()) m_monitoroff=true;
 
-  // this must be done before initializing the mode as some modes need
-  // to turn off split on the rig e.g. WSPR
-  m_config.transceiver_online ();
+  // Do not open CAT from the constructor: a failed port/rig can otherwise
+  // enter a modal dialog before main.cpp has shown the window.  The event
+  // loop now opens the rig immediately after the first show() opportunity;
+  // settings therefore remain available even when the initial open fails.
+  QTimer::singleShot (StartupPolicy::rigOpenDelayMs (), this, [this] {
+      if (m_valid) rigOpen ();
+    });
 
   ui->TxMinuteButton->setChecked(m_txFirst);
   setMinButton();
@@ -1171,6 +1209,7 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
 //--------------------------------------------------- MainWindow destructor
 MainWindow::~MainWindow()
 {
+  m_rigRecoveryTimer.stop ();
   QString fname {QDir::toNativeSeparators(m_dataDir.absoluteFilePath ("wsjtx_wisdom.dat"))};
   QByteArray cfname=fname.toLocal8Bit();
   fftwf_export_wisdom_to_filename(cfname);
@@ -1494,6 +1533,8 @@ void MainWindow::readSettings()
   ui->actionAutoCallNewDXCC->setChecked(m_config.autoCallNewDXCC());
   ui->actionAutoCallNewDXCCBandMode->setChecked(m_config.autoCallNewDXCCBandMode());
   ui->actionAutoCallNewGrid->setChecked(m_config.autoCallNewGrid());
+  ui->actionAutoCallNewCall->setChecked(m_config.autoCallNewCall());
+  ui->actionAutoCallNewCallBand->setChecked(m_config.autoCallNewCallBand());
   ui->actionSingleShot->setChecked(m_settings->value("SingleShotQSO",false).toBool());
   ui->actionAutoFilter->setChecked(m_settings->value("AutoFilter",false).toBool());
   ui->actionEnable_hound_mode->setChecked(m_settings->value("EnableHoundMode",false).toBool());
@@ -2063,11 +2104,36 @@ QString MainWindow::save_wave_file (QString const& name, short const * data, int
 }
 
 void MainWindow::showSoundInError(const QString& errorMsg) { JTDXMessageBox::critical_message(this, "", tr("Error in SoundInput"), errorMsg); }
-void MainWindow::showSoundOutError(const QString& errorMsg) { JTDXMessageBox::critical_message(this, "", tr("Error in SoundOutput"), errorMsg); }
+void MainWindow::showSoundOutError(const QString& errorMsg)
+{
+  auto const showDialog = !m_soundOutputError;
+  m_soundOutputError = true;
+  appendRecoveryLog (m_dataDir, "audio-output", errorMsg);
+
+  // PTT is already asserted before the modulator starts the stream.  Never
+  // leave the radio keyed when output startup or an active stream fails.
+  if (m_transmitting || m_tune || 1 == g_iptt)
+    {
+      haltTx ("Audio output error: " + errorMsg + " ");
+    }
+  else if (m_enableTx)
+    {
+      enableTx_mode (false);
+    }
+
+  if (showDialog)
+    {
+      JTDXMessageBox::critical_message (this, "", tr ("Error in SoundOutput"), errorMsg);
+    }
+}
 void MainWindow::showStatusMessage(const QString& statusMsg) { statusBar()->showMessage(statusMsg); }
 
 void MainWindow::on_actionSettings_triggered()               //Setup Dialog
 {
+  // A manual reconfiguration supersedes any pending automatic reconnect.
+  m_rigRecoveryTimer.stop ();
+  m_rigRecovery.reset ();
+
   // things that might change that we need know about
   m_strictdirCQ = m_config.strictdirCQ ();
   m_callsign = m_config.my_callsign ();
@@ -2085,6 +2151,8 @@ void MainWindow::on_actionSettings_triggered()               //Setup Dialog
       ui->actionAutoCallNewDXCC->setChecked(m_config.autoCallNewDXCC());
       ui->actionAutoCallNewDXCCBandMode->setChecked(m_config.autoCallNewDXCCBandMode());
       ui->actionAutoCallNewGrid->setChecked(m_config.autoCallNewGrid());
+      ui->actionAutoCallNewCall->setChecked(m_config.autoCallNewCall());
+      ui->actionAutoCallNewCallBand->setChecked(m_config.autoCallNewCallBand());
       if (m_config.useDarkStyle() != m_useDarkStyle) {
         m_useDarkStyle = m_config.useDarkStyle();
         styleChanged();
@@ -3143,6 +3211,8 @@ void MainWindow::on_actionCallHigherNewCall_toggled(bool checked) { m_callHigher
 void MainWindow::on_actionAutoCallNewDXCC_toggled(bool checked) { m_config.setAutoCallNewDXCC(checked); ui->decodedTextBrowser->setConfiguration(&m_config); ui->decodedTextBrowser2->setConfiguration(&m_config); }
 void MainWindow::on_actionAutoCallNewDXCCBandMode_toggled(bool checked) { m_config.setAutoCallNewDXCCBandMode(checked); ui->decodedTextBrowser->setConfiguration(&m_config); ui->decodedTextBrowser2->setConfiguration(&m_config); }
 void MainWindow::on_actionAutoCallNewGrid_toggled(bool checked) { m_config.setAutoCallNewGrid(checked); ui->decodedTextBrowser->setConfiguration(&m_config); ui->decodedTextBrowser2->setConfiguration(&m_config); }
+void MainWindow::on_actionAutoCallNewCall_toggled(bool checked) { m_config.setAutoCallNewCall(checked); ui->decodedTextBrowser->setConfiguration(&m_config); ui->decodedTextBrowser2->setConfiguration(&m_config); }
+void MainWindow::on_actionAutoCallNewCallBand_toggled(bool checked) { m_config.setAutoCallNewCallBand(checked); ui->decodedTextBrowser->setConfiguration(&m_config); ui->decodedTextBrowser2->setConfiguration(&m_config); }
 
 void MainWindow::on_actionSingleShot_toggled(bool checked)
 {
@@ -3382,7 +3452,11 @@ void MainWindow::decode()                                       //decode()
   m_reply_other = false;
   m_reply_CQ73 = false;
   ui->DecodeButton->setChecked (true);
-  if(!m_manualDecode) { m_processAuto_done = false; m_callFirst73 = false; }
+  if(!m_manualDecode) {
+    m_processAuto_done = false;
+    m_newGridAutoCallDone = false;
+    m_callFirst73 = false;
+  }
   m_used_freq = 0;
   if(m_diskData && !m_mode.startsWith("FT")) dec_data.params.nutc=dec_data.params.nutc/100;
   if(dec_data.params.newdat==1) {
@@ -3525,14 +3599,17 @@ void MainWindow::decode()                                       //decode()
 //  m_msDecoderStarted = m_jtdxtime->currentMSecsSinceEpoch2();
 }
 
-void MainWindow::process_Auto()
+void MainWindow::process_Auto(bool forceCandidate)
 {
   int count = 0;
   int prio = 0;
   bool counters = true;
   bool counters2 = true;
   m_status = QsoHistory::NONE;
-  QString hisCall = m_hisCall;
+  // A new-grid notification is allowed to re-run candidate selection while
+  // the previous DX call remains in the entry field.  The ordinary AutoSeq
+  // path keeps its existing in-progress-QSO semantics.
+  QString hisCall = forceCandidate ? QString {} : m_hisCall;
   QString rpt = m_rpt;
   QString grid = m_hisGrid;
   QString mode = "";
@@ -3544,7 +3621,9 @@ void MainWindow::process_Auto()
   auto const configuredRareTarget = [this] (int priority) {
     return (m_config.autoCallNewDXCC () && priority >= 22 && priority <= 23)
         || (m_config.autoCallNewDXCCBandMode () && priority >= 20 && priority <= 21)
-        || (m_config.autoCallNewGrid () && priority >= 13 && priority <= 16);
+        || (m_config.autoCallNewGrid () && priority >= 13 && priority <= 16)
+        || (m_config.autoCallNewCall () && priority >= 7 && priority <= 8)
+        || (m_config.autoCallNewCallBand () && priority >= 5 && priority <= 6);
   };
   if (!hisCall.isEmpty ()) {
     if (m_houndMode) count = -1; //marker for changing status to FIN when status is RRR73
@@ -3655,6 +3734,8 @@ void MainWindow::process_Auto()
     if (m_config.autoCallNewDXCC ()) time |= QsoHistory::AutoCallNewDXCC;
     if (m_config.autoCallNewDXCCBandMode ()) time |= QsoHistory::AutoCallNewDXCCBandMode;
     if (m_config.autoCallNewGrid ()) time |= QsoHistory::AutoCallNewGrid;
+    if (m_config.autoCallNewCall ()) time |= QsoHistory::AutoCallNewCall;
+    if (m_config.autoCallNewCallBand ()) time |= QsoHistory::AutoCallNewCallBand;
     m_status = m_qsoHistory.autoseq(hisCall,grid,rpt,rx,tx,time,count,prio,mode);
     // This optional policy applies only when we are looking for a new station
     // to call. It never interferes with an in-progress QSO or an incoming
@@ -3711,7 +3792,7 @@ void MainWindow::process_Auto()
       ui->TxFreqSpinBox->setValue (rx);
       }
       if (!rpt.isEmpty () && rpt == m_rpt) m_rpt = "-60";
-    } else if (!rareTargetRejected && m_transmittedQSOProgress != CALLING){
+    } else if (!forceCandidate && !rareTargetRejected && m_transmittedQSOProgress != CALLING){
         on_txb6_clicked();
         if(ui->tabWidget->currentIndex()==1) ui->genMsg->setText(ui->tx6->text());
     }
@@ -3815,7 +3896,6 @@ void MainWindow::process_Auto()
       }
     }
   } else {
-    if (m_enableTx && m_hisCall.isEmpty()) ui->RxFreqSpinBox->setValue (ui->TxFreqSpinBox->value ());
     if (!counters) {
        if(m_singleshot) { autoStopTx("m_singleshot, counter triggered "); }
        else if(m_houndMode) { autoStopTx("m_houndMode, counter triggered "); }
@@ -4038,6 +4118,15 @@ void MainWindow::readFromStdout()                             //readFromStdout
                                                     , this
                                                     , distance
                                                     );
+
+      if ((notified & 128) && m_config.autoCallNewGrid () && m_autoseq
+          && !m_manualDecode && !m_newGridAutoCallDone) {
+        // The decode has now been inserted into QsoHistory.  Re-run only the
+        // candidate-selection phase; forceCandidate deliberately ignores the
+        // stale DX entry while preserving the normal AutoSeq path otherwise.
+        m_newGridAutoCallDone = true;
+        process_Auto (true);
+      }
 
       if(m_position != 0) ui->decodedTextBrowser->horizontalScrollBar()->setValue(m_position);
       if (notified & 1) m_notified = true;
@@ -5752,7 +5841,6 @@ void MainWindow::clearDX (QString reason)
   QString dxcallclr=m_hisCall;
   clearDXfields("");
   genStdMsgs(QString {});
-  ui->RxFreqSpinBox->setValue (ui->TxFreqSpinBox->value ());
   if (1 == ui->tabWidget->currentIndex())
     {
       ui->genMsg->setText(ui->tx6->text());
@@ -5858,7 +5946,8 @@ void MainWindow::on_lookupButton_clicked() {
     lookup();
     if((ms-m_msErase)<500) {
         QString hisCall=m_hisCall;
-        if (hisCall !="") QDesktopServices::openUrl (QUrl {"https://www.qrz.com/db/" + hisCall});
+        auto const url = QRZLookup::urlForCall (hisCall);
+        if (url.isValid ()) QDesktopServices::openUrl (url);
     }
     m_msErase=ms;
 }
@@ -7308,6 +7397,13 @@ void MainWindow::handle_transceiver_update (Transceiver::TransceiverState const&
   // qDebug () << "MainWindow::handle_transceiver_update:" << s;
   Transceiver::TransceiverState old_state {m_rigState};
 
+  if (s.online () && m_rigRecovery.attempts ())
+    {
+      appendRecoveryLog (m_dataDir, "rig-control", QString {"recovered after attempt %1"}.arg (m_rigRecovery.attempts ()));
+      m_rigRecoveryTimer.stop ();
+      m_rigRecovery.reset ();
+    }
+
   if(m_config.write_decoded_debug()) {
     QString curPttState = m_rigState.ptt () ? "PTT On" : "PTT Off";
     QString reqPttState = s.ptt () ? "PTT On" : "PTT Off";
@@ -7422,6 +7518,19 @@ void MainWindow::handle_transceiver_update (Transceiver::TransceiverState const&
 
 void MainWindow::handle_transceiver_failure (QString const& reason)
 {
+  appendRecoveryLog (m_dataDir, "rig-control",
+                     QString {"failure=%1; online=%2; ptt=%3; split=%4; "
+                              "frequency=%5; tx_frequency=%6; g_iptt=%7; "
+                              "transmitting=%8; enable_tx=%9"}
+                     .arg (reason)
+                     .arg (m_rigState.online () ? "true" : "false")
+                     .arg (m_rigState.ptt () ? "true" : "false")
+                     .arg (m_rigState.split () ? "true" : "false")
+                     .arg (QString::number (m_rigState.frequency ()))
+                     .arg (QString::number (m_rigState.tx_frequency ()))
+                     .arg (g_iptt)
+                     .arg (m_transmitting ? "true" : "false")
+                     .arg (m_enableTx ? "true" : "false"));
   ui->readFreq->setStyleSheet(ui->readFreq->styleSheet().left(230)+QString("background: %1;\n color: %2;\n}").arg(Radio::convert_dark("#ff0000",m_useDarkStyle),Radio::convert_dark("#000000",m_useDarkStyle)));
   m_rigOk=false;
   ui->readFreq->setEnabled (true);
@@ -7429,34 +7538,62 @@ void MainWindow::handle_transceiver_failure (QString const& reason)
   rigFailure (tr("Rig Control Error"), reason);
 }
 
+void MainWindow::on_qrzLookupCallsign (QString const& call)
+{
+  auto const url = QRZLookup::urlForCall (call);
+  if (url.isValid ()) QDesktopServices::openUrl (url);
+}
+
+void MainWindow::retryRigOpen ()
+{
+  if (!m_valid)
+    {
+      return;
+    }
+  appendRecoveryLog (m_dataDir, "rig-control", QString {"starting reconnect attempt %1"}.arg (m_rigRecovery.attempts ()));
+  rigOpen ();
+}
+
 void MainWindow::rigFailure (QString const& reason, QString const& detail)
 {
-  static bool first_error {true};
-  if (first_error) {
-      // one automatic retry
-      QTimer::singleShot (0, this, SLOT (rigOpen ()));
-      first_error = false;
-  } else {
-      m_rigErrorMessageBox.setText (reason);
-      m_rigErrorMessageBox.setDetailedText (detail);
+  appendRecoveryLog (m_dataDir, "rig-control", reason + ": " + detail);
+  if (m_rigRecoveryTimer.isActive () || m_rigErrorMessageBox.isVisible ())
+    {
+      return;
+    }
 
-      // don't call slot functions directly to avoid recursion
-      switch (m_rigErrorMessageBox.exec ())
-        {
-        case JTDXMessageBox::Ok:
-          QTimer::singleShot (0, this, SLOT (on_actionSettings_triggered ()));
-          break;
+  auto const delay = m_rigRecovery.nextDelayMs ();
+  if (0 <= delay)
+    {
+      appendRecoveryLog (m_dataDir, "rig-control",
+                         QString {"scheduled reconnect attempt %1 in %2 ms"}
+                         .arg (m_rigRecovery.attempts ()).arg (delay));
+      m_rigRecoveryTimer.start (delay);
+      return;
+    }
 
-        case JTDXMessageBox::Retry:
-          QTimer::singleShot (0, this, SLOT (rigOpen ()));
-          break;
+  appendRecoveryLog (m_dataDir, "rig-control", "automatic reconnect attempts exhausted");
+  m_rigErrorMessageBox.setText (reason);
+  m_rigErrorMessageBox.setDetailedText (detail);
 
-        case JTDXMessageBox::Cancel:
-          QTimer::singleShot (0, this, SLOT (close ()));
-          break;
-        }
-      first_error = true;       // reset
-  }
+  // don't call slot functions directly to avoid recursion
+  switch (m_rigErrorMessageBox.exec ())
+    {
+    case JTDXMessageBox::Ok:
+      m_rigRecovery.reset ();
+      QTimer::singleShot (0, this, SLOT (on_actionSettings_triggered ()));
+      break;
+
+    case JTDXMessageBox::Retry:
+      m_rigRecovery.reset ();
+      rigFailure (reason, detail);
+      break;
+
+    case JTDXMessageBox::Cancel:
+      m_rigRecovery.reset ();
+      QTimer::singleShot (0, this, SLOT (close ()));
+      break;
+    }
 }
 
 void MainWindow::transmit (double snr)
@@ -8239,8 +8376,8 @@ void MainWindow::on_cbMenus_toggled(bool b)
 {
   m_menus=b;
   hideMenus(!b);
-  minimumSize().setHeight(422); 
-  minimumSize().setWidth(733);
+  setMinimumHeight (422);
+  setMinimumWidth (733);
   dynamicButtonsInit();
 }
 

@@ -19,7 +19,10 @@ class SoundOutput
 public:
   SoundOutput ()
     : m_framesBuffered {0}
+    , m_channels {0}
     , m_volume {1.0}
+    , m_recreatePending {false}
+    , m_errorReported {false}
   {
   }
 
@@ -38,18 +41,25 @@ public Q_SLOTS:
 Q_SIGNALS:
   void error (QString message) const;
   void status (QString message) const;
+  void ready () const;
 
 private:
   int m_framesBuffered;
-  bool audioError () const;
+  unsigned m_channels;
+  bool audioError ();
+  bool recreateStream ();
+  void reportError (QString const&);
 
 private Q_SLOTS:
   void handleStateChanged (QAudio::State);
 
 private:
   QScopedPointer<QAudioOutput> m_stream;
+  QAudioDeviceInfo m_device;
   unsigned m_msBuffered;
   qreal m_volume;
+  bool m_recreatePending;
+  bool m_errorReported;
 };
 
 #endif

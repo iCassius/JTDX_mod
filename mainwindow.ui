@@ -1469,10 +1469,16 @@
               </item>
               <item row="4" column="2">
                <widget class="QPushButton" name="AutoSeqButton">
-                <property name="enabled">
-                 <bool>true</bool>
-                </property>
-                <property name="maximumSize">
+               <property name="enabled">
+                <bool>true</bool>
+               </property>
+               <property name="minimumSize">
+                <size>
+                 <width>100</width>
+                 <height>28</height>
+                </size>
+               </property>
+               <property name="maximumSize">
                  <size>
                   <width>110</width>
                   <height>40</height>
@@ -1501,8 +1507,14 @@
                </widget>
               </item>
               <item row="3" column="2">
-               <widget class="QPushButton" name="AutoTxButton">
-                <property name="maximumSize">
+              <widget class="QPushButton" name="AutoTxButton">
+               <property name="minimumSize">
+                <size>
+                 <width>90</width>
+                 <height>28</height>
+                </size>
+               </property>
+               <property name="maximumSize">
                  <size>
                   <width>16777215</width>
                   <height>40</height>
@@ -2386,14 +2398,14 @@ ZD8,ZD9,ZF,ZK3,ZL,ZL7,ZL8,ZL9,ZP,ZS,ZS8&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</str
               </property>
               <property name="minimumSize">
                <size>
-                <width>68</width>
-                <height>0</height>
+                <width>78</width>
+                <height>28</height>
                </size>
               </property>
               <property name="maximumSize">
                <size>
-                <width>75</width>
-                <height>7</height>
+                 <width>110</width>
+                 <height>45</height>
                </size>
               </property>
               <property name="toolTip">
@@ -2428,14 +2440,14 @@ ZD8,ZD9,ZF,ZK3,ZL,ZL7,ZL8,ZL9,ZP,ZS,ZS8&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</str
               </property>
               <property name="minimumSize">
                <size>
-                <width>68</width>
-                <height>0</height>
+                <width>78</width>
+                <height>28</height>
                </size>
               </property>
               <property name="maximumSize">
                <size>
-                <width>75</width>
-                <height>7</height>
+                 <width>110</width>
+                 <height>45</height>
                </size>
               </property>
               <property name="toolTip">
@@ -2473,14 +2485,14 @@ ZD8,ZD9,ZF,ZK3,ZL,ZL7,ZL8,ZL9,ZP,ZS,ZS8&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</str
               </property>
               <property name="minimumSize">
                <size>
-                <width>68</width>
-                <height>0</height>
+                <width>78</width>
+                <height>28</height>
                </size>
               </property>
               <property name="maximumSize">
                <size>
-                <width>75</width>
-                <height>7</height>
+                 <width>110</width>
+                 <height>45</height>
                </size>
               </property>
               <property name="toolTip">
@@ -2518,14 +2530,14 @@ ZD8,ZD9,ZF,ZK3,ZL,ZL7,ZL8,ZL9,ZP,ZS,ZS8&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</str
               </property>
               <property name="minimumSize">
                <size>
-                <width>68</width>
-                <height>0</height>
+                <width>78</width>
+                <height>28</height>
                </size>
               </property>
               <property name="maximumSize">
                <size>
-                <width>75</width>
-                <height>7</height>
+                 <width>110</width>
+                 <height>45</height>
                </size>
               </property>
               <property name="toolTip">
@@ -2563,14 +2575,14 @@ ZD8,ZD9,ZF,ZK3,ZL,ZL7,ZL8,ZL9,ZP,ZS,ZS8&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</str
               </property>
               <property name="minimumSize">
                <size>
-                <width>68</width>
-                <height>0</height>
+                <width>78</width>
+                <height>28</height>
                </size>
               </property>
               <property name="maximumSize">
                <size>
-                <width>75</width>
-                <height>7</height>
+                 <width>110</width>
+                 <height>45</height>
                </size>
               </property>
               <property name="toolTip">
@@ -2605,14 +2617,14 @@ ZD8,ZD9,ZF,ZK3,ZL,ZL7,ZL8,ZL9,ZP,ZS,ZS8&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</str
               </property>
               <property name="minimumSize">
                <size>
-                <width>68</width>
-                <height>0</height>
+                <width>78</width>
+                <height>28</height>
                </size>
               </property>
               <property name="maximumSize">
                <size>
-                <width>75</width>
-                <height>7</height>
+                 <width>110</width>
+                 <height>45</height>
                </size>
               </property>
               <property name="toolTip">
@@ -2769,7 +2781,7 @@ ZD8,ZD9,ZF,ZK3,ZL,ZL7,ZL8,ZL9,ZP,ZS,ZS8&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</str
               <property name="minimumSize">
                <size>
                 <width>65</width>
-                <height>0</height>
+                <height>28</height>
                </size>
               </property>
               <property name="maximumSize">
@@ -2797,7 +2809,7 @@ ZD8,ZD9,ZF,ZK3,ZL,ZL7,ZL8,ZL9,ZP,ZS,ZS8&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</str
               <property name="minimumSize">
                <size>
                 <width>65</width>
-                <height>0</height>
+                <height>28</height>
                </size>
               </property>
               <property name="maximumSize">
@@ -2825,7 +2837,7 @@ ZD8,ZD9,ZF,ZK3,ZL,ZL7,ZL8,ZL9,ZP,ZS,ZS8&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</str
               <property name="minimumSize">
                <size>
                 <width>65</width>
-                <height>0</height>
+                <height>28</height>
                </size>
               </property>
               <property name="maximumSize">
@@ -5223,6 +5235,8 @@ list. The list can be maintained in Settings (F2).</string>
     <addaction name="actionAutoCallNewDXCC"/>
     <addaction name="actionAutoCallNewDXCCBandMode"/>
     <addaction name="actionAutoCallNewGrid"/>
+    <addaction name="actionAutoCallNewCall"/>
+    <addaction name="actionAutoCallNewCallBand"/>
     <addaction name="separator"/>
     <addaction name="actionReport_message_priority"/>
     <addaction name="actionMaxDistance"/>
@@ -6168,6 +6182,22 @@ list. The list can be maintained in Settings (F2).</string>
    </property>
    <property name="text">
     <string>自动起呼新网格</string>
+   </property>
+  </action>
+  <action name="actionAutoCallNewCall">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>自动起呼新呼号</string>
+   </property>
+  </action>
+  <action name="actionAutoCallNewCallBand">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>自动起呼新呼号波段</string>
    </property>
   </action>
   <action name="actionAcceptUDPCQ">

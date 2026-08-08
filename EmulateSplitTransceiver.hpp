@@ -4,6 +4,7 @@
 #include <memory>
 
 #include "Transceiver.hpp"
+#include "fake_it_state_policy.hpp"
 
 // Emulate Split Transceiver
 //
@@ -42,11 +43,14 @@ public:
 
 private:
   void handle_update (TransceiverState const&, unsigned seqeunce_number);
+  void handle_failure (QString const& reason);
 
   std::unique_ptr<Transceiver> wrapped_;
+  FakeItStatePolicy state_policy_;
   Frequency rx_frequency_;        // requested Rx frequency
   Frequency tx_frequency_;        // requested Tx frequency
   bool split_; // requested split state
+  unsigned last_sequence_number_ {0};
 };
 
 #endif

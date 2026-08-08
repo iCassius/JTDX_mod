@@ -16,7 +16,8 @@ CAboutDlg::CAboutDlg(QWidget *parent) :
 
   ui->labelTxt->setText ("<html><h2>"
                          + QCoreApplication::applicationName () + " v"
-                         + QCoreApplication::applicationVersion () + "  improved" + "</h2>\n\n"
+                         + QCoreApplication::applicationVersion () + "  improved" + "</h2>\n"
+                         "自动程序中点击自动起呼即可实现自动发射<br><br>"
                          "It is modified WSJT-X software forked from WSJT-X v1.7 r6462, <br>"
                          "FT8 code is forked from WSJT-X v1.8 and v2.0, <br>"
                          "FT4 code is forked from WSJT-X v2.1, <br>"

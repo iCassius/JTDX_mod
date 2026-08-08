@@ -11,6 +11,7 @@
 #include <QTimer>
 
 class Configuration;
+class QContextMenuEvent;
 
 class DisplayText : public QTextEdit
 {
@@ -37,12 +38,14 @@ public:
 
 signals:
     void selectCallsign(bool alt, bool ctrl);
+    void lookupCallsign(QString const& call);
 
 public slots:
   void appendText(QString const& text, QString const& bg = "#ffffff", QString const& color = "#000000", int std_type = 0, QString const& servis = " ", QString const& servis_color = "#000000", QString const& cntry = " ", bool forceBold = false, bool strikethrough = false, bool underline = false, bool DXped = false, bool overwrite = false, bool wanted = false);
 
 protected:
     void mouseDoubleClickEvent(QMouseEvent *e);
+    void contextMenuEvent(QContextMenuEvent *e) override;
 
 private:
     void AudioAlerts();

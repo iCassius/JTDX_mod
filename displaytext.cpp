@@ -7,11 +7,15 @@
 #include <QtGlobal>
 #include <QApplication>
 #include <QMouseEvent>
+#include <QContextMenuEvent>
+#include <QMenu>
 #include <QTextCharFormat>
 #include <QFont>
 #include <QTextCursor>
 
 #include "Configuration.hpp"
+#include "auto_call_policy.hpp"
+#include "qrz_lookup.hpp"
 #include "qt_helpers.hpp"
 #include "logbook/callsignlocation.h"
 
@@ -57,18 +61,24 @@ void DisplayText::setConfiguration(Configuration const * config)
   displayNewITUZ_ = config->newITUZ();
   displayNewITUZBand_ = config->newITUZBand();
   displayNewITUZBandMode_ = config->newITUZBandMode();
-  displayNewDXCC_ = config->newDXCC();
-  displayNewDXCCBand_ = config->newDXCCBand();
-  displayNewDXCCBandMode_ = config->newDXCCBandMode();
-  displayNewGrid_ = config->newGrid();
-  displayNewGridBand_ = config->newGridBand();
-  displayNewGridBandMode_ = config->newGridBandMode();
+  displayNewDXCC_ = AutoCallPolicy::logMatchRequired (
+      config->newDXCC() || config->autoCallNewDXCC(),
+      config->newDXCCBand() || config->autoCallNewDXCCBandMode(),
+      config->newDXCCBandMode() || config->autoCallNewDXCCBandMode());
+  displayNewDXCCBand_ = config->newDXCCBand() || config->autoCallNewDXCCBandMode();
+  displayNewDXCCBandMode_ = config->newDXCCBandMode() || config->autoCallNewDXCCBandMode();
+  displayNewGrid_ = config->newGrid() || config->autoCallNewGrid();
+  displayNewGridBand_ = config->newGridBand() || config->autoCallNewGrid();
+  displayNewGridBandMode_ = config->newGridBandMode() || config->autoCallNewGrid();
   displayNewPx_ = config->newPx();
   displayNewPxBand_ = config->newPxBand();
   displayNewPxBandMode_ = config->newPxBandMode();
-  displayNewCall_ = config->newCall();
-  displayNewCallBand_ = config->newCallBand();
-  displayNewCallBandMode_ = config->newCallBandMode();
+  displayNewCall_ = AutoCallPolicy::logMatchRequired (
+      config->newCall() || config->autoCallNewCall(),
+      config->newCallBand() || config->autoCallNewCallBand(),
+      config->newCallBandMode() || config->autoCallNewCallBand());
+  displayNewCallBand_ = config->newCallBand() || config->autoCallNewCallBand();
+  displayNewCallBandMode_ = config->newCallBandMode() || config->autoCallNewCallBand();
   displayPotential_ = config->newPotential();
   displayTxtColor_ = config->txtColor();
   displayWorkedColor_ = config->workedColor();
@@ -170,6 +180,21 @@ void DisplayText::mouseDoubleClickEvent(QMouseEvent *e)
   bool alt = (e->modifiers() & Qt::AltModifier);
   QTextEdit::mouseDoubleClickEvent(e);
   emit(selectCallsign(alt,ctrl));
+}
+
+void DisplayText::contextMenuEvent(QContextMenuEvent *e)
+{
+  auto cursor = cursorForPosition (e->pos ());
+  if (!cursor.hasSelection ()) cursor.select (QTextCursor::WordUnderCursor);
+  auto const call = QRZLookup::normalizeCall (cursor.selectedText ());
+
+  auto menu = createStandardContextMenu ();
+  if (!call.isEmpty ()) {
+    auto const action = menu->addAction (tr ("在 QRZ.com 查询"));
+    connect (action, &QAction::triggered, this, [this, call] { emit lookupCallsign (call); });
+  }
+  menu->exec (e->globalPos ());
+  delete menu;
 }
 
 void DisplayText::insertLineSpacer(QString const& line)
@@ -475,11 +500,9 @@ int DisplayText::displayDecodedText(DecodedText* decodedText, QString myCall, QS
                     //
                     // Use decoded tokens rather than a substring so a free-text message
                     // containing these characters cannot become an automatic candidate.
-                    // The rare-target AutoSeq option deliberately accepts only the
-                    // completion forms requested by the operator.  Preserve legacy
-                    // plain-73 candidate behaviour when that option is off.
-                    const bool completedMessage = parts.contains ("RRR") || parts.contains ("RR73")
-                        || (!autoCallRareTargets_ && parts.contains ("73"));
+                    // The AutoSeq target modes accept only protocol fields, with
+                    // an independent 73 treated the same as RRR/RR73.
+                    const bool completedMessage = AutoCallPolicy::isCompletionForAutoCall (decodedText->message ());
                     // Automatic rare-target calling must not depend on the optional
                     // display marker.  The marker still controls legacy presentation,
                     // while this path promotes RRR/RR73 to an AutoSeq candidate.
@@ -1071,6 +1094,15 @@ int DisplayText::displayDecodedText(DecodedText* decodedText, QString myCall, QS
         if (bwantedPrefix) inotified |= 16;
         if (bwantedGrid) inotified |= 32;
         if (bwantedCountry) inotified |= 64;
+		// A new-grid CQ or completion must be allowed to re-evaluate AutoSeq
+		// even when the DX call entry still contains the previous station.
+		// Keep this notification tied to the parsed status/priority, rather
+		// than a text substring, so duplicate and unrelated 73 text cannot
+		// trigger a call.
+		if (AutoCallPolicy::newGridNeedsReevaluation (!hisCall.isEmpty (), !grid.isEmpty (),
+		                                             autoCallRareTargets_, priority)
+		    && (status == QsoHistory::RCQ || status == QsoHistory::RFIN))
+		  inotified |= 128;
 	return inotified;
 }
 

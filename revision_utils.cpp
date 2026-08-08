@@ -87,5 +87,5 @@ QString program_title (QString const& revision)
 {
   Q_UNUSED (revision);
   return QCoreApplication::applicationName () + " v" + QCoreApplication::applicationVersion ()
-      + QString::fromUtf8(" 自动起呼版 By BI7KGD");
+      + QString::fromUtf8(" 自动起呼版 By BI7KGD 自动程序中点击自动起呼即可实现自动发射");
 }

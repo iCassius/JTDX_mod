@@ -15,16 +15,25 @@
 #endif */
 # define MS_BUFFERED 200u
 
-bool SoundOutput::audioError () const
+void SoundOutput::reportError (QString const& message)
+{
+  if (!m_errorReported)
+    {
+      m_errorReported = true;
+      Q_EMIT error (message);
+    }
+}
+
+bool SoundOutput::audioError ()
 {
   bool result (true);
   Q_ASSERT_X (m_stream, "SoundOutput", "programming error");
   if (m_stream) {
     switch (m_stream->error ()) {
-      case QAudio::OpenError: Q_EMIT error (tr ("An error opening the audio output device has occurred.")); break;
-      case QAudio::IOError: Q_EMIT error (tr ("An error occurred during write to the audio output device.")); break;
-      case QAudio::UnderrunError: Q_EMIT error (tr ("Audio data not being fed to the audio output device fast enough.")); break;
-      case QAudio::FatalError: Q_EMIT error (tr ("Non-recoverable error, audio output device not usable at this time.")); break;
+      case QAudio::OpenError: reportError (tr ("An error opening the audio output device has occurred.")); break;
+      case QAudio::IOError: reportError (tr ("An error occurred during write to the audio output device.")); break;
+      case QAudio::UnderrunError: reportError (tr ("Audio data not being fed to the audio output device fast enough.")); break;
+      case QAudio::FatalError: reportError (tr ("Non-recoverable error, audio output device not usable at this time.")); break;
       case QAudio::NoError: result = false; break;
     }
   }
@@ -34,6 +43,11 @@ bool SoundOutput::audioError () const
 void SoundOutput::setFormat (QAudioDeviceInfo const& device, unsigned channels, int frames_buffered)
 {
   Q_ASSERT (0 < channels && channels < 3);
+  m_device = device;
+  m_channels = channels;
+  m_framesBuffered = frames_buffered;
+  m_recreatePending = false;
+  m_errorReported = false;
   QAudioFormat format (device.preferredFormat ());
 //  qDebug () << "Preferred audio output format:" << format;
   format.setChannelCount (channels);
@@ -42,21 +56,86 @@ void SoundOutput::setFormat (QAudioDeviceInfo const& device, unsigned channels, 
   format.setSampleType (QAudioFormat::SignedInt);
   format.setSampleSize (16);
   format.setByteOrder (QAudioFormat::Endian (QSysInfo::ByteOrder));
-  if(!format.isValid ()) Q_EMIT error (tr ("Requested output audio format is not valid."));
-  if(!device.isFormatSupported (format)) Q_EMIT error (tr ("Requested output audio format is not supported on device."));
-  m_framesBuffered = frames_buffered;
+  if(!format.isValid ()) {
+    reportError (tr ("Requested output audio format is not valid."));
+    m_stream.reset ();
+    m_recreatePending = true;
+    return;
+  }
+  if(!device.isFormatSupported (format)) {
+    reportError (tr ("Requested output audio format is not supported on device."));
+    m_stream.reset ();
+    m_recreatePending = true;
+    return;
+  }
 //  qDebug () << "Selected audio output format:" << format;
   m_stream.reset (new QAudioOutput (device, format));
-  audioError ();
+  if (audioError ()) {
+    m_recreatePending = true;
+    return;
+  }
   m_stream->setVolume (m_volume);
   m_stream->setNotifyInterval(100);
   connect (m_stream.data(), &QAudioOutput::stateChanged, this, &SoundOutput::handleStateChanged);
   //      qDebug() << "A" << m_volume << m_stream->notifyInterval();
 }
 
+bool SoundOutput::recreateStream ()
+{
+  QAudioDeviceInfo device;
+  bool found {false};
+
+  Q_FOREACH (auto const& candidate, QAudioDeviceInfo::availableDevices (QAudio::AudioOutput))
+    {
+      // The device handle can become stale after a Windows endpoint reset.
+      // Keep the configured route, but bind it to the refreshed endpoint.
+      if (candidate == m_device || candidate.deviceName () == m_device.deviceName ())
+        {
+          device = candidate;
+          found = true;
+          break;
+        }
+    }
+
+  if (!found)
+    {
+      reportError (tr ("The configured audio output device is not available."));
+      return false;
+    }
+
+  setFormat (device, m_channels, m_framesBuffered);
+  return m_stream && !m_recreatePending;
+}
+
 void SoundOutput::restart (QIODevice * source)
 {
-  Q_ASSERT (m_stream);
+  // Allow each requested transmission to report its own startup failure.
+  m_errorReported = false;
+
+#if defined (Q_OS_WIN)
+  // Windows endpoint handles can remain apparently healthy after an idle USB
+  // reset while silently producing no samples.  Re-enumerate and recreate the
+  // output object before each real transmission start.
+  if (!recreateStream ())
+    {
+      return;
+    }
+#else
+  if (m_recreatePending || !m_stream || QAudio::NoError != m_stream->error ())
+    {
+      if (!recreateStream ())
+        {
+          return;
+        }
+    }
+#endif
+
+  if (!m_stream)
+    {
+      reportError (tr ("The audio output device could not be initialized."));
+      return;
+    }
+
   // This buffer size is critical since for proper sound streaming. If
   // it is too short; high activity levels on the machine can starve
   // the audio buffer. On the other hand the Windows implementation
@@ -74,6 +153,18 @@ void SoundOutput::restart (QIODevice * source)
   //  m_stream->periodSize() << m_stream->notifyInterval();
   m_stream->setCategory ("production");
   m_stream->start (source);
+  if (audioError ())
+    {
+      m_recreatePending = true;
+      return;
+    }
+  if (QAudio::StoppedState == m_stream->state ())
+    {
+      m_recreatePending = true;
+      reportError (tr ("The audio output device stopped immediately after startup."));
+      return;
+    }
+  Q_EMIT ready ();
 }
 
 void SoundOutput::suspend ()
@@ -110,8 +201,19 @@ void SoundOutput::handleStateChanged (QAudio::State newState)
     case QAudio::ActiveState: Q_EMIT status (tr ("Sending")); break;
     case QAudio::SuspendedState: Q_EMIT status (tr ("Suspended")); break;
 #if QT_VERSION >= QT_VERSION_CHECK (5, 10, 0)
-    case QAudio::InterruptedState: Q_EMIT status (tr ("Interrupted")); break;
+    case QAudio::InterruptedState:
+      m_recreatePending = true;
+      Q_EMIT status (tr ("Interrupted"));
+      reportError (tr ("The audio output device was interrupted."));
+      break;
 #endif
-    case QAudio::StoppedState: if(audioError ()) Q_EMIT status (tr ("Error")); else Q_EMIT status (tr ("Stopped")); break;
+    case QAudio::StoppedState:
+      if(audioError ()) {
+        m_recreatePending = true;
+        Q_EMIT status (tr ("Error"));
+      } else {
+        Q_EMIT status (tr ("Stopped"));
+      }
+      break;
   }
 }

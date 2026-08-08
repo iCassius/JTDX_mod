@@ -5830,6 +5830,22 @@ Error(%2): %3</source>
         <translation>设备不支持请求输出的音频格式.</translation>
     </message>
     <message>
+        <source>The configured audio output device is not available.</source>
+        <translation>配置的音频输出设备当前不可用。</translation>
+    </message>
+    <message>
+        <source>The audio output device could not be initialized.</source>
+        <translation>无法初始化音频输出设备。</translation>
+    </message>
+    <message>
+        <source>The audio output device stopped immediately after startup.</source>
+        <translation>音频输出设备启动后立即停止。</translation>
+    </message>
+    <message>
+        <source>The audio output device was interrupted.</source>
+        <translation>音频输出设备连接已中断。</translation>
+    </message>
+    <message>
         <location filename="../soundout.cpp" line="109"/>
         <source>Idle</source>
         <translation>闲置</translation>

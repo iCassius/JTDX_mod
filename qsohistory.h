@@ -24,15 +24,20 @@ class QsoHistory
 	enum AutoCallFlag : unsigned {
 	  AutoCallNewDXCC = 1u << 9,
 	  AutoCallNewDXCCBandMode = 1u << 10,
-	  AutoCallNewGrid = 1u << 11
+	  AutoCallNewGrid = 1u << 11,
+	  AutoCallNewCall = 1u << 12,
+	  AutoCallNewCallBand = 1u << 13
 	};
 	static bool autoCallPriorityAllowed (int priority, unsigned options)
 	{
-	  unsigned const rare_options = options & (AutoCallNewDXCC | AutoCallNewDXCCBandMode | AutoCallNewGrid);
+	  unsigned const rare_options = options & (AutoCallNewDXCC | AutoCallNewDXCCBandMode | AutoCallNewGrid
+	                                             | AutoCallNewCall | AutoCallNewCallBand);
 	  if (!rare_options) return priority > 16 && priority < 20;
 	  return ((rare_options & AutoCallNewDXCC) && priority >= 22 && priority <= 23)
 	      || ((rare_options & AutoCallNewDXCCBandMode) && priority >= 20 && priority <= 21)
-	      || ((rare_options & AutoCallNewGrid) && priority >= 13 && priority <= 16);
+	      || ((rare_options & AutoCallNewGrid) && priority >= 13 && priority <= 16)
+	      || ((rare_options & AutoCallNewCall) && priority >= 7 && priority <= 8)
+	      || ((rare_options & AutoCallNewCallBand) && priority >= 5 && priority <= 6);
 	}
 	void init();
 	void message(QString const& callsign, Status status, int priority, QString const& param, QString const& tyyp, QString const& continent, QString const& mpx, unsigned time, QString const& rep, int freq,  QString const& mode);
