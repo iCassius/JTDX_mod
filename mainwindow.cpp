@@ -66,6 +66,7 @@
 
 #include "ui_mainwindow.h"
 #include "moc_mainwindow.cpp"
+#include "auto_tx_period_policy.hpp"
 
 #include <QSound>
 
@@ -358,6 +359,7 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
   m_useDarkStyle {false},
   m_lostaudio {false},
   m_soundOutputError {false},
+  m_pttRequestedAtMs {0},
   m_lasthint {false},
   m_monitoroff {false},
   m_savedRRR {false},
@@ -519,6 +521,20 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
   connect (this, &MainWindow::initializeAudioOutputStream, m_soundOutput, &SoundOutput::setFormat);
   connect (m_soundOutput, &SoundOutput::error, this, &MainWindow::showSoundOutError);
   connect (m_soundOutput, &SoundOutput::ready, this, [this] {m_soundOutputError = false;});
+  connect (m_soundOutput, &SoundOutput::startupConfirmed, this,
+           [this] (QString const& message) {
+             appendRecoveryLog (m_dataDir, "audio-output", message);
+             m_soundOutputError = false;
+           });
+  connect (m_soundOutput, &SoundOutput::startupProgress, this,
+           [this] (QString const& message) {
+             appendRecoveryLog (m_dataDir, "audio-output", message);
+           });
+  // SoundOutput and Modulator share the existing audio thread.  A failed
+  // startup must collapse the modulator to Idle before the GUI error handler
+  // reaches the PTT stop path; no extra thread or retry is introduced here.
+  connect (m_soundOutput, &SoundOutput::error, m_modulator,
+           [this] (QString const&) { m_modulator->stop (); }, Qt::DirectConnection);
   // connect (m_soundOutput, &SoundOutput::status, this, &MainWindow::showStatusMessage);
   connect (this, &MainWindow::outAttenuationChanged, m_soundOutput, &SoundOutput::setAttenuation);
   connect (&m_audioThread, &QThread::finished, m_soundOutput, &QObject::deleteLater);
@@ -3615,6 +3631,7 @@ void MainWindow::process_Auto(bool forceCandidate)
   QString mode = "";
   unsigned time = 0;
   bool rareTargetRejected = false;
+  bool autoRareTargetArm = false;
   int rx = ui->RxFreqSpinBox->value ();
   int tx = ui->TxFreqSpinBox->value ();
   QStringList StrStatus = {"NONE","RFIN","RCQ","SCQ","RCALL","SCALL","RREPORT","SREPORT","RRREPORT","SRREPORT","RRR","SRR","RRR73","SRR73","R73","S73","FIN"};
@@ -3756,15 +3773,22 @@ void MainWindow::process_Auto(bool forceCandidate)
       m_status = QsoHistory::NONE;
       rareTargetRejected = true;
     }
+    bool const autoPeriodCandidate = m_autoseq && m_callMode > 0 && !m_houndMode
+      && !m_mode.startsWith ("WSPR")
+      && !hisCall.isEmpty ()
+      && (m_status == QsoHistory::RCQ || m_status == QsoHistory::RFIN);
+    if (autoPeriodCandidate)
+      {
+        // `time` is QsoHistory::QSO::b_time, the selected station's receive
+        // time.  Apply it before message generation and before Enable Tx.
+        applyAutoTxPeriod (hisCall, time);
+      }
     // A configured rare target is an unattended operating request: select the
     // standard call and arm transmission for the next permitted Tx interval.
     // Existing JTDX band, frequency, watchdog and PTT guards still decide
     // whether a transmission can actually start.
-    if (m_autoseq && m_callMode > 0 && m_config.autoCallRareTargets () && allowedRareTarget
-        && (m_status == QsoHistory::RCQ || m_status == QsoHistory::RFIN)) {
-      txwatchdog (false);
-      if (!m_enableTx) ui->enableTxButton->click ();
-    }
+    autoRareTargetArm = m_autoseq && m_callMode > 0 && m_config.autoCallRareTargets ()
+      && allowedRareTarget && (m_status == QsoHistory::RCQ || m_status == QsoHistory::RFIN);
     if(m_config.write_decoded_debug()) {
       QString StrDirection = "";
       if(m_status == QsoHistory::FIN) StrDirection = " auto sequence is finished;";
@@ -3792,6 +3816,19 @@ void MainWindow::process_Auto(bool forceCandidate)
       ui->TxFreqSpinBox->setValue (rx);
       }
       if (!rpt.isEmpty () && rpt == m_rpt) m_rpt = "-60";
+      if (autoPeriodCandidate)
+        {
+          // Rebuild the standard messages after the period state is applied;
+          // this updates m_txGenerated without emitting the clicked signal.
+          genStdMsgs (m_rpt);
+        }
+      if (autoRareTargetArm)
+        {
+          // Message generation and period synchronization must precede the
+          // Enable Tx transition for an unattended rare-target call.
+          txwatchdog (false);
+          if (!m_enableTx) ui->enableTxButton->click ();
+        }
     } else if (!forceCandidate && !rareTargetRejected && m_transmittedQSOProgress != CALLING){
         on_txb6_clicked();
         if(ui->tabWidget->currentIndex()==1) ui->genMsg->setText(ui->tx6->text());
@@ -4511,6 +4548,14 @@ void MainWindow::guiUpdate()
       g_iptt = 1;
       setRig ();
       setXIT (ui->TxFreqSpinBox->value ());
+      m_pttRequestedAtMs = m_jtdxtime->currentMSecsSinceEpoch2 ();
+      appendRecoveryLog (
+        m_dataDir, "rig-control",
+        QString {"PTT request mode=%1 txFirst=%2 txFreq=%3 rxFreq=%4"}
+          .arg (m_modeTx)
+          .arg (m_txFirst ? "true" : "false")
+          .arg (ui->TxFreqSpinBox->value ())
+          .arg (ui->RxFreqSpinBox->value ()));
       Q_EMIT m_config.transceiver_ptt (true);       //Assert the PTT
       m_tx_when_ready = true;
     }
@@ -5007,7 +5052,7 @@ void MainWindow::startTx2()
       if(snr>0.0 or snr < -50.0) snr=99.0;
       transmit (snr);
 //      printf(" started %s\n",m_jtdxtime->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str());
-      if(m_config.write_decoded_debug()) writeToALLTXT("Modulator started");
+      if(m_config.write_decoded_debug()) writeToALLTXT("Modulator start requested; waiting for confirmed audio activity");
 //      QThread::currentThread()->setPriority(QThread::HighPriority);
       ui->signal_meter_widget->setValue(0);
 
@@ -5065,6 +5110,7 @@ void MainWindow::stopTx()
 void MainWindow::stopTx2()
 {
   Q_EMIT m_config.transceiver_ptt (false);      //Lower PTT
+  m_pttRequestedAtMs = 0;
   if (m_tci) {
     if(!m_monitoroff) monitor (true);
     statusUpdate ();
@@ -7417,7 +7463,14 @@ void MainWindow::handle_transceiver_update (Transceiver::TransceiverState const&
   if (s.ptt () && !m_rigState.ptt ()) // safe to start audio
                                       // (caveat - DX Lab Suite Commander)
     {
- // waiting to Tx and still needed
+      if (m_pttRequestedAtMs > 0)
+        {
+          auto const delay = m_jtdxtime->currentMSecsSinceEpoch2 () - m_pttRequestedAtMs;
+          appendRecoveryLog (m_dataDir, "rig-control",
+                             QString {"PTT confirmed delayMs=%1"}.arg (delay));
+          m_pttRequestedAtMs = 0;
+        }
+  // waiting to Tx and still needed
  //Start-of-transmission sequencer delay
       if (m_tx_when_ready && g_iptt) {
 //          QThread::currentThread()->setPriority(QThread::HighestPriority);
@@ -7536,6 +7589,26 @@ void MainWindow::handle_transceiver_failure (QString const& reason)
   ui->readFreq->setEnabled (true);
   haltTx("Rig control error: " + reason + " ");
   rigFailure (tr("Rig Control Error"), reason);
+}
+
+void MainWindow::applyAutoTxPeriod (QString const& selectedCall, unsigned targetReceiveTime)
+{
+  auto const plannedTxFirst = AutoTxPeriodPolicy::txFirstForReceiveTime (
+    static_cast<double> (targetReceiveTime), m_TRperiod);
+  auto const periodChanged = m_txFirst != plannedTxFirst;
+  m_txFirst = plannedTxFirst;
+  // Do not use click(): the button slot intentionally clears DX for a manual
+  // period change while AutoSeq is enabled.
+  ui->TxMinuteButton->setChecked (m_txFirst);
+  setMinButton ();
+  appendRecoveryLog (
+    m_dataDir, "auto-call",
+    QString {"selected=%1 rxTime=%2 trPeriod=%3 plannedTxFirst=%4 periodChanged=%5"}
+      .arg (selectedCall)
+      .arg (targetReceiveTime)
+      .arg (m_TRperiod, 0, 'f', 3)
+      .arg (m_txFirst ? "true" : "false")
+      .arg (periodChanged ? "true" : "false"));
 }
 
 void MainWindow::on_qrzLookupCallsign (QString const& call)

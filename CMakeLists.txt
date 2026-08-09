@@ -1530,8 +1530,12 @@ if (NOT is_debug_build)
       set (gp_tool "objdump")	# we want MinGW tool - not MSVC (See GetPrerequisites.cmake)
     endif (WIN32)
 
-    #list (APPEND fixup_library_dirs ${hamlib_lib_dir})
-    #list (APPEND fixup_library_dirs ${hamlib_LIBRARY_DIRS})
+    # Hamlib is installed separately from the MinGW runtime.  Include its
+    # sibling bin directory so BundleUtilities can resolve msys-hamlib-4.dll
+    # and copy the complete PE dependency closure into the package.
+    get_filename_component (hamlib_lib_dir ${Hamlib_LIBRARY} PATH)
+    get_filename_component (hamlib_bin_dir "${hamlib_lib_dir}/../bin" REALPATH)
+    list (APPEND fixup_library_dirs ${hamlib_bin_dir})
 
     install (CODE "
         get_filename_component (the_path \"\$ENV{DESTDIR}\${CMAKE_INSTALL_PREFIX}/${WSJT_PLUGIN_DESTINATION}\" REALPATH)
@@ -1560,6 +1564,12 @@ if (JTDX_BUILD_LOCAL_TESTS)
   add_executable (autocall_policy_test tests/autocall_policy_test.cpp)
   target_link_libraries (autocall_policy_test Qt5::Core)
   add_test (NAME autocall_policy_test COMMAND autocall_policy_test)
+  add_executable (auto_tx_period_policy_test tests/auto_tx_period_policy_test.cpp)
+  target_include_directories (auto_tx_period_policy_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  add_test (NAME auto_tx_period_policy_test COMMAND auto_tx_period_policy_test)
+  add_executable (audio_policy_test tests/audio_policy_test.cpp)
+  target_include_directories (audio_policy_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  add_test (NAME audio_policy_test COMMAND audio_policy_test)
   add_executable (recovery_policy_test tests/recovery_policy_test.cpp)
   target_include_directories (recovery_policy_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   add_test (NAME recovery_policy_test COMMAND recovery_policy_test)

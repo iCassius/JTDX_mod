@@ -76,6 +76,9 @@ QString version (bool include_patch)
 # if defined (WSJTX_RC)
       v += "-rc" WSJTX_STRINGIZE (WSJTX_RC);
 # endif
+# if defined (WSJTX_VERSION_DISPLAY_SUFFIX)
+      v += WSJTX_VERSION_DISPLAY_SUFFIX;
+# endif
     }
 #else
   QString v {"Not for Release"};

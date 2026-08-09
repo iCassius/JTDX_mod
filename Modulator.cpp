@@ -107,7 +107,13 @@ void Modulator::start (unsigned symbolsLength, double framesPerSymbol,
   Q_EMIT stateChanged ((m_state = (synchronize && m_silentFrames) ?
                         Synchronizing : Active));
   m_stream = stream;
-  if (m_stream) m_stream->restart (this);
+  if (m_stream && !m_stream->restart (this))
+    {
+      // SoundOutput reports the detailed failure through its existing error
+      // signal, but the modulator must not retain a stale Active state while
+      // the GUI queues the PTT/Enable Tx stop path.
+      close ();
+    }
 }
 
 void Modulator::tune (bool newState)

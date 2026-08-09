@@ -611,6 +611,7 @@ private:
   bool m_useDarkStyle;
   bool m_lostaudio;
   bool m_soundOutputError;
+  qint64 m_pttRequestedAtMs;
   bool m_lasthint;
   bool m_monitoroff;
   bool m_savedRRR;
@@ -752,6 +753,7 @@ private:
   //---------------------------------------------------- private functions
   void readSettings();
   void set_application_font (QFont const&);
+  void applyAutoTxPeriod (QString const& selectedCall, unsigned targetReceiveTime);
   void setDecodedTextFont (QFont const&);
   void setStopHSym();
   void setClockStyle(bool reset);

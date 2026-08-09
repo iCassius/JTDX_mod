@@ -7,6 +7,8 @@
 #include <QDebug>
 
 #include "moc_soundout.cpp"
+#include "audio_device_policy.hpp"
+#include "audio_startup_policy.hpp"
 
 /* #if defined (WIN32)
 # define MS_BUFFERED 1000u
@@ -42,6 +44,8 @@ bool SoundOutput::audioError ()
 
 void SoundOutput::setFormat (QAudioDeviceInfo const& device, unsigned channels, int frames_buffered)
 {
+  m_startupTimer.stop ();
+  m_startupPending = false;
   Q_ASSERT (0 < channels && channels < 3);
   m_device = device;
   m_channels = channels;
@@ -77,29 +81,54 @@ void SoundOutput::setFormat (QAudioDeviceInfo const& device, unsigned channels, 
   m_stream->setVolume (m_volume);
   m_stream->setNotifyInterval(100);
   connect (m_stream.data(), &QAudioOutput::stateChanged, this, &SoundOutput::handleStateChanged);
+  connect (m_stream.data(), &QAudioOutput::notify, this, &SoundOutput::handleNotify);
   //      qDebug() << "A" << m_volume << m_stream->notifyInterval();
 }
 
 bool SoundOutput::recreateStream ()
 {
   QAudioDeviceInfo device;
-  bool found {false};
+  bool exactObjectFound {false};
+  unsigned sameNameCount {0};
 
   Q_FOREACH (auto const& candidate, QAudioDeviceInfo::availableDevices (QAudio::AudioOutput))
     {
-      // The device handle can become stale after a Windows endpoint reset.
-      // Keep the configured route, but bind it to the refreshed endpoint.
-      if (candidate == m_device || candidate.deviceName () == m_device.deviceName ())
+      // Prefer the exact device object.  Name matching is evaluated in a
+      // second pass so duplicate endpoint names can never be guessed.
+      if (candidate == m_device)
         {
           device = candidate;
-          found = true;
+          exactObjectFound = true;
           break;
         }
     }
 
-  if (!found)
+  if (!exactObjectFound)
     {
-      reportError (tr ("The configured audio output device is not available."));
+      Q_FOREACH (auto const& candidate, QAudioDeviceInfo::availableDevices (QAudio::AudioOutput))
+        {
+          if (candidate.deviceName () == m_device.deviceName ())
+            {
+              ++sameNameCount;
+              device = candidate;
+            }
+        }
+    }
+
+  switch (AudioDeviceSelectionPolicy::choose (exactObjectFound, sameNameCount))
+    {
+    case AudioDeviceSelectionPolicy::Match::ExactObject:
+    case AudioDeviceSelectionPolicy::Match::UniqueName:
+      break;
+
+    case AudioDeviceSelectionPolicy::Match::AmbiguousName:
+      reportError (tr ("Multiple audio output devices share the configured name; refusing to guess: %1")
+                   .arg (m_device.deviceName ()));
+      return false;
+
+    case AudioDeviceSelectionPolicy::Match::NotFound:
+      reportError (tr ("The configured audio output device is not available: %1")
+                   .arg (m_device.deviceName ()));
       return false;
     }
 
@@ -107,10 +136,13 @@ bool SoundOutput::recreateStream ()
   return m_stream && !m_recreatePending;
 }
 
-void SoundOutput::restart (QIODevice * source)
+bool SoundOutput::restart (QIODevice * source)
 {
   // Allow each requested transmission to report its own startup failure.
   m_errorReported = false;
+  m_startupTimer.stop ();
+  m_startupPending = false;
+  m_progressReported = false;
 
 #if defined (Q_OS_WIN)
   // Windows endpoint handles can remain apparently healthy after an idle USB
@@ -118,14 +150,14 @@ void SoundOutput::restart (QIODevice * source)
   // output object before each real transmission start.
   if (!recreateStream ())
     {
-      return;
+      return false;
     }
 #else
   if (m_recreatePending || !m_stream || QAudio::NoError != m_stream->error ())
     {
       if (!recreateStream ())
         {
-          return;
+          return false;
         }
     }
 #endif
@@ -133,7 +165,8 @@ void SoundOutput::restart (QIODevice * source)
   if (!m_stream)
     {
       reportError (tr ("The audio output device could not be initialized."));
-      return;
+      m_recreatePending = true;
+      return false;
     }
 
   // This buffer size is critical since for proper sound streaming. If
@@ -152,19 +185,41 @@ void SoundOutput::restart (QIODevice * source)
   //  qDebug() << "B" << m_stream->bufferSize() <<
   //  m_stream->periodSize() << m_stream->notifyInterval();
   m_stream->setCategory ("production");
+  m_startupPending = true;
+  m_startupElapsed.start ();
+  m_startupProcessedUSecs = m_stream->processedUSecs ();
   m_stream->start (source);
   if (audioError ())
     {
       m_recreatePending = true;
-      return;
+      m_startupPending = false;
+      m_startupTimer.stop ();
+      return false;
     }
-  if (QAudio::StoppedState == m_stream->state ())
+
+  auto const decision = AudioStartupPolicy::decide (
+    QAudio::ActiveState == m_stream->state (),
+    QAudio::StoppedState == m_stream->state (),
+#if QT_VERSION >= QT_VERSION_CHECK (5, 10, 0)
+    QAudio::InterruptedState == m_stream->state (),
+#else
+    false,
+#endif
+    0, 500);
+  if (AudioStartupPolicy::Decision::Confirm == decision)
     {
-      m_recreatePending = true;
-      reportError (tr ("The audio output device stopped immediately after startup."));
-      return;
+      confirmStartup ();
     }
-  Q_EMIT ready ();
+  else if (AudioStartupPolicy::Decision::Fail == decision)
+    {
+      failStartup (tr ("The audio output device stopped before startup confirmation."));
+      return false;
+    }
+  else
+    {
+      m_startupTimer.start (500);
+    }
+  return !m_recreatePending;
 }
 
 void SoundOutput::suspend ()
@@ -196,6 +251,37 @@ void SoundOutput::resetAttenuation ()
 void SoundOutput::handleStateChanged (QAudio::State newState)
 {
   // qDebug () << "SoundOutput::handleStateChanged: newState:" << newState;
+  if (m_startupPending)
+    {
+      auto const decision = AudioStartupPolicy::decide (
+        QAudio::ActiveState == newState,
+        QAudio::StoppedState == newState,
+#if QT_VERSION >= QT_VERSION_CHECK (5, 10, 0)
+        QAudio::InterruptedState == newState,
+#else
+        false,
+#endif
+        m_startupElapsed.isValid () ? m_startupElapsed.elapsed () : 0, 500);
+      if (AudioStartupPolicy::Decision::Confirm == decision)
+        {
+          confirmStartup ();
+        }
+      else if (AudioStartupPolicy::Decision::Fail == decision)
+        {
+          if (QAudio::StoppedState == newState && audioError ())
+            {
+              m_recreatePending = true;
+              m_startupPending = false;
+              m_startupTimer.stop ();
+            }
+          else
+            {
+              failStartup (QAudio::InterruptedState == newState
+                           ? tr ("The audio output device was interrupted during startup.")
+                           : tr ("The audio output device stopped before startup confirmation."));
+            }
+        }
+    }
   switch (newState) {
     case QAudio::IdleState: Q_EMIT status (tr ("Idle")); break;
     case QAudio::ActiveState: Q_EMIT status (tr ("Sending")); break;
@@ -216,4 +302,69 @@ void SoundOutput::handleStateChanged (QAudio::State newState)
       }
       break;
   }
+}
+
+void SoundOutput::handleStartupTimeout ()
+{
+  if (!m_startupPending || !m_stream) return;
+
+  auto const state = m_stream->state ();
+  auto const decision = AudioStartupPolicy::decide (
+    QAudio::ActiveState == state,
+    QAudio::StoppedState == state,
+#if QT_VERSION >= QT_VERSION_CHECK (5, 10, 0)
+    QAudio::InterruptedState == state,
+#else
+    false,
+#endif
+    m_startupElapsed.isValid () ? m_startupElapsed.elapsed () : 500, 500);
+  if (AudioStartupPolicy::Decision::Confirm == decision)
+    {
+      confirmStartup ();
+    }
+  else
+    {
+      failStartup (tr ("Audio output startup timed out after 500 ms (state=%1, processedUSecs=%2).")
+                   .arg (static_cast<int> (state))
+                   .arg (m_stream->processedUSecs ()));
+    }
+}
+
+void SoundOutput::handleNotify ()
+{
+  if (!m_stream || m_progressReported) return;
+  auto const processed = m_stream->processedUSecs ();
+  if (processed > m_startupProcessedUSecs)
+    {
+      m_progressReported = true;
+      Q_EMIT startupProgress (
+        tr ("Audio output progress device=%1 processedUSecs=%2 state=Active")
+          .arg (m_device.deviceName ()).arg (processed));
+    }
+}
+
+void SoundOutput::confirmStartup ()
+{
+  if (!m_startupPending || !m_stream) return;
+  m_startupPending = false;
+  m_startupTimer.stop ();
+  m_recreatePending = false;
+  Q_EMIT startupConfirmed (
+    tr ("Audio startup confirmed device=%1 state=Active processedUSecs=%2")
+      .arg (m_device.deviceName ()).arg (m_stream->processedUSecs ()));
+  Q_EMIT ready ();
+}
+
+void SoundOutput::failStartup (QString const& reason)
+{
+  if (!m_startupPending) return;
+  m_startupPending = false;
+  m_startupTimer.stop ();
+  m_recreatePending = true;
+  if (m_stream && m_stream->state () != QAudio::StoppedState)
+    m_stream->stop ();
+  reportError (reason + tr (" device=%1 state=%2 processedUSecs=%3")
+              .arg (m_device.deviceName ())
+              .arg (m_stream ? static_cast<int> (m_stream->state ()) : -1)
+              .arg (m_stream ? m_stream->processedUSecs () : 0));
 }
