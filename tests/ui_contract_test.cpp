@@ -26,5 +26,30 @@ int main ()
   expect (xml.contains ("name=\"stopTxButton\""), "Halt Tx button exists");
   expect (xml.contains ("自动起呼新呼号"), "new callsign menu text exists");
   expect (xml.contains ("自动起呼新呼号波段"), "new callsign band menu text exists");
+  expect (xml.contains ("name=\"actionAutoCallNewGridBandMode\""), "new grid band/mode action exists");
+  auto const gridAction = xml.indexOf ("<addaction name=\"actionAutoCallNewGrid\"/>");
+  auto const gridBandModeAction = xml.indexOf ("<addaction name=\"actionAutoCallNewGridBandMode\"/>");
+  auto const callAction = xml.indexOf ("<addaction name=\"actionAutoCallNewCall\"/>");
+  expect (gridAction >= 0 && gridAction < gridBandModeAction && gridBandModeAction < callAction,
+          "AutoSeq grid actions remain in the required order");
+
+  QFile configuration {QStringLiteral (JTDX_SOURCE_DIR "/Configuration.ui")};
+  expect (configuration.open (QIODevice::ReadOnly), "open Configuration UI");
+  auto const configurationXml = configuration.readAll ();
+  expect (configurationXml.contains ("name=\"autoCallNewGrid_check_box\""), "new grid configuration checkbox exists");
+  expect (configurationXml.contains ("name=\"autoCallNewGridBandMode_check_box\""), "new grid band/mode configuration checkbox exists");
+  auto const gridCheckbox = configurationXml.indexOf ("name=\"autoCallNewGrid_check_box\"");
+  auto const gridBandModeCheckbox = configurationXml.indexOf ("name=\"autoCallNewGridBandMode_check_box\"");
+  auto const callCheckbox = configurationXml.indexOf ("name=\"autoCallNewCall_check_box\"");
+  expect (gridCheckbox >= 0 && gridCheckbox < gridBandModeCheckbox && gridBandModeCheckbox < callCheckbox,
+          "configuration grid checkboxes remain in the required order");
+  expect (configurationXml.contains ("日志中从未通联过的四位网格"), "new grid tooltip is whole-grid only");
+  expect (configurationXml.contains ("当前波段或模式尚未通联的网格"), "new grid band/mode tooltip is precise");
+
+  QFile configurationSource {QStringLiteral (JTDX_SOURCE_DIR "/Configuration.cpp")};
+  expect (configurationSource.open (QIODevice::ReadOnly), "open Configuration source");
+  auto const configurationCpp = configurationSource.readAll ();
+  expect (configurationCpp.contains ("SeqAutoCallNewGridBandMode\", false"), "new grid band/mode default is false");
+  expect (configurationCpp.contains ("autoCallNewGridBandMode_ || m_->autoCallNewCall_"), "rare-target aggregation includes new grid band/mode");
   return 0;
 }

@@ -2333,7 +2333,7 @@ both here.</string>
                   <item row="8" column="0">
                    <widget class="QCheckBox" name="autoCallNewGrid_check_box">
                     <property name="toolTip">
-                     <string>空闲时只对新网格（包括新网格波段/模式）的 CQ、RRR 或 RR73 自动起呼。命中后自动开启 Enable Tx；无回应次数使用“多次回复别台的 CQ 呼叫没有反应”设置，达到后停止并清除 DX。仍需手工开启 AutoSeq。</string>
+                     <string>空闲时只对日志中从未通联过的四位网格的 CQ、RRR 或 RR73 自动起呼（priority 15/16）。命中后自动开启 Enable Tx；无回应次数使用“多次回复别台的 CQ 呼叫没有反应”设置，达到后停止并清除 DX。仍需手工开启 AutoSeq。</string>
                     </property>
                     <property name="text">
                      <string>自动起呼新网格</string>
@@ -2341,6 +2341,16 @@ both here.</string>
                    </widget>
                   </item>
                   <item row="9" column="0">
+                   <widget class="QCheckBox" name="autoCallNewGridBandMode_check_box">
+                    <property name="toolTip">
+                     <string>空闲时只对当前波段或模式尚未通联的网格的 CQ、RRR 或 RR73 自动起呼（priority 13/14）。命中后自动开启 Enable Tx；无回应次数使用“多次回复别台的 CQ 呼叫没有反应”设置，达到后停止并清除 DX。仍需手工开启 AutoSeq。</string>
+                    </property>
+                    <property name="text">
+                     <string>自动起呼新网格波段/模式</string>
+                    </property>
+                   </widget>
+                  </item>
+                  <item row="10" column="0">
                    <widget class="QCheckBox" name="autoCallNewCall_check_box">
                     <property name="toolTip">
                      <string>空闲时只对日志中从未通联过的呼号的 CQ、RRR、RR73 或独立 73 自动起呼。命中后自动开启 Enable Tx；无回应次数使用“多次回复别台的 CQ 呼叫没有反应”设置，达到后停止并清除 DX。仍需手工开启 AutoSeq。</string>
@@ -2350,7 +2360,7 @@ both here.</string>
                     </property>
                    </widget>
                   </item>
-                  <item row="10" column="0">
+                  <item row="11" column="0">
                    <widget class="QCheckBox" name="autoCallNewCallBand_check_box">
                     <property name="toolTip">
                      <string>空闲时只对当前波段从未通联过的呼号的 CQ、RRR、RR73 或独立 73 自动起呼。命中后自动开启 Enable Tx；无回应次数使用“多次回复别台的 CQ 呼叫没有反应”设置，达到后停止并清除 DX。仍需手工开启 AutoSeq。</string>

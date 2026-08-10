@@ -190,6 +190,7 @@ private slots:
   void on_actionAutoCallNewDXCC_toggled(bool checked);
   void on_actionAutoCallNewDXCCBandMode_toggled(bool checked);
   void on_actionAutoCallNewGrid_toggled(bool checked);
+  void on_actionAutoCallNewGridBandMode_toggled(bool checked);
   void on_actionAutoCallNewCall_toggled(bool checked);
   void on_actionAutoCallNewCallBand_toggled(bool checked);
   void on_actionSingleShot_toggled(bool checked);

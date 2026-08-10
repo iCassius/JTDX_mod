@@ -122,12 +122,14 @@ public:
   bool autoCallNewDXCC() const;
   bool autoCallNewDXCCBandMode() const;
   bool autoCallNewGrid() const;
+  bool autoCallNewGridBandMode() const;
   bool autoCallNewCall() const;
   bool autoCallNewCallBand() const;
   bool autoCallRareTargets() const;
   void setAutoCallNewDXCC(bool enabled);
   void setAutoCallNewDXCCBandMode(bool enabled);
   void setAutoCallNewGrid(bool enabled);
+  void setAutoCallNewGridBandMode(bool enabled);
   void setAutoCallNewCall(bool enabled);
   void setAutoCallNewCallBand(bool enabled);
   bool strictdirCQ() const;

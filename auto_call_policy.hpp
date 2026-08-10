@@ -24,10 +24,15 @@ namespace AutoCallPolicy
   }
 
   inline bool newGridNeedsReevaluation (bool retainedDxCall, bool hasNewGrid,
-                                        bool autoCallEnabled, int priority)
+                                        bool wholeGridAutoCall,
+                                        bool gridBandModeAutoCall, int priority)
   {
-    return retainedDxCall && hasNewGrid && autoCallEnabled
-        && priority >= 13 && priority <= 16;
+    bool const wholeGridPriority = wholeGridAutoCall
+        && priority >= 15 && priority <= 16;
+    bool const gridBandModePriority = gridBandModeAutoCall
+        && priority >= 13 && priority <= 14;
+    return retainedDxCall && hasNewGrid
+        && (wholeGridPriority || gridBandModePriority);
   }
 
   inline bool logMatchRequired (bool wholeTarget, bool bandTarget,

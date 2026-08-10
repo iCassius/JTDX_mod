@@ -103,6 +103,8 @@ private:
     bool highlightDXGrid_;
     bool RR73Marker_;
     bool autoCallRareTargets_;
+    bool autoCallNewGrid_;
+    bool autoCallNewGridBandMode_;
     bool otherMessagesMarker_;
     bool enableCountryFilter_;
     bool enableCallsignFilter_;

@@ -1549,6 +1549,7 @@ void MainWindow::readSettings()
   ui->actionAutoCallNewDXCC->setChecked(m_config.autoCallNewDXCC());
   ui->actionAutoCallNewDXCCBandMode->setChecked(m_config.autoCallNewDXCCBandMode());
   ui->actionAutoCallNewGrid->setChecked(m_config.autoCallNewGrid());
+  ui->actionAutoCallNewGridBandMode->setChecked(m_config.autoCallNewGridBandMode());
   ui->actionAutoCallNewCall->setChecked(m_config.autoCallNewCall());
   ui->actionAutoCallNewCallBand->setChecked(m_config.autoCallNewCallBand());
   ui->actionSingleShot->setChecked(m_settings->value("SingleShotQSO",false).toBool());
@@ -2167,6 +2168,7 @@ void MainWindow::on_actionSettings_triggered()               //Setup Dialog
       ui->actionAutoCallNewDXCC->setChecked(m_config.autoCallNewDXCC());
       ui->actionAutoCallNewDXCCBandMode->setChecked(m_config.autoCallNewDXCCBandMode());
       ui->actionAutoCallNewGrid->setChecked(m_config.autoCallNewGrid());
+      ui->actionAutoCallNewGridBandMode->setChecked(m_config.autoCallNewGridBandMode());
       ui->actionAutoCallNewCall->setChecked(m_config.autoCallNewCall());
       ui->actionAutoCallNewCallBand->setChecked(m_config.autoCallNewCallBand());
       if (m_config.useDarkStyle() != m_useDarkStyle) {
@@ -3227,6 +3229,7 @@ void MainWindow::on_actionCallHigherNewCall_toggled(bool checked) { m_callHigher
 void MainWindow::on_actionAutoCallNewDXCC_toggled(bool checked) { m_config.setAutoCallNewDXCC(checked); ui->decodedTextBrowser->setConfiguration(&m_config); ui->decodedTextBrowser2->setConfiguration(&m_config); }
 void MainWindow::on_actionAutoCallNewDXCCBandMode_toggled(bool checked) { m_config.setAutoCallNewDXCCBandMode(checked); ui->decodedTextBrowser->setConfiguration(&m_config); ui->decodedTextBrowser2->setConfiguration(&m_config); }
 void MainWindow::on_actionAutoCallNewGrid_toggled(bool checked) { m_config.setAutoCallNewGrid(checked); ui->decodedTextBrowser->setConfiguration(&m_config); ui->decodedTextBrowser2->setConfiguration(&m_config); }
+void MainWindow::on_actionAutoCallNewGridBandMode_toggled(bool checked) { m_config.setAutoCallNewGridBandMode(checked); ui->decodedTextBrowser->setConfiguration(&m_config); ui->decodedTextBrowser2->setConfiguration(&m_config); }
 void MainWindow::on_actionAutoCallNewCall_toggled(bool checked) { m_config.setAutoCallNewCall(checked); ui->decodedTextBrowser->setConfiguration(&m_config); ui->decodedTextBrowser2->setConfiguration(&m_config); }
 void MainWindow::on_actionAutoCallNewCallBand_toggled(bool checked) { m_config.setAutoCallNewCallBand(checked); ui->decodedTextBrowser->setConfiguration(&m_config); ui->decodedTextBrowser2->setConfiguration(&m_config); }
 
@@ -3638,7 +3641,8 @@ void MainWindow::process_Auto(bool forceCandidate)
   auto const configuredRareTarget = [this] (int priority) {
     return (m_config.autoCallNewDXCC () && priority >= 22 && priority <= 23)
         || (m_config.autoCallNewDXCCBandMode () && priority >= 20 && priority <= 21)
-        || (m_config.autoCallNewGrid () && priority >= 13 && priority <= 16)
+        || (m_config.autoCallNewGrid () && priority >= 15 && priority <= 16)
+        || (m_config.autoCallNewGridBandMode () && priority >= 13 && priority <= 14)
         || (m_config.autoCallNewCall () && priority >= 7 && priority <= 8)
         || (m_config.autoCallNewCallBand () && priority >= 5 && priority <= 6);
   };
@@ -3751,13 +3755,15 @@ void MainWindow::process_Auto(bool forceCandidate)
     if (m_config.autoCallNewDXCC ()) time |= QsoHistory::AutoCallNewDXCC;
     if (m_config.autoCallNewDXCCBandMode ()) time |= QsoHistory::AutoCallNewDXCCBandMode;
     if (m_config.autoCallNewGrid ()) time |= QsoHistory::AutoCallNewGrid;
+    if (m_config.autoCallNewGridBandMode ()) time |= QsoHistory::AutoCallNewGridBandMode;
     if (m_config.autoCallNewCall ()) time |= QsoHistory::AutoCallNewCall;
     if (m_config.autoCallNewCallBand ()) time |= QsoHistory::AutoCallNewCallBand;
     m_status = m_qsoHistory.autoseq(hisCall,grid,rpt,rx,tx,time,count,prio,mode);
     // This optional policy applies only when we are looking for a new station
     // to call. It never interferes with an in-progress QSO or an incoming
     // call addressed to this station. DisplayText assigns 20..23 to new
-    // DXCC/DXCC band-or-mode and 13..16 to new grid/grid band-or-mode.
+    // DXCC/DXCC band-or-mode, 15..16 to new grid, and 13..14 to new grid
+    // band-or-mode.
     const bool allowedRareTarget = configuredRareTarget (prio);
     if (m_config.autoCallRareTargets ()
         && (m_status == QsoHistory::RCQ || m_status == QsoHistory::RFIN)
@@ -4156,7 +4162,7 @@ void MainWindow::readFromStdout()                             //readFromStdout
                                                     , distance
                                                     );
 
-      if ((notified & 128) && m_config.autoCallNewGrid () && m_autoseq
+      if ((notified & 128) && (m_config.autoCallNewGrid () || m_config.autoCallNewGridBandMode ()) && m_autoseq
           && !m_manualDecode && !m_newGridAutoCallDone) {
         // The decode has now been inserted into QsoHistory.  Re-run only the
         // candidate-selection phase; forceCandidate deliberately ignores the

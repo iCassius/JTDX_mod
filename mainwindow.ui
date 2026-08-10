@@ -5235,6 +5235,7 @@ list. The list can be maintained in Settings (F2).</string>
     <addaction name="actionAutoCallNewDXCC"/>
     <addaction name="actionAutoCallNewDXCCBandMode"/>
     <addaction name="actionAutoCallNewGrid"/>
+    <addaction name="actionAutoCallNewGridBandMode"/>
     <addaction name="actionAutoCallNewCall"/>
     <addaction name="actionAutoCallNewCallBand"/>
     <addaction name="separator"/>
@@ -6182,6 +6183,14 @@ list. The list can be maintained in Settings (F2).</string>
    </property>
    <property name="text">
     <string>自动起呼新网格</string>
+   </property>
+  </action>
+  <action name="actionAutoCallNewGridBandMode">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="text">
+    <string>自动起呼新网格波段/模式</string>
    </property>
   </action>
   <action name="actionAutoCallNewCall">

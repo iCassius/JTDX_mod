@@ -721,6 +721,7 @@ private:
   bool autoCallNewDXCC_;
   bool autoCallNewDXCCBandMode_;
   bool autoCallNewGrid_;
+  bool autoCallNewGridBandMode_;
   bool autoCallNewCall_;
   bool autoCallNewCallBand_;
   bool strictdirCQ_;
@@ -1001,13 +1002,15 @@ bool Configuration::sentRR7373Count () const {return m_->sentRR7373Count_;}
 bool Configuration::autoCallNewDXCC () const {return m_->autoCallNewDXCC_;}
 bool Configuration::autoCallNewDXCCBandMode () const {return m_->autoCallNewDXCCBandMode_;}
 bool Configuration::autoCallNewGrid () const {return m_->autoCallNewGrid_;}
+bool Configuration::autoCallNewGridBandMode () const {return m_->autoCallNewGridBandMode_;}
 bool Configuration::autoCallNewCall () const {return m_->autoCallNewCall_;}
 bool Configuration::autoCallNewCallBand () const {return m_->autoCallNewCallBand_;}
 bool Configuration::autoCallRareTargets () const {return m_->autoCallNewDXCC_ || m_->autoCallNewDXCCBandMode_ || m_->autoCallNewGrid_
-                                                        || m_->autoCallNewCall_ || m_->autoCallNewCallBand_;}
+                                                        || m_->autoCallNewGridBandMode_ || m_->autoCallNewCall_ || m_->autoCallNewCallBand_;}
 void Configuration::setAutoCallNewDXCC (bool enabled) {m_->autoCallNewDXCC_ = enabled; m_->settings_->setValue ("SeqAutoCallNewDXCC", enabled);}
 void Configuration::setAutoCallNewDXCCBandMode (bool enabled) {m_->autoCallNewDXCCBandMode_ = enabled; m_->settings_->setValue ("SeqAutoCallNewDXCCBandMode", enabled);}
 void Configuration::setAutoCallNewGrid (bool enabled) {m_->autoCallNewGrid_ = enabled; m_->settings_->setValue ("SeqAutoCallNewGrid", enabled);}
+void Configuration::setAutoCallNewGridBandMode (bool enabled) {m_->autoCallNewGridBandMode_ = enabled; m_->settings_->setValue ("SeqAutoCallNewGridBandMode", enabled);}
 void Configuration::setAutoCallNewCall (bool enabled) {m_->autoCallNewCall_ = enabled; m_->settings_->setValue ("SeqAutoCallNewCall", enabled);}
 void Configuration::setAutoCallNewCallBand (bool enabled) {m_->autoCallNewCallBand_ = enabled; m_->settings_->setValue ("SeqAutoCallNewCallBand", enabled);}
 bool Configuration::strictdirCQ () const {return m_->strictdirCQ_;}
@@ -2049,6 +2052,7 @@ Radio::convert_dark("#fafbfe",useDarkStyle_),Radio::convert_dark("#dcdef1",useDa
   ui_->autoCallNewDXCC_check_box->setChecked (autoCallNewDXCC_);
   ui_->autoCallNewDXCCBandMode_check_box->setChecked (autoCallNewDXCCBandMode_);
   ui_->autoCallNewGrid_check_box->setChecked (autoCallNewGrid_);
+  ui_->autoCallNewGridBandMode_check_box->setChecked (autoCallNewGridBandMode_);
   ui_->autoCallNewCall_check_box->setChecked (autoCallNewCall_);
   ui_->autoCallNewCallBand_check_box->setChecked (autoCallNewCallBand_);
   ui_->strictDirCQ_checkBox->setChecked (strictdirCQ_);
@@ -2370,6 +2374,7 @@ void Configuration::impl::read_settings ()
   autoCallNewDXCC_ = settings_->value ("SeqAutoCallNewDXCC", legacyAutoCallRareTargets).toBool ();
   autoCallNewDXCCBandMode_ = settings_->value ("SeqAutoCallNewDXCCBandMode", legacyAutoCallRareTargets).toBool ();
   autoCallNewGrid_ = settings_->value ("SeqAutoCallNewGrid", legacyAutoCallRareTargets).toBool ();
+  autoCallNewGridBandMode_ = settings_->value ("SeqAutoCallNewGridBandMode", false).toBool ();
   autoCallNewCall_ = settings_->value ("SeqAutoCallNewCall", false).toBool ();
   autoCallNewCallBand_ = settings_->value ("SeqAutoCallNewCallBand", false).toBool ();
   strictdirCQ_ = settings_->value ("StrictDirectionalCQ", false).toBool ();
@@ -2819,6 +2824,7 @@ void Configuration::impl::write_settings ()
   settings_->setValue ("SeqAutoCallNewDXCC", autoCallNewDXCC_);
   settings_->setValue ("SeqAutoCallNewDXCCBandMode", autoCallNewDXCCBandMode_);
   settings_->setValue ("SeqAutoCallNewGrid", autoCallNewGrid_);
+  settings_->setValue ("SeqAutoCallNewGridBandMode", autoCallNewGridBandMode_);
   settings_->setValue ("SeqAutoCallNewCall", autoCallNewCall_);
   settings_->setValue ("SeqAutoCallNewCallBand", autoCallNewCallBand_);
   settings_->setValue ("StrictDirectionalCQ", strictdirCQ_);
@@ -3511,6 +3517,7 @@ void Configuration::impl::accept ()
   autoCallNewDXCC_ = ui_->autoCallNewDXCC_check_box->isChecked ();
   autoCallNewDXCCBandMode_ = ui_->autoCallNewDXCCBandMode_check_box->isChecked ();
   autoCallNewGrid_ = ui_->autoCallNewGrid_check_box->isChecked ();
+  autoCallNewGridBandMode_ = ui_->autoCallNewGridBandMode_check_box->isChecked ();
   autoCallNewCall_ = ui_->autoCallNewCall_check_box->isChecked ();
   autoCallNewCallBand_ = ui_->autoCallNewCallBand_check_box->isChecked ();
   strictdirCQ_ = ui_->strictDirCQ_checkBox->isChecked ();

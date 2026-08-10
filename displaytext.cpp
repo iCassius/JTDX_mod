@@ -67,9 +67,12 @@ void DisplayText::setConfiguration(Configuration const * config)
       config->newDXCCBandMode() || config->autoCallNewDXCCBandMode());
   displayNewDXCCBand_ = config->newDXCCBand() || config->autoCallNewDXCCBandMode();
   displayNewDXCCBandMode_ = config->newDXCCBandMode() || config->autoCallNewDXCCBandMode();
-  displayNewGrid_ = config->newGrid() || config->autoCallNewGrid();
-  displayNewGridBand_ = config->newGridBand() || config->autoCallNewGrid();
-  displayNewGridBandMode_ = config->newGridBandMode() || config->autoCallNewGrid();
+  displayNewGrid_ = AutoCallPolicy::logMatchRequired (
+      config->newGrid() || config->autoCallNewGrid(),
+      config->newGridBand() || config->autoCallNewGridBandMode(),
+      config->newGridBandMode() || config->autoCallNewGridBandMode());
+  displayNewGridBand_ = config->newGridBand() || config->autoCallNewGridBandMode();
+  displayNewGridBandMode_ = config->newGridBandMode() || config->autoCallNewGridBandMode();
   displayNewPx_ = config->newPx();
   displayNewPxBand_ = config->newPxBand();
   displayNewPxBandMode_ = config->newPxBandMode();
@@ -108,6 +111,8 @@ void DisplayText::setConfiguration(Configuration const * config)
   highlightDXGrid_ = config->highlightDXGrid();
   RR73Marker_ = config->RR73Marker();
   autoCallRareTargets_ = config->autoCallRareTargets();
+  autoCallNewGrid_ = config->autoCallNewGrid();
+  autoCallNewGridBandMode_ = config->autoCallNewGridBandMode();
   otherMessagesMarker_ = config->otherMessagesMarker();
   enableCountryFilter_ = config->enableCountryFilter();
   enableCallsignFilter_ = config->enableCallsignFilter();
@@ -1100,7 +1105,7 @@ int DisplayText::displayDecodedText(DecodedText* decodedText, QString myCall, QS
 		// than a text substring, so duplicate and unrelated 73 text cannot
 		// trigger a call.
 		if (AutoCallPolicy::newGridNeedsReevaluation (!hisCall.isEmpty (), !grid.isEmpty (),
-		                                             autoCallRareTargets_, priority)
+		                                             autoCallNewGrid_, autoCallNewGridBandMode_, priority)
 		    && (status == QsoHistory::RCQ || status == QsoHistory::RFIN))
 		  inotified |= 128;
 	return inotified;
