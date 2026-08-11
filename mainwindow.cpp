@@ -26,7 +26,6 @@
 #include <QCursor>
 #include <QToolTip>
 #include <QButtonGroup>
-#include <QUdpSocket>
 #include <QtMath>
 #include <QDateTime>
 #include <QFile>
@@ -478,10 +477,22 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
   m_messageClient {new MessageClient {QApplication::applicationName (), QCoreApplication::applicationVersion (),
                    m_config.udp_server_name (), m_config.udp_server_port (),
                    this}},
+  m_secondaryMessageClient {new MessageClient {QApplication::applicationName (), QCoreApplication::applicationVersion (),
+                              m_config.udp2_server_name (), m_config.udp2_server_port (),
+                              this, m_config.enable_udp2_broadcast ()}},
   psk_Reporter {new PSK_Reporter {m_messageClient, this}},
   m_manual {network_manager}
 {
   ui->setupUi(this);
+  m_messageClient->set_mirror (m_secondaryMessageClient);
+  updateSecondaryUdpTarget ();
+  connect (m_secondaryMessageClient, &MessageClient::error, this, [] (QString const& error) {
+      qWarning ().noquote () << "Secondary UDP server:" << error;
+    });
+  connect (m_secondaryMessageClient, &MessageClient::duplicate_destination_suppressed,
+           this, [] (QString const& diagnostic) {
+             qWarning ().noquote () << diagnostic;
+           });
   m_config.set_jtdxtime (m_jtdxtime);
   ui->decodedTextBrowser->setConfiguration (&m_config);
   ui->decodedTextBrowser2->setConfiguration (&m_config);
@@ -907,6 +918,24 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
   connect (&m_rigRecoveryTimer, &QTimer::timeout, this, &MainWindow::retryRigOpen);
   connect (&m_config, &Configuration::udp_server_changed, m_messageClient, &MessageClient::set_server);
   connect (&m_config, &Configuration::udp_server_port_changed, m_messageClient, &MessageClient::set_server_port);
+  connect (&m_config, &Configuration::udp_server_changed, this, [this] (QString const&) {
+      updateSecondaryUdpTarget ();
+    });
+  connect (&m_config, &Configuration::udp_server_port_changed, this, [this] (Configuration::port_type) {
+      updateSecondaryUdpTarget ();
+    });
+  connect (&m_config, &Configuration::udp2_server_changed, m_secondaryMessageClient, &MessageClient::set_server);
+  connect (&m_config, &Configuration::udp2_server_port_changed, m_secondaryMessageClient, &MessageClient::set_server_port);
+  connect (&m_config, &Configuration::udp2_enabled_changed, m_secondaryMessageClient, &MessageClient::set_enabled);
+  connect (&m_config, &Configuration::udp2_enabled_changed, this, [this] (bool) {
+      updateSecondaryUdpTarget ();
+    });
+  connect (&m_config, &Configuration::udp2_server_changed, this, [this] (QString const&) {
+      updateSecondaryUdpTarget ();
+    });
+  connect (&m_config, &Configuration::udp2_server_port_changed, this, [this] (Configuration::port_type) {
+      updateSecondaryUdpTarget ();
+    });
 
 
   // set up message text validators
@@ -1242,6 +1271,15 @@ MainWindow::~MainWindow()
   m_audioThread.quit ();
   m_audioThread.wait ();
   remove_child_from_event_filter (this);
+}
+
+void MainWindow::updateSecondaryUdpTarget ()
+{
+  if (m_secondaryMessageClient)
+    {
+      m_secondaryMessageClient->set_suppressed_destination (m_config.udp_server_name (),
+                                                             m_config.udp_server_port ());
+    }
 }
 
 //-------------------------------------------------------- writeSettings()
@@ -6404,11 +6442,6 @@ void MainWindow::acceptQSO2(QDateTime const& QSO_date_off, QString const& call, 
   QString operator_call = m_config.my_callsign(); QString my_call = m_config.my_callsign(); QString my_grid = m_config.my_grid();
   m_messageClient->qso_logged (QSO_date_off, call, grid, dial_freq, mode, rpt_sent, rpt_received, tx_power, comments, name, QSO_date_on, operator_call, my_call, my_grid);
   if(m_config.enable_udp1_adif_sending()) m_messageClient->logged_ADIF(myadif2);
-  if(m_config.enable_udp2_broadcast() && m_config.valid_udp2()) {
-    QUdpSocket sock;
-    if(-1 == sock.writeDatagram (myadif2, QHostAddress {m_config.udp2_server_name()}, m_config.udp2_server_port()))
-      { JTDXMessageBox::warning_message (this, "", tr ("Error sending QSO ADIF data to secondary UDP server"), tr ("Write returned \"%1\"").arg (sock.errorString ())); }
-  }
   if (m_config.send_to_eqsl())
       Eqsl->upload(m_config.eqsl_username(),m_config.eqsl_passwd(),m_config.eqsl_nickname(),call,mode,QSO_date_on,rpt_sent,m_config.bands ()->find (dial_freq),eqslcomments);
   ui->dxCallEntry->setStyleSheet(QString("QLineEdit {color: %1; background: %2}").arg(Radio::convert_dark("#000000",m_useDarkStyle),Radio::convert_dark("#7fff7f",m_useDarkStyle)));

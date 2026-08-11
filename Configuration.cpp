@@ -3646,6 +3646,27 @@ void Configuration::impl::accept ()
       Q_EMIT self_->udp_server_port_changed (new_port);
     }
 
+  auto new_udp2_server = ui_->udp2_server_line_edit->text ();
+  if (new_udp2_server != udp2_server_name_)
+    {
+      udp2_server_name_ = new_udp2_server;
+      Q_EMIT self_->udp2_server_changed (new_udp2_server);
+    }
+
+  auto new_udp2_port = ui_->udp2_server_port_spin_box->value ();
+  if (new_udp2_port != udp2_server_port_)
+    {
+      udp2_server_port_ = new_udp2_port;
+      Q_EMIT self_->udp2_server_port_changed (new_udp2_port);
+    }
+
+  auto new_udp2_enabled = ui_->udp2_enable_check_box->isChecked ();
+  if (new_udp2_enabled != enable_udp2_broadcast_)
+    {
+      enable_udp2_broadcast_ = new_udp2_enabled;
+      Q_EMIT self_->udp2_enabled_changed (new_udp2_enabled);
+    }
+
   auto new_tcpserver = ui_->tcp_server_line_edit->text ();
   if (new_tcpserver != tcp_server_name_)
     {
@@ -3667,10 +3688,6 @@ void Configuration::impl::accept ()
   udpWindowToFront_ = ui_->udpWindowToFront->isChecked ();
   udpWindowRestore_ = ui_->udpWindowRestore->isChecked ();
   enable_udp1_adif_sending_ = ui_->udp1_adif_enable_check_box->isChecked ();
-  udp2_server_name_ = ui_->udp2_server_line_edit->text ();
-  udp2_server_port_ = ui_->udp2_server_port_spin_box->value ();
-  enable_udp2_broadcast_ = ui_->udp2_enable_check_box->isChecked ();
-
   if (macros_.stringList () != next_macros_.stringList ())
     {
       macros_.setStringList (next_macros_.stringList ());

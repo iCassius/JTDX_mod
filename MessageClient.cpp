@@ -12,6 +12,8 @@
 #include <QColor>
 #include <QHostAddress>
 #include <QNetworkInterface>
+#include <QDebug>
+#include <QPointer>
 
 #include "NetworkMessage.hpp"
 
@@ -33,11 +35,12 @@ class MessageClient::impl
 
 public:
   impl (QString const& id, QString const& version,
-        port_type server_port, MessageClient * self)
+        port_type server_port, MessageClient * self, bool enabled)
     : self_ {self}
     , id_ {id}
     , version_ {version}
     , server_port_ {server_port}
+    , enabled_ {enabled}
     , schema_ {2}  // use 2 prior to negotiation not 1 which is broken
     , force_ {false}
     , heartbeat_timer_ {new QTimer {this}}
@@ -45,7 +48,10 @@ public:
     connect (heartbeat_timer_, &QTimer::timeout, this, &impl::heartbeat);
     connect (this, &QIODevice::readyRead, this, &impl::pending_datagrams);
 
-    heartbeat_timer_->start (NetworkMessage::pulse * 1000);
+    if (enabled_)
+      {
+        heartbeat_timer_->start (NetworkMessage::pulse * 1000);
+      }
 
     // bind to an ephemeral port
     bind ();
@@ -62,6 +68,9 @@ public:
   void pending_datagrams ();
   void heartbeat ();
   void closedown ();
+  void set_enabled (bool);
+  bool same_destination () const;
+  void report_duplicate_destination ();
   StreamStatus check_status (QDataStream const&) const;
   void send_message (QByteArray const&);
   void send_message (QDataStream const& out, QByteArray const& message)
@@ -84,10 +93,15 @@ public:
   QString server_string_;
   port_type server_port_;
   QHostAddress server_;
+  bool enabled_;
   quint32 schema_;
   bool force_;
   QTimer * heartbeat_timer_;
   std::vector<QHostAddress> blocked_addresses_;
+  QPointer<MessageClient> mirror_;
+  QString suppressed_server_string_;
+  port_type suppressed_server_port_ {0u};
+  bool duplicate_suppression_reported_ {false};
 
   // hold messages sent before host lookup completes asynchronously
   QQueue<QByteArray> pending_messages_;
@@ -110,8 +124,11 @@ void MessageClient::impl::host_info_results (QHostInfo host_info)
         {
           server_ = server;
 
-          // send initial heartbeat which allows schema negotiation
-          heartbeat ();
+          if (enabled_)
+            {
+              // send initial heartbeat which allows schema negotiation
+              heartbeat ();
+            }
 
           // clear any backlog
           while (pending_messages_.size ())
@@ -273,8 +290,13 @@ void MessageClient::impl::parse_message (QByteArray const& msg)
 
 void MessageClient::impl::heartbeat ()
 {
-   if (server_port_ && !server_.isNull ())
+   if (enabled_ && server_port_ && !server_.isNull ())
     {
+      if (same_destination ())
+        {
+          report_duplicate_destination ();
+          return;
+        }
       QByteArray message;
       NetworkMessage::Builder hb {&message, NetworkMessage::Heartbeat, id_, schema_};
       hb << NetworkMessage::Builder::schema_number // maximum schema number accepted
@@ -288,8 +310,13 @@ void MessageClient::impl::heartbeat ()
 
 void MessageClient::impl::closedown ()
 {
-   if (server_port_ && !server_.isNull ())
+   if (enabled_ && server_port_ && !server_.isNull ())
     {
+      if (same_destination ())
+        {
+          report_duplicate_destination ();
+          return;
+        }
       QByteArray message;
       NetworkMessage::Builder out {&message, NetworkMessage::Close, id_, schema_};
       if (OK == check_status (out))
@@ -301,10 +328,15 @@ void MessageClient::impl::closedown ()
 
 void MessageClient::impl::send_message (QByteArray const& message)
 {
-  if (server_port_)
+  if (enabled_ && server_port_)
     {
       if (!server_.isNull ())
         {
+          if (same_destination ())
+            {
+              report_duplicate_destination ();
+              return;
+            }
           if (force_ || message != last_message_) // avoid duplicates, force status dupe for same callsign UDP reply
             {
               force_=false;
@@ -316,6 +348,60 @@ void MessageClient::impl::send_message (QByteArray const& message)
         {
           pending_messages_.enqueue (message);
         }
+    }
+}
+
+namespace
+{
+  QString normalized_udp_server (QString server)
+  {
+    server = server.trimmed ();
+    if (server.size () > 1 && server.startsWith ('[') && server.endsWith (']'))
+      {
+        server = server.mid (1, server.size () - 2);
+      }
+
+    QHostAddress address;
+    if (address.setAddress (server))
+      {
+        return QString {"address:"} + address.toString ().toLower ();
+      }
+    return QString {"name:"} + server.toLower ();
+  }
+}
+
+bool MessageClient::impl::same_destination () const
+{
+  if (!enabled_ || !server_port_ || !suppressed_server_port_
+      || server_port_ != suppressed_server_port_)
+    {
+      return false;
+    }
+
+  if (normalized_udp_server (server_string_)
+      == normalized_udp_server (suppressed_server_string_))
+    {
+      return true;
+    }
+
+  QHostAddress suppressed_address;
+  if (suppressed_address.setAddress (suppressed_server_string_.trimmed ())
+      && !server_.isNull () && suppressed_address == server_)
+    {
+      return true;
+    }
+  return false;
+}
+
+void MessageClient::impl::report_duplicate_destination ()
+{
+  if (!duplicate_suppression_reported_)
+    {
+      duplicate_suppression_reported_ = true;
+      auto const diagnostic = QString {"secondary UDP target matches primary; duplicate telemetry suppressed (%1:%2)"}
+          .arg (server_string_).arg (server_port_);
+      qWarning ().noquote () << diagnostic;
+      Q_EMIT self_->duplicate_destination_suppressed (diagnostic);
     }
 }
 
@@ -345,9 +431,10 @@ auto MessageClient::impl::check_status (QDataStream const& stream) const -> Stre
 }
 
 MessageClient::MessageClient (QString const& id, QString const& version,
-                              QString const& server, port_type server_port, QObject * self)
+                              QString const& server, port_type server_port, QObject * self,
+                              bool enabled)
   : QObject {self}
-  , m_ {id, version, server_port, this}
+  , m_ {id, version, server_port, this, enabled}
 {
 #if QT_VERSION < QT_VERSION_CHECK(5, 15, 0)
 #if defined (Q_OS_WIN)
@@ -383,6 +470,11 @@ MessageClient::MessageClient (QString const& id, QString const& version,
   set_server (server);
 }
 
+MessageClient::~MessageClient ()
+{
+  m_->mirror_ = nullptr;
+}
+
 QHostAddress MessageClient::server_address () const
 {
   return m_->server_;
@@ -397,7 +489,9 @@ void MessageClient::set_server (QString const& server)
 {
   m_->server_.clear ();
   m_->server_string_ = server;
-  if (!server.isEmpty ())
+  m_->pending_messages_.clear ();
+  m_->last_message_.clear ();
+  if (m_->enabled_ && !server.isEmpty ())
     {
       // queue a host address lookup
       QHostInfo::lookupHost (server, &*m_, SLOT (host_info_results (QHostInfo)));
@@ -407,6 +501,49 @@ void MessageClient::set_server (QString const& server)
 void MessageClient::set_server_port (port_type server_port)
 {
   m_->server_port_ = server_port;
+}
+
+void MessageClient::impl::set_enabled (bool enabled)
+{
+  if (enabled_ == enabled)
+    {
+      return;
+    }
+
+  enabled_ = enabled;
+  server_.clear ();
+  pending_messages_.clear ();
+  last_message_.clear ();
+  duplicate_suppression_reported_ = false;
+  if (enabled_)
+    {
+      heartbeat_timer_->start (NetworkMessage::pulse * 1000);
+      if (!server_string_.isEmpty ())
+        {
+          QHostInfo::lookupHost (server_string_, this, SLOT (host_info_results (QHostInfo)));
+        }
+    }
+  else
+    {
+      heartbeat_timer_->stop ();
+    }
+}
+
+void MessageClient::set_enabled (bool enabled)
+{
+  m_->set_enabled (enabled);
+}
+
+void MessageClient::set_mirror (MessageClient * mirror)
+{
+  m_->mirror_ = mirror;
+}
+
+void MessageClient::set_suppressed_destination (QString const& server, port_type server_port)
+{
+  m_->suppressed_server_string_ = server;
+  m_->suppressed_server_port_ = server_port;
+  m_->duplicate_suppression_reported_ = false;
 }
 
 void MessageClient::send_raw_datagram (QByteArray const& message, QHostAddress const& dest_address
@@ -448,6 +585,12 @@ void MessageClient::status_update (Frequency f, QString const& mode, QString con
       if(force) m_->force_=true;
       m_->send_message (out, message);
     }
+  if (m_->mirror_)
+    {
+      m_->mirror_->status_update (f, mode, dx_call, report, tx_mode, tx_enabled, transmitting, decoding,
+                                  rx_df, tx_df, de_call, de_grid, dx_grid, watchdog_timeout, sub_mode,
+                                  fast_mode, tx_first, force);
+    }
 }
 
 void MessageClient::decode (bool is_new, QTime time, qint32 snr, float delta_time, quint32 delta_frequency
@@ -461,6 +604,11 @@ void MessageClient::decode (bool is_new, QTime time, qint32 snr, float delta_tim
       out << is_new << time << snr << delta_time << delta_frequency << mode.toUtf8 ()
           << message_text.toUtf8 () << low_confidence << off_air;
       m_->send_message (out, message);
+    }
+   if (m_->mirror_)
+    {
+      m_->mirror_->decode (is_new, time, snr, delta_time, delta_frequency, mode, message_text,
+                           low_confidence, off_air);
     }
 }
 
@@ -476,6 +624,11 @@ void MessageClient::WSPR_decode (bool is_new, QTime time, qint32 snr, float delt
           << grid.toUtf8 () << power << off_air;
       m_->send_message (out, message);
     }
+   if (m_->mirror_)
+    {
+      m_->mirror_->WSPR_decode (is_new, time, snr, delta_time, frequency, drift, callsign, grid,
+                                power, off_air);
+    }
 }
 
 void MessageClient::clear_decodes ()
@@ -485,6 +638,10 @@ void MessageClient::clear_decodes ()
       QByteArray message;
       NetworkMessage::Builder out {&message, NetworkMessage::Clear, m_->id_, m_->schema_};
       m_->send_message (out, message);
+    }
+   if (m_->mirror_)
+    {
+      m_->mirror_->clear_decodes ();
     }
 }
 
@@ -504,6 +661,12 @@ void MessageClient::qso_logged (QDateTime time_off, QString const& dx_call, QStr
           << name.toUtf8 () << time_on << operator_call.toUtf8 () << my_call.toUtf8 () << my_grid.toUtf8 ();
       m_->send_message (out, message);
     }
+   if (m_->mirror_)
+    {
+      m_->mirror_->qso_logged (time_off, dx_call, dx_grid, dial_frequency, mode, report_sent,
+                               report_received, tx_power, comments, name, time_on, operator_call,
+                               my_call, my_grid);
+    }
 }
 
 void MessageClient::logged_ADIF (QByteArray const& ADIF_record)
@@ -515,5 +678,9 @@ void MessageClient::logged_ADIF (QByteArray const& ADIF_record)
       QByteArray ADIF {"\n<adif_ver:5>3.1.0\n<programid:4>JTDX\n<EOH>\n" + ADIF_record};
       out << ADIF;
       m_->send_message (out, message);
+    }
+   if (m_->mirror_)
+    {
+      m_->mirror_->logged_ADIF (ADIF_record);
     }
 }

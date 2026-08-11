@@ -33,7 +33,10 @@ public:
   //
   // messages will be silently dropped until a server host lookup is complete
   MessageClient (QString const& id, QString const& version,
-                 QString const& server, port_type server_port, QObject * parent = nullptr);
+                 QString const& server, port_type server_port, QObject * parent = nullptr,
+                 bool enabled = true);
+
+  ~MessageClient ();
 
   // query server details
   QHostAddress server_address () const;
@@ -45,6 +48,19 @@ public:
 
   // change the server port messages are sent to
   Q_SLOT void set_server_port (port_type server_port = 0u);
+
+  // Enable or disable this client without changing its configured target.
+  // A disabled client does not emit heartbeats, telemetry, or Close.
+  Q_SLOT void set_enabled (bool enabled = true);
+
+  // Forward structured telemetry to an independent, one-way client.  The
+  // mirror is intentionally not used by send_raw_datagram(), which keeps
+  // PSK Reporter and other raw UDP traffic on the primary channel only.
+  void set_mirror (MessageClient * mirror);
+
+  // Suppress this client's packets when its target is also the primary
+  // target.  This is used by the read-only secondary channel.
+  Q_SLOT void set_suppressed_destination (QString const& server, port_type server_port);
 
   // outgoing messages
   Q_SLOT void status_update (Frequency, QString const& mode, QString const& dx_call, QString const& report
@@ -111,6 +127,8 @@ public:
   // this signal is emitted when network errors occur or if a host
   // lookup fails
   Q_SIGNAL void error (QString const&) const;
+
+  Q_SIGNAL void duplicate_destination_suppressed (QString const&) const;
 
 private:
   class impl;

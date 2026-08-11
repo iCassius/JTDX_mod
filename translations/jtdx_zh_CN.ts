@@ -7426,6 +7426,21 @@ and DX Grid fields when a 73 or free text message is sent.</source>
         <translation>启用辅助UDP服务器</translation>
     </message>
     <message>
+        <location filename="../Configuration.ui" line="2673"/>
+        <source>Enable a read-only protocol mirror for GridTracker. The secondary UDP server cannot send control requests to JTDX.</source>
+        <translation>启用供 GridTracker 使用的只读协议镜像。辅助 UDP 服务器不能向 JTDX 发送控制请求。</translation>
+    </message>
+    <message>
+        <location filename="../Configuration.ui" line="2680"/>
+        <source>Secondary UDP mirrors the primary UDP status, decodes and QSO log for read-only GridTracker monitoring; it cannot control JTDX.</source>
+        <translation>辅助 UDP 会镜像主 UDP 的状态、解码和 QSO 日志，推荐供 GridTracker 只读监控；辅助服务器不能反向控制 JTDX。</translation>
+    </message>
+    <message>
+        <location filename="../Configuration.ui" line="2683"/>
+        <source>Secondary UDP mirrors the primary UDP status, decodes and QSO log for read-only GridTracker monitoring; it cannot control JTDX.</source>
+        <translation>辅助 UDP 会镜像主 UDP 的状态、解码和 QSO 日志，推荐供 GridTracker 只读监控；辅助服务器不能反向控制 JTDX。</translation>
+    </message>
+    <message>
         <location filename="../Configuration.ui" line="2703"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Allows to configure data for recording into the ALL.TXT file. Recording of TX messages can not be switched off.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;允许设置要的数据纪录到ALL.txt 文件中.无法关闭发射信息的纪录&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</translation>

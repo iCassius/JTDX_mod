@@ -744,6 +744,7 @@ private:
   QProgressDialog m_optimizingProgress;
   QTimer m_heartbeat;
   MessageClient * m_messageClient;
+  MessageClient * m_secondaryMessageClient;
   PSK_Reporter *psk_Reporter;
   DisplayManual m_manual;
   QHash<QString, QVariant> m_pwrBandTxMemory; // Remembers power level by band
@@ -792,6 +793,7 @@ private:
   void writeToALLTXT(QString const& text);
   void setTxMsgBtnColor();
   void resetTxMsgBtnColor();
+  void updateSecondaryUdpTarget();
   void transmit (double snr = 99.);
   void rigFailure (QString const& reason, QString const& detail);
   void pskSetLocal ();

@@ -2,12 +2,12 @@
 
 ## 当前基线
 
-- 产品显示版本：JTDX `2.2.159.2.2`。
-- 标题：`JTDX v2.2.159.2.2 自动起呼版 By BI7KGD 自动程序中点击自动起呼即可实现自动发射`。
-- Windows 四段版本资源保持可解析的 `2.2.159.2`；`.2` 是本次后续修复的产品显示后缀，不改变 PE 资源字段布局。
+- 产品显示版本：JTDX `2.2.159.2.3`。
+- 标题：`JTDX v2.2.159.2.3 自动起呼版 By BI7KGD 自动程序中点击自动起呼即可实现自动发射`。
+- Windows 四段版本资源保持可解析的 `2.2.159.2`；`.3` 是本次后续修复的产品显示后缀，不改变 PE 资源字段布局。
 - 源码目录：`C:\JTDX64\jtdx_sourcecode`。
 - Hamlib 运行时：`4.7.2`，FTX-1 backend `20251224.0`。
-- `159` 是当前使用目录；测试包可在关闭 JTDX 后完整覆盖该目录，不需要修改原快捷方式。
+- `159` 是当前使用目录；本次 `159.2.3` 交付包独立放置，不覆盖 `159`、`159.2.2` 或 `159.bak`，包内脚本使用相对路径。
 
 ## 自动起呼
 
@@ -66,14 +66,21 @@ CAT 打开失败或运行中断后按 `2 秒 → 5 秒 → 15 秒` 有限重连�
 - 中国普通呼号继续显示省级归属地，例如 `中国 河北`；归属地只用于显示，不改变 DXCC、日志 B4 或自动起呼资格。
 - 左右解码窗口可在呼号上右键选择“在 QRZ.com 查询”，通过安全的 `https://www.qrz.com/db/<CALL>` 地址打开浏览器。
 - 主窗口和主要控制按钮增加最小尺寸，修复小窗口下按钮被压缩到文字遮挡的问题。
-- 关于窗口和标题栏显示 `2.2.159.2.2`，并保留“自动程序中点击自动起呼即可实现自动发射”的说明。
+- 关于窗口和标题栏显示 `2.2.159.2.3`，并保留“自动程序中点击自动起呼即可实现自动发射”的说明。
+
+## UDP 遥测镜像
+
+- 主 UDP 继续用于桥接/WebUI/MCP，并保留现有反向控制、PSK Reporter 和输入控制连接。
+- 辅助 UDP 使用独立的 `MessageClient`、socket、schema 状态和 heartbeat，只读镜像主通道的 Heartbeat、Status、Decode、WSPRDecode、Clear、QSOLogged、LoggedADIF 和 Close。
+- `EnableUDP2adifBroadcast`、`UDP2Server`、`UDP2ServerPort` 键名保持兼容；旧的辅助 UDP 裸 ADIF（默认 2333 端口）语义已改为正式 JTDX/WSJT-X 协议镜像，LoggedADIF 是否发送仍跟随主 UDP 的 `EnableUDP1adifSending`。
+- 辅助客户端不连接任何 Reply、Replay、HaltTx、FreeText、HighlightCallsign、SetTxDeltaFreq 或 TriggerCQ 控制信号；地址解析失败、主副目标相同和辅助通道故障均只记录非阻塞诊断，不影响主 UDP、界面、自动起呼、音频或 CAT。
 
 ## 自动验证与边界
 
-本首轮候选的本地自动验证包括：
+本版本的本地自动验证包括：
 
-- 全新 `C:\JTDX64\build-15922-latest` 目录的完整 clean Release 构建（Ninja `1194/1194`）；
-- 全部 8 项 CTest；
+- 全新 `C:\JTDX64\build-15923-msys4` 目录的完整 clean Release 构建（Ninja `1199/1199`）；
+- 全部 9 项 CTest；
 - `callsignlocation_test`；
 - `autocall_policy_test`；
 - `auto_tx_period_policy_test`；
@@ -82,8 +89,9 @@ CAT 打开失败或运行中断后按 `2 秒 → 5 秒 → 15 秒` 有限重连�
 - `fake_it_state_test`；
 - `qrz_lookup_test`；
 - `ui_contract_test`；
-- Windows PE 四段版本资源证据（`FileVersion=2.2.159.2`、显示版本 `2.2.159.2.2`）。
+- `udp_mirror_test` 使用本机离线 UDP 捕获验证双通道 Heartbeat、Status、Decode、WSPRDecode、Clear、QSOLogged、LoggedADIF、Close、动态切换、禁用后的 heartbeat 静默、双向无效地址隔离和同目标实际 datagram 去重；`ui_contract_test` 验证辅助通道只读连接结构。
+- Windows PE 四段版本资源证据（`FileVersion=2.2.159.2`、显示版本 `2.2.159.2.3`）；交付目录已完成依赖闭包、SHA256 和 ZIP 根目录检查。
 
-首轮不生成最终 ZIP，也未执行 install/package 覆盖；依赖闭包、SHA256SUMS 和最终发布包门禁留给父会话审查后的最终重编译/打包。
+最终交付为 `C:\JTDX64\159.2.3` 及同级 ZIP；包内启动脚本使用相对路径，自动验收不覆盖 `159`、`159.2.2` 或 `159.bak`。
 
-`AUTO_VERIFIED` 不等于真机验证。以下仍需用户 HIL：真实 FTX-1 的 CAT/PTT 和 Fake It 时序、串口被其他程序占用时的启动交互、长时间挂机声卡恢复、实际自动起呼发射次数（包括两组网格 priority 的真实日志命中）、PTT/音频时序，以及不同 DPI/窗口尺寸下的界面观感。首轮实现不启动 JTDX、不操作 CAT/PTT/电台、不发射；`audio_policy_test` 只验证纯策略；Qt 真实音频端点和 processed 音频帧没有被伪造为自动 HIL。
+`AUTO_VERIFIED` 不等于真机验证。以下仍需用户 HIL：真实 FTX-1 的 CAT/PTT 和 Fake It 时序、串口被其他程序占用时的启动交互、长时间挂机声卡恢复、实际自动起呼发射次数（包括两组网格 priority 的真实日志命中）、PTT/音频时序，以及不同 DPI/窗口尺寸下的界面观感。本版本不启动 JTDX、不操作 CAT/PTT/电台、不发射；`audio_policy_test` 只验证纯策略；Qt 真实音频端点和 processed 音频帧没有被伪造为自动 HIL。

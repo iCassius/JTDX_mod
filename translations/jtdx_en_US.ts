@@ -7252,6 +7252,21 @@ and DX Grid fields when a 73 or free text message is sent.</source>
         <translation type="unfinished"></translation>
     </message>
     <message>
+        <location filename="../Configuration.ui" line="2673"/>
+        <source>Enable a read-only protocol mirror for GridTracker. The secondary UDP server cannot send control requests to JTDX.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../Configuration.ui" line="2680"/>
+        <source>Secondary UDP mirrors the primary UDP status, decodes and QSO log for read-only GridTracker monitoring; it cannot control JTDX.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <location filename="../Configuration.ui" line="2683"/>
+        <source>Secondary UDP mirrors the primary UDP status, decodes and QSO log for read-only GridTracker monitoring; it cannot control JTDX.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <location filename="../Configuration.ui" line="2703"/>
         <source>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Allows to configure data for recording into the ALL.TXT file. Recording of TX messages can not be switched off.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</source>
         <translation type="unfinished"></translation>

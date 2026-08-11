@@ -1586,6 +1586,10 @@ if (JTDX_BUILD_LOCAL_TESTS)
   target_compile_definitions (ui_contract_test PRIVATE JTDX_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
   target_link_libraries (ui_contract_test Qt5::Core)
   add_test (NAME ui_contract_test COMMAND ui_contract_test)
+  add_executable (udp_mirror_test tests/udp_mirror_test.cpp MessageClient.cpp)
+  target_include_directories (udp_mirror_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_link_libraries (udp_mirror_test wsjt_qt Qt5::Core Qt5::Network)
+  add_test (NAME udp_mirror_test COMMAND udp_mirror_test)
 endif ()
 
 

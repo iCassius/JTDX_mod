@@ -421,6 +421,9 @@ public:
   //
   Q_SIGNAL void udp_server_changed (QString const& udp_server);
   Q_SIGNAL void udp_server_port_changed (port_type server_port);
+  Q_SIGNAL void udp2_server_changed (QString const& udp_server);
+  Q_SIGNAL void udp2_server_port_changed (port_type server_port);
+  Q_SIGNAL void udp2_enabled_changed (bool enabled);
   Q_SIGNAL void tcp_server_changed (QString const& tcp_server);
   Q_SIGNAL void tcp_server_port_changed (port_type server_port);
 
