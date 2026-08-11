@@ -35,6 +35,18 @@ namespace AutoCallPolicy
         && (wholeGridPriority || gridBandModePriority);
   }
 
+  // A retained DX entry may be replaced by a forced new-grid candidate only
+  // after its QSO has actually sent Tx5.  A pending first 73, an active
+  // transmission, or an already processed AutoSeq interval must win over
+  // candidate replacement.
+  inline bool canForceCandidate (bool retainedDxCall, bool processAutoDone,
+                                 bool first73Pending, bool transmitting,
+                                 bool signoffTransmitted)
+  {
+    if (processAutoDone || first73Pending || transmitting) return false;
+    return !retainedDxCall || signoffTransmitted;
+  }
+
   inline bool logMatchRequired (bool wholeTarget, bool bandTarget,
                                 bool bandModeTarget)
   {

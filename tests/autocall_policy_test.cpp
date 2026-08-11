@@ -82,5 +82,16 @@ int main()
   expect(!AutoCallPolicy::newGridNeedsReevaluation (true, false, true, true, 15),
          "old DX without a new grid does not retrigger AutoSeq");
 
+  expect(!AutoCallPolicy::canForceCandidate (true, false, false, false, false),
+         "retained active QSO cannot be replaced");
+  expect(!AutoCallPolicy::canForceCandidate (true, true, false, false, true),
+         "completed AutoSeq interval cannot be replaced");
+  expect(!AutoCallPolicy::canForceCandidate (true, false, true, false, true),
+         "pending first 73 keeps the retained QSO");
+  expect(!AutoCallPolicy::canForceCandidate (true, false, false, true, true),
+         "transmitting keeps the retained QSO");
+  expect(AutoCallPolicy::canForceCandidate (true, false, false, false, true),
+         "Tx5-completed QSO may be replaced");
+
   return 0;
 }

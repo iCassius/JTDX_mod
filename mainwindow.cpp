@@ -65,6 +65,7 @@
 
 #include "ui_mainwindow.h"
 #include "moc_mainwindow.cpp"
+#include "auto_call_policy.hpp"
 #include "auto_tx_period_policy.hpp"
 #include "directed_call_policy.hpp"
 
@@ -4242,7 +4243,10 @@ void MainWindow::readFromStdout()                             //readFromStdout
                                                     );
 
       if ((notified & 128) && (m_config.autoCallNewGrid () || m_config.autoCallNewGridBandMode ()) && m_autoseq
-          && !m_manualDecode && !m_newGridAutoCallDone) {
+          && !m_manualDecode && !m_newGridAutoCallDone
+          && AutoCallPolicy::canForceCandidate (
+              !m_hisCall.isEmpty (), m_processAuto_done, m_callFirst73,
+              m_transmitting, m_transmittedQSOProgress == SIGNOFF)) {
         // The decode has now been inserted into QsoHistory.  Re-run only the
         // candidate-selection phase; forceCandidate deliberately ignores the
         // stale DX entry while preserving the normal AutoSeq path otherwise.
