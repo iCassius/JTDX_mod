@@ -5238,6 +5238,7 @@ list. The list can be maintained in Settings (F2).</string>
     <addaction name="actionAutoCallNewGridBandMode"/>
     <addaction name="actionAutoCallNewCall"/>
     <addaction name="actionAutoCallNewCallBand"/>
+    <addaction name="actionAutoAnswerDirectedCalls"/>
     <addaction name="separator"/>
     <addaction name="actionReport_message_priority"/>
     <addaction name="actionMaxDistance"/>
@@ -6207,6 +6208,17 @@ list. The list can be maintained in Settings (F2).</string>
    </property>
    <property name="text">
     <string>自动起呼新呼号波段</string>
+   </property>
+  </action>
+  <action name="actionAutoAnswerDirectedCalls">
+   <property name="checkable">
+    <bool>true</bool>
+   </property>
+   <property name="toolTip">
+    <string>AutoSeq 开启且无进行中 QSO 时，自动应答明确发给本台的 RCALL/RREPORT；不抢占进行中 QSO。</string>
+   </property>
+   <property name="text">
+    <string>待机时自动应答呼叫本台</string>
    </property>
   </action>
   <action name="actionAcceptUDPCQ">

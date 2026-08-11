@@ -66,6 +66,7 @@
 #include "ui_mainwindow.h"
 #include "moc_mainwindow.cpp"
 #include "auto_tx_period_policy.hpp"
+#include "directed_call_policy.hpp"
 
 #include <QSound>
 
@@ -303,6 +304,7 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
   m_showTooltips {true},
   m_autoTx {false},
   m_autoseq {false},
+  m_autoDirectedAnswerActive {false},
   m_wasAutoSeq {false},
   m_Tx5setAutoSeqOff {false},
   m_FTsetAutoSeqOff {false},
@@ -1590,6 +1592,7 @@ void MainWindow::readSettings()
   ui->actionAutoCallNewGridBandMode->setChecked(m_config.autoCallNewGridBandMode());
   ui->actionAutoCallNewCall->setChecked(m_config.autoCallNewCall());
   ui->actionAutoCallNewCallBand->setChecked(m_config.autoCallNewCallBand());
+  ui->actionAutoAnswerDirectedCalls->setChecked(m_config.autoAnswerDirectedCalls());
   ui->actionSingleShot->setChecked(m_settings->value("SingleShotQSO",false).toBool());
   ui->actionAutoFilter->setChecked(m_settings->value("AutoFilter",false).toBool());
   ui->actionEnable_hound_mode->setChecked(m_settings->value("EnableHoundMode",false).toBool());
@@ -2209,6 +2212,7 @@ void MainWindow::on_actionSettings_triggered()               //Setup Dialog
       ui->actionAutoCallNewGridBandMode->setChecked(m_config.autoCallNewGridBandMode());
       ui->actionAutoCallNewCall->setChecked(m_config.autoCallNewCall());
       ui->actionAutoCallNewCallBand->setChecked(m_config.autoCallNewCallBand());
+      ui->actionAutoAnswerDirectedCalls->setChecked(m_config.autoAnswerDirectedCalls());
       if (m_config.useDarkStyle() != m_useDarkStyle) {
         m_useDarkStyle = m_config.useDarkStyle();
         styleChanged();
@@ -3270,6 +3274,7 @@ void MainWindow::on_actionAutoCallNewGrid_toggled(bool checked) { m_config.setAu
 void MainWindow::on_actionAutoCallNewGridBandMode_toggled(bool checked) { m_config.setAutoCallNewGridBandMode(checked); ui->decodedTextBrowser->setConfiguration(&m_config); ui->decodedTextBrowser2->setConfiguration(&m_config); }
 void MainWindow::on_actionAutoCallNewCall_toggled(bool checked) { m_config.setAutoCallNewCall(checked); ui->decodedTextBrowser->setConfiguration(&m_config); ui->decodedTextBrowser2->setConfiguration(&m_config); }
 void MainWindow::on_actionAutoCallNewCallBand_toggled(bool checked) { m_config.setAutoCallNewCallBand(checked); ui->decodedTextBrowser->setConfiguration(&m_config); ui->decodedTextBrowser2->setConfiguration(&m_config); }
+void MainWindow::on_actionAutoAnswerDirectedCalls_toggled(bool checked) { m_config.setAutoAnswerDirectedCalls(checked); }
 
 void MainWindow::on_actionSingleShot_toggled(bool checked)
 {
@@ -3673,6 +3678,12 @@ void MainWindow::process_Auto(bool forceCandidate)
   unsigned time = 0;
   bool rareTargetRejected = false;
   bool autoRareTargetArm = false;
+  bool autoDirectedAnswerArm = false;
+  bool const directedAnswerIdle = DirectedCallPolicy::canSelectStandbyCall (
+      m_config.autoAnswerDirectedCalls (), m_autoseq, m_hisCall.isEmpty (),
+      m_houndMode, m_mode.startsWith ("WSPR"), m_transmitting, m_tune,
+      g_iptt != 0);
+  bool const directedOnlySelection = directedAnswerIdle && m_callMode == 0;
   int rx = ui->RxFreqSpinBox->value ();
   int tx = ui->TxFreqSpinBox->value ();
   QStringList StrStatus = {"NONE","RFIN","RCQ","SCQ","RCALL","SCALL","RREPORT","SREPORT","RRREPORT","SRREPORT","RRR","SRR","RRR73","SRR73","R73","S73","FIN"};
@@ -3746,6 +3757,19 @@ void MainWindow::process_Auto(bool forceCandidate)
       m_status = QsoHistory::NONE;
       if (m_singleshot)
         counters = false;
+    } else if (m_autoDirectedAnswerActive
+               && ((m_status == QsoHistory::RCALL && m_config.answerInCallCount ()
+                    && m_config.nAnswerInCallCounter () <= count)
+                   || (m_status == QsoHistory::RREPORT && m_config.sentRReportCount ()
+                       && m_config.nSentRReportCounter () <= count))) {
+      autoStopTx ("Directed-call answer retry limit reached ");
+      m_qsoHistory.calllist (hisCall, rpt.toInt (), time);
+      count = m_qsoHistory.reset_count (hisCall);
+      clearDX (" cleared, directed-call answer retry limit reached");
+      hisCall = m_hisCall;
+      grid = m_hisGrid;
+      m_status = QsoHistory::NONE;
+      counters2 = false;
     } else if ((m_status == QsoHistory::RCALL || (m_status == QsoHistory::SREPORT && !m_skipTx1)) && m_config.answerInCallCount() && 
         (m_config.nAnswerInCallCounter() <= count || m_reply_other)) {
       clearDX (" cleared, RCALL/SREPORT count reached");
@@ -3779,23 +3803,28 @@ void MainWindow::process_Auto(bool forceCandidate)
         counters = false;
     }
   }
-  if (hisCall.isEmpty () && counters && !m_houndMode && m_callMode!=0) {
+  if (hisCall.isEmpty () && counters && !m_houndMode
+      && (m_callMode != 0 || directedAnswerIdle)) {
     auto ms = m_msDecStarted % 86400000;
     auto secs = round(ms / 1000.0) +1;
     int nmod = fmod(double(secs),2.0*m_TRperiod);
-    if(m_callPrioCQ && !m_lockTxFreq && counters2 && m_counter == 0 && m_txFirst != (nmod!=0)) { time=1; }    //highiest priority, evaluating response to CQ first, then searching CQ decoded messages 
-    else { if (m_counter > 0) m_counter -= 1; time=0; } //highiest priority, evaluating response to CQ only
-    if ((!m_config.newDXCC() && !m_config.newGrid() && !m_config.newPx() && !m_config.newCall()) || m_answerWorkedB4) time |= 128;
-    if ((!m_config.newDXCC() && !m_config.newGrid() && !m_config.newPx() && !m_config.newCall()) || m_callWorkedB4) time |= 64;
-    else if (m_callHigherNewCall) time |= 256;
-    if (m_rprtPriority) time |= 16;
-    if (m_maxDistance) time |= 32;
-    if (m_config.autoCallNewDXCC ()) time |= QsoHistory::AutoCallNewDXCC;
-    if (m_config.autoCallNewDXCCBandMode ()) time |= QsoHistory::AutoCallNewDXCCBandMode;
-    if (m_config.autoCallNewGrid ()) time |= QsoHistory::AutoCallNewGrid;
-    if (m_config.autoCallNewGridBandMode ()) time |= QsoHistory::AutoCallNewGridBandMode;
-    if (m_config.autoCallNewCall ()) time |= QsoHistory::AutoCallNewCall;
-    if (m_config.autoCallNewCallBand ()) time |= QsoHistory::AutoCallNewCallBand;
+    if (m_callMode != 0) {
+      if(m_callPrioCQ && !m_lockTxFreq && counters2 && m_counter == 0 && m_txFirst != (nmod!=0)) { time=1; }    //highiest priority, evaluating response to CQ first, then searching CQ decoded messages
+      else { if (m_counter > 0) m_counter -= 1; time=0; } //highiest priority, evaluating response to CQ only
+      if ((!m_config.newDXCC() && !m_config.newGrid() && !m_config.newPx() && !m_config.newCall()) || m_answerWorkedB4) time |= 128;
+      if ((!m_config.newDXCC() && !m_config.newGrid() && !m_config.newPx() && !m_config.newCall()) || m_callWorkedB4) time |= 64;
+      else if (m_callHigherNewCall) time |= 256;
+      if (m_rprtPriority) time |= 16;
+      if (m_maxDistance) time |= 32;
+      if (m_config.autoCallNewDXCC ()) time |= QsoHistory::AutoCallNewDXCC;
+      if (m_config.autoCallNewDXCCBandMode ()) time |= QsoHistory::AutoCallNewDXCCBandMode;
+      if (m_config.autoCallNewGrid ()) time |= QsoHistory::AutoCallNewGrid;
+      if (m_config.autoCallNewGridBandMode ()) time |= QsoHistory::AutoCallNewGridBandMode;
+      if (m_config.autoCallNewCall ()) time |= QsoHistory::AutoCallNewCall;
+      if (m_config.autoCallNewCallBand ()) time |= QsoHistory::AutoCallNewCallBand;
+    }
+    if (directedAnswerIdle) time |= QsoHistory::AutoAnswerDirectedCalls;
+    if (directedOnlySelection) time |= QsoHistory::AutoAnswerDirectedOnly;
     m_status = m_qsoHistory.autoseq(hisCall,grid,rpt,rx,tx,time,count,prio,mode);
     // This optional policy applies only when we are looking for a new station
     // to call. It never interferes with an in-progress QSO or an incoming
@@ -3821,7 +3850,9 @@ void MainWindow::process_Auto(bool forceCandidate)
       && !m_mode.startsWith ("WSPR")
       && !hisCall.isEmpty ()
       && (m_status == QsoHistory::RCQ || m_status == QsoHistory::RFIN);
-    if (autoPeriodCandidate)
+    bool const autoDirectedPeriodCandidate = directedAnswerIdle && !hisCall.isEmpty ()
+      && DirectedCallPolicy::isDirectedCallStatus (m_status);
+    if (autoPeriodCandidate || autoDirectedPeriodCandidate)
       {
         // `time` is QsoHistory::QSO::b_time, the selected station's receive
         // time.  Apply it before message generation and before Enable Tx.
@@ -3833,6 +3864,8 @@ void MainWindow::process_Auto(bool forceCandidate)
     // whether a transmission can actually start.
     autoRareTargetArm = m_autoseq && m_callMode > 0 && m_config.autoCallRareTargets ()
       && allowedRareTarget && (m_status == QsoHistory::RCQ || m_status == QsoHistory::RFIN);
+    autoDirectedAnswerArm = directedAnswerIdle && !hisCall.isEmpty ()
+      && DirectedCallPolicy::isDirectedCallStatus (m_status);
     if(m_config.write_decoded_debug()) {
       QString StrDirection = "";
       if(m_status == QsoHistory::FIN) StrDirection = " auto sequence is finished;";
@@ -3860,20 +3893,16 @@ void MainWindow::process_Auto(bool forceCandidate)
       ui->TxFreqSpinBox->setValue (rx);
       }
       if (!rpt.isEmpty () && rpt == m_rpt) m_rpt = "-60";
-      if (autoPeriodCandidate)
+      if (autoPeriodCandidate || autoDirectedPeriodCandidate)
         {
           // Rebuild the standard messages after the period state is applied;
           // this updates m_txGenerated without emitting the clicked signal.
           genStdMsgs (m_rpt);
         }
-      if (autoRareTargetArm)
-        {
-          // Message generation and period synchronization must precede the
-          // Enable Tx transition for an unattended rare-target call.
-          txwatchdog (false);
-          if (!m_enableTx) ui->enableTxButton->click ();
-        }
-    } else if (!forceCandidate && !rareTargetRejected && m_transmittedQSOProgress != CALLING){
+      if (autoDirectedAnswerArm) m_autoDirectedAnswerActive = true;
+      // Enable Tx is armed after the status-specific standard message is
+      // selected below, so period, DX/report, and Tx2/Tx3 are all settled.
+    } else if (m_callMode != 0 && !forceCandidate && !rareTargetRejected && m_transmittedQSOProgress != CALLING){
         on_txb6_clicked();
         if(ui->tabWidget->currentIndex()==1) ui->genMsg->setText(ui->tx6->text());
     }
@@ -3975,6 +4004,12 @@ void MainWindow::process_Auto(bool forceCandidate)
       default: {
         break;
       }
+    }
+    if (autoRareTargetArm || autoDirectedAnswerArm) {
+      // The candidate's period and standard Tx message have both been
+      // applied before the watchdog and Enable Tx transition.
+      txwatchdog (false);
+      if (!m_enableTx) ui->enableTxButton->click ();
     }
   } else {
     if (!counters) {
@@ -5956,6 +5991,7 @@ void MainWindow::clearDX (QString reason)
 
 void MainWindow::clearDXfields (QString reason)
 {
+  m_autoDirectedAnswerActive = false;
   m_name = "";
   QString dxcallclr=m_hisCall;
   if (!m_hisCall.isEmpty()) ui->dxCallEntry->clear();
@@ -7282,6 +7318,7 @@ void MainWindow::stopTuneATU() { on_tuneButton_clicked(false); m_bTxTime=false; 
 
 void MainWindow::on_stopTxButton_clicked()                    //Stop Tx
 {
+  m_autoDirectedAnswerActive = false;
   if (m_transmitting || m_tune) m_addtx = -1;
   if (m_tune) stop_tuning ();
   if (m_enableTx and !m_tuneup) enableTx_mode (false);

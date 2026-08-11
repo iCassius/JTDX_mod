@@ -4,6 +4,7 @@
  */
 
 #include "qsohistory.h"
+#include "directed_call_policy.hpp"
 void QsoHistory::init()
 {
     _data.clear();
@@ -166,11 +167,63 @@ QsoHistory::Status QsoHistory::autoseq(QString &callsign, QString &grid, QString
         { 
           algo=time;
           dist = 0;
-          if (algo & 128) a_init=-1;
+          bool const directedAnswer = algo & AutoAnswerDirectedCalls;
+          bool const directedOnly = algo & AutoAnswerDirectedOnly;
+          if (directedOnly || (algo & 128)) a_init=-1;
           else a_init=4;
           if (algo & 64) b_init=-1;
           else if (algo & 256) b_init=8;
           else b_init=4;
+          if (directedAnswer && myas_active && _data.size () > 0) {
+            QSO selected {};
+            bool found = false;
+            int selectedPriority = -1;
+            int selectedDistance = 0;
+            QString selectedReport;
+            foreach (QString key, _data.keys ()) {
+              on_black = _blackdata.value (key, 0);
+              auto const candidate = _data[key];
+              if (on_black != 0 || candidate.time != max_r_time || candidate.continent.isEmpty ()
+                  || !DirectedCallPolicy::isDirectedCallStatus (candidate.status)) continue;
+              if (!(_CQ.tyyp.isEmpty () || (_strictdirCQ && candidate.priority > 16)
+                    || _CQ.tyyp == candidate.continent || _CQ.tyyp == candidate.mpx
+                    || candidate.call.startsWith (_CQ.tyyp)
+                    || (_CQ.tyyp == "DX" && candidate.continent != mycontinent_))) continue;
+
+              bool const better = DirectedCallPolicy::isBetterCandidate (
+                  candidate.call, candidate.priority, candidate.s_rep.toInt (),
+                  candidate.distance, found, selected.call, selectedPriority,
+                  selectedReport.toInt (), selectedDistance, algo & 32);
+              if (better) {
+                selected = candidate;
+                selectedPriority = candidate.priority;
+                selectedDistance = candidate.distance;
+                selectedReport = candidate.s_rep;
+                found = true;
+              }
+            }
+            if (found) {
+              prio = selected.priority;
+              ret = selected.status;
+              callsign = selected.call;
+              count = selected.count;
+              dist = selected.distance;
+              grid = selected.grid;
+              mode = selected.mode;
+              rep = selected.s_rep.isEmpty () ? QStringLiteral ("-60") : selected.s_rep;
+              if (selected.rx > 0) rx = selected.rx;
+              if (selected.tx > 0) tx = selected.tx;
+              time = selected.b_time;
+              myas_active = false;
+              as_active = false;
+              return ret;
+            }
+            if (directedOnly) {
+              myas_active = false;
+              as_active = false;
+              return NONE;
+            }
+          }
           if (myas_active && _data.size() > 0) { //my CQ answers && _CQ.count > 0 
             QSO tt,t;
             int priority = a_init;

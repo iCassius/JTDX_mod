@@ -193,6 +193,7 @@ private slots:
   void on_actionAutoCallNewGridBandMode_toggled(bool checked);
   void on_actionAutoCallNewCall_toggled(bool checked);
   void on_actionAutoCallNewCallBand_toggled(bool checked);
+  void on_actionAutoAnswerDirectedCalls_toggled(bool checked);
   void on_actionSingleShot_toggled(bool checked);
   void on_actionAutoFilter_toggled(bool checked);
   void on_actionEnable_hound_mode_toggled(bool checked);
@@ -554,6 +555,7 @@ private:
   bool    m_showTooltips;
   bool    m_autoTx;
   bool    m_autoseq;
+  bool    m_autoDirectedAnswerActive;
   bool    m_wasAutoSeq;
   bool    m_Tx5setAutoSeqOff;
   bool    m_FTsetAutoSeqOff;

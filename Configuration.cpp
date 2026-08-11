@@ -724,6 +724,7 @@ private:
   bool autoCallNewGridBandMode_;
   bool autoCallNewCall_;
   bool autoCallNewCallBand_;
+  bool autoAnswerDirectedCalls_;
   bool strictdirCQ_;
   bool halttxreplyother_;
   bool hidefree_;
@@ -1005,6 +1006,7 @@ bool Configuration::autoCallNewGrid () const {return m_->autoCallNewGrid_;}
 bool Configuration::autoCallNewGridBandMode () const {return m_->autoCallNewGridBandMode_;}
 bool Configuration::autoCallNewCall () const {return m_->autoCallNewCall_;}
 bool Configuration::autoCallNewCallBand () const {return m_->autoCallNewCallBand_;}
+bool Configuration::autoAnswerDirectedCalls () const {return m_->autoAnswerDirectedCalls_;}
 bool Configuration::autoCallRareTargets () const {return m_->autoCallNewDXCC_ || m_->autoCallNewDXCCBandMode_ || m_->autoCallNewGrid_
                                                         || m_->autoCallNewGridBandMode_ || m_->autoCallNewCall_ || m_->autoCallNewCallBand_;}
 void Configuration::setAutoCallNewDXCC (bool enabled) {m_->autoCallNewDXCC_ = enabled; m_->settings_->setValue ("SeqAutoCallNewDXCC", enabled);}
@@ -1013,6 +1015,7 @@ void Configuration::setAutoCallNewGrid (bool enabled) {m_->autoCallNewGrid_ = en
 void Configuration::setAutoCallNewGridBandMode (bool enabled) {m_->autoCallNewGridBandMode_ = enabled; m_->settings_->setValue ("SeqAutoCallNewGridBandMode", enabled);}
 void Configuration::setAutoCallNewCall (bool enabled) {m_->autoCallNewCall_ = enabled; m_->settings_->setValue ("SeqAutoCallNewCall", enabled);}
 void Configuration::setAutoCallNewCallBand (bool enabled) {m_->autoCallNewCallBand_ = enabled; m_->settings_->setValue ("SeqAutoCallNewCallBand", enabled);}
+void Configuration::setAutoAnswerDirectedCalls (bool enabled) {m_->autoAnswerDirectedCalls_ = enabled; m_->settings_->setValue ("SeqAutoAnswerDirectedCalls", enabled);}
 bool Configuration::strictdirCQ () const {return m_->strictdirCQ_;}
 bool Configuration::halttxreplyother () const {return m_->halttxreplyother_;}
 bool Configuration::hidefree () const {return m_->hidefree_;}
@@ -2055,6 +2058,7 @@ Radio::convert_dark("#fafbfe",useDarkStyle_),Radio::convert_dark("#dcdef1",useDa
   ui_->autoCallNewGridBandMode_check_box->setChecked (autoCallNewGridBandMode_);
   ui_->autoCallNewCall_check_box->setChecked (autoCallNewCall_);
   ui_->autoCallNewCallBand_check_box->setChecked (autoCallNewCallBand_);
+  ui_->autoAnswerDirectedCalls_check_box->setChecked (autoAnswerDirectedCalls_);
   ui_->strictDirCQ_checkBox->setChecked (strictdirCQ_);
   ui_->haltTxReplyOther_checkBox->setChecked (halttxreplyother_);
   ui_->HideFree_check_box->setChecked (hidefree_);
@@ -2377,6 +2381,7 @@ void Configuration::impl::read_settings ()
   autoCallNewGridBandMode_ = settings_->value ("SeqAutoCallNewGridBandMode", false).toBool ();
   autoCallNewCall_ = settings_->value ("SeqAutoCallNewCall", false).toBool ();
   autoCallNewCallBand_ = settings_->value ("SeqAutoCallNewCallBand", false).toBool ();
+  autoAnswerDirectedCalls_ = settings_->value ("SeqAutoAnswerDirectedCalls", false).toBool ();
   strictdirCQ_ = settings_->value ("StrictDirectionalCQ", false).toBool ();
   halttxreplyother_ = settings_->value ("SeqHaltTxReplyOther", true).toBool ();
 
@@ -2827,6 +2832,7 @@ void Configuration::impl::write_settings ()
   settings_->setValue ("SeqAutoCallNewGridBandMode", autoCallNewGridBandMode_);
   settings_->setValue ("SeqAutoCallNewCall", autoCallNewCall_);
   settings_->setValue ("SeqAutoCallNewCallBand", autoCallNewCallBand_);
+  settings_->setValue ("SeqAutoAnswerDirectedCalls", autoAnswerDirectedCalls_);
   settings_->setValue ("StrictDirectionalCQ", strictdirCQ_);
   settings_->setValue ("SeqHaltTxReplyOther", halttxreplyother_);
   settings_->setValue ("HideFreeMsgs", hidefree_);
@@ -3520,6 +3526,7 @@ void Configuration::impl::accept ()
   autoCallNewGridBandMode_ = ui_->autoCallNewGridBandMode_check_box->isChecked ();
   autoCallNewCall_ = ui_->autoCallNewCall_check_box->isChecked ();
   autoCallNewCallBand_ = ui_->autoCallNewCallBand_check_box->isChecked ();
+  autoAnswerDirectedCalls_ = ui_->autoAnswerDirectedCalls_check_box->isChecked ();
   strictdirCQ_ = ui_->strictDirCQ_checkBox->isChecked ();
   halttxreplyother_ = ui_->haltTxReplyOther_checkBox->isChecked ();
   hidefree_ = ui_->HideFree_check_box->isChecked ();

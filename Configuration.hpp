@@ -125,6 +125,7 @@ public:
   bool autoCallNewGridBandMode() const;
   bool autoCallNewCall() const;
   bool autoCallNewCallBand() const;
+  bool autoAnswerDirectedCalls() const;
   bool autoCallRareTargets() const;
   void setAutoCallNewDXCC(bool enabled);
   void setAutoCallNewDXCCBandMode(bool enabled);
@@ -132,6 +133,7 @@ public:
   void setAutoCallNewGridBandMode(bool enabled);
   void setAutoCallNewCall(bool enabled);
   void setAutoCallNewCallBand(bool enabled);
+  void setAutoAnswerDirectedCalls(bool enabled);
   bool strictdirCQ() const;
   bool halttxreplyother() const;
   bool hidefree() const;

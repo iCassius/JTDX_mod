@@ -1567,6 +1567,13 @@ if (JTDX_BUILD_LOCAL_TESTS)
   add_executable (auto_tx_period_policy_test tests/auto_tx_period_policy_test.cpp)
   target_include_directories (auto_tx_period_policy_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   add_test (NAME auto_tx_period_policy_test COMMAND auto_tx_period_policy_test)
+  add_executable (directed_call_policy_test
+    tests/directed_call_policy_test.cpp
+    qsohistory.cpp
+    Radio.cpp)
+  target_include_directories (directed_call_policy_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_link_libraries (directed_call_policy_test Qt5::Core)
+  add_test (NAME directed_call_policy_test COMMAND directed_call_policy_test)
   add_executable (audio_policy_test tests/audio_policy_test.cpp)
   target_include_directories (audio_policy_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   add_test (NAME audio_policy_test COMMAND audio_policy_test)

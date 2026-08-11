@@ -2370,6 +2370,16 @@ both here.</string>
                     </property>
                    </widget>
                   </item>
+                  <item row="12" column="0">
+                   <widget class="QCheckBox" name="autoAnswerDirectedCalls_check_box">
+                    <property name="toolTip">
+                     <string>AutoSeq 开启且无进行中 QSO 时，收到明确发给本台的标准消息后，自动选择呼叫方、同步发射周期、开启 Enable Tx，并遵循现有重试、停止和清除 DX 规则；不抢占进行中 QSO。仅响应 RCALL/RREPORT，不响应普通 CQ、free text 或孤立 RRR/RR73/73。</string>
+                    </property>
+                    <property name="text">
+                     <string>待机时自动应答呼叫本台</string>
+                    </property>
+                   </widget>
+                  </item>
                  </layout>
                 </item>
                 <item>

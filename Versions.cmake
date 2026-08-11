@@ -4,6 +4,6 @@ set (WSJTX_VERSION_MINOR 2)
 set (WSJTX_VERSION_32A 0)
 set (WSJTX_VERSION_SUB 159)
 set (WSJTX_VERSION_TWEAK 2)
-set (WSJTX_VERSION_DISPLAY_SUFFIX .3) # follow-up label; keep four-component Windows resources
+set (WSJTX_VERSION_DISPLAY_SUFFIX .4) # follow-up label; keep four-component Windows resources
 set (WSJTX_RC 0)		 # release candidate number, comment out or zero for development versions
 set (WSJTX_VERSION_IS_RELEASE 1) # set to 1 for final release build

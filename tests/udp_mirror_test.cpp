@@ -109,8 +109,8 @@ int main (int argc, char * argv[])
   expect (primary_capture.bind (QHostAddress {QHostAddress::LocalHost}, 0), "bind primary capture socket");
   expect (secondary_capture.bind (QHostAddress {QHostAddress::LocalHost}, 0), "bind secondary capture socket");
 
-  MessageClient primary {"udp-mirror-test", "2.2.159.2.3", "127.0.0.1", primary_capture.localPort ()};
-  MessageClient secondary {"udp-mirror-test", "2.2.159.2.3", "127.0.0.1", secondary_capture.localPort ()};
+  MessageClient primary {"udp-mirror-test", "2.2.159.2.4", "127.0.0.1", primary_capture.localPort ()};
+  MessageClient secondary {"udp-mirror-test", "2.2.159.2.4", "127.0.0.1", secondary_capture.localPort ()};
   primary.set_mirror (&secondary);
   secondary.set_suppressed_destination ("198.51.100.1", 9);
 
@@ -133,8 +133,8 @@ int main (int argc, char * argv[])
   // receiving the mirrored status.
   QUdpSocket primary_invalid_capture;
   expect (primary_invalid_capture.bind (QHostAddress {QHostAddress::LocalHost}, 0), "bind primary-invalid capture socket");
-  MessageClient invalid_primary {"udp-mirror-test", "2.2.159.2.3", "invalid-primary.invalid", 65000};
-  MessageClient valid_secondary {"udp-mirror-test", "2.2.159.2.3", "127.0.0.1", primary_invalid_capture.localPort ()};
+  MessageClient invalid_primary {"udp-mirror-test", "2.2.159.2.4", "invalid-primary.invalid", 65000};
+  MessageClient valid_secondary {"udp-mirror-test", "2.2.159.2.4", "127.0.0.1", primary_invalid_capture.localPort ()};
   invalid_primary.set_mirror (&valid_secondary);
   pump (300);
   drain_counts (primary_invalid_capture);
@@ -147,8 +147,8 @@ int main (int argc, char * argv[])
   // receiving its own status telemetry.
   QUdpSocket secondary_invalid_capture;
   expect (secondary_invalid_capture.bind (QHostAddress {QHostAddress::LocalHost}, 0), "bind secondary-invalid capture socket");
-  MessageClient valid_primary {"udp-mirror-test", "2.2.159.2.3", "127.0.0.1", secondary_invalid_capture.localPort ()};
-  MessageClient invalid_secondary {"udp-mirror-test", "2.2.159.2.3", "invalid-secondary.invalid", 65001};
+  MessageClient valid_primary {"udp-mirror-test", "2.2.159.2.4", "127.0.0.1", secondary_invalid_capture.localPort ()};
+  MessageClient invalid_secondary {"udp-mirror-test", "2.2.159.2.4", "invalid-secondary.invalid", 65001};
   valid_primary.set_mirror (&invalid_secondary);
   pump (300);
   drain_counts (secondary_invalid_capture);
@@ -160,7 +160,7 @@ int main (int argc, char * argv[])
   // A disabled client produces neither structured telemetry nor a heartbeat.
   QUdpSocket disabled_capture;
   expect (disabled_capture.bind (QHostAddress {QHostAddress::LocalHost}, 0), "bind disabled capture socket");
-  MessageClient disabled {"udp-mirror-test", "2.2.159.2.3", "127.0.0.1", disabled_capture.localPort (), nullptr, false};
+  MessageClient disabled {"udp-mirror-test", "2.2.159.2.4", "127.0.0.1", disabled_capture.localPort (), nullptr, false};
   send_sample_telemetry (disabled);
   pump (100);
   expect (!disabled_capture.hasPendingDatagrams (), "disabled secondary sends no packets");
@@ -180,7 +180,7 @@ int main (int argc, char * argv[])
   // ticks.  The wait spans one full 15-second production interval.
   QUdpSocket dynamic_disable_capture;
   expect (dynamic_disable_capture.bind (QHostAddress {QHostAddress::LocalHost}, 0), "bind dynamic-disable capture socket");
-  MessageClient dynamic_disable {"udp-mirror-test", "2.2.159.2.3", "127.0.0.1", dynamic_disable_capture.localPort ()};
+  MessageClient dynamic_disable {"udp-mirror-test", "2.2.159.2.4", "127.0.0.1", dynamic_disable_capture.localPort ()};
   pump (1000);
   expect (drain_counts (dynamic_disable_capture).value (NetworkMessage::Heartbeat) >= 1,
           "dynamic-disable client sends initial heartbeat");
@@ -192,8 +192,8 @@ int main (int argc, char * argv[])
   // not only distinct protocol types.
   QUdpSocket deduplicated_capture;
   expect (deduplicated_capture.bind (QHostAddress {QHostAddress::LocalHost}, 0), "bind deduplication capture socket");
-  MessageClient primary_same {"udp-mirror-test", "2.2.159.2.3", "127.0.0.1", deduplicated_capture.localPort ()};
-  MessageClient secondary_same {"udp-mirror-test", "2.2.159.2.3", "127.0.0.1", deduplicated_capture.localPort ()};
+  MessageClient primary_same {"udp-mirror-test", "2.2.159.2.4", "127.0.0.1", deduplicated_capture.localPort ()};
+  MessageClient secondary_same {"udp-mirror-test", "2.2.159.2.4", "127.0.0.1", deduplicated_capture.localPort ()};
   primary_same.set_mirror (&secondary_same);
   secondary_same.set_suppressed_destination ("127.0.0.1", deduplicated_capture.localPort ());
   pump (1000);
@@ -208,7 +208,7 @@ int main (int argc, char * argv[])
   QUdpSocket close_capture;
   expect (close_capture.bind (QHostAddress {QHostAddress::LocalHost}, 0), "bind close capture socket");
   {
-    MessageClient closing_client {"udp-mirror-test", "2.2.159.2.3", "127.0.0.1", close_capture.localPort ()};
+    MessageClient closing_client {"udp-mirror-test", "2.2.159.2.4", "127.0.0.1", close_capture.localPort ()};
     pump (1000);
     drain_counts (close_capture);
   }

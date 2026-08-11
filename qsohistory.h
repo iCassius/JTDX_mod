@@ -27,7 +27,9 @@ class QsoHistory
 	  AutoCallNewGrid = 1u << 11,
 	  AutoCallNewGridBandMode = 1u << 12,
 	  AutoCallNewCall = 1u << 13,
-	  AutoCallNewCallBand = 1u << 14
+	  AutoCallNewCallBand = 1u << 14,
+	  AutoAnswerDirectedCalls = 1u << 15,
+	  AutoAnswerDirectedOnly = 1u << 16
 	};
 	static bool autoCallPriorityAllowed (int priority, unsigned options)
 	{

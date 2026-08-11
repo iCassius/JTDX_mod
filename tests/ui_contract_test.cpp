@@ -27,6 +27,8 @@ int main ()
   expect (xml.contains ("自动起呼新呼号"), "new callsign menu text exists");
   expect (xml.contains ("自动起呼新呼号波段"), "new callsign band menu text exists");
   expect (xml.contains ("name=\"actionAutoCallNewGridBandMode\""), "new grid band/mode action exists");
+  expect (xml.contains ("name=\"actionAutoAnswerDirectedCalls\""), "directed-call action exists");
+  expect (xml.contains ("待机时自动应答呼叫本台"), "directed-call action text exists");
   auto const gridAction = xml.indexOf ("<addaction name=\"actionAutoCallNewGrid\"/>");
   auto const gridBandModeAction = xml.indexOf ("<addaction name=\"actionAutoCallNewGridBandMode\"/>");
   auto const callAction = xml.indexOf ("<addaction name=\"actionAutoCallNewCall\"/>");
@@ -38,6 +40,7 @@ int main ()
   auto const configurationXml = configuration.readAll ();
   expect (configurationXml.contains ("name=\"autoCallNewGrid_check_box\""), "new grid configuration checkbox exists");
   expect (configurationXml.contains ("name=\"autoCallNewGridBandMode_check_box\""), "new grid band/mode configuration checkbox exists");
+  expect (configurationXml.contains ("name=\"autoAnswerDirectedCalls_check_box\""), "directed-call configuration checkbox exists");
   auto const gridCheckbox = configurationXml.indexOf ("name=\"autoCallNewGrid_check_box\"");
   auto const gridBandModeCheckbox = configurationXml.indexOf ("name=\"autoCallNewGridBandMode_check_box\"");
   auto const callCheckbox = configurationXml.indexOf ("name=\"autoCallNewCall_check_box\"");
@@ -53,6 +56,8 @@ int main ()
   auto const configurationCpp = configurationSource.readAll ();
   expect (configurationCpp.contains ("SeqAutoCallNewGridBandMode\", false"), "new grid band/mode default is false");
   expect (configurationCpp.contains ("autoCallNewGridBandMode_ || m_->autoCallNewCall_"), "rare-target aggregation includes new grid band/mode");
+  expect (configurationCpp.contains ("SeqAutoAnswerDirectedCalls\", false"), "directed-call option defaults off");
+  expect (configurationCpp.contains ("autoAnswerDirectedCalls_ = ui_->autoAnswerDirectedCalls_check_box->isChecked"), "settings checkbox is persisted");
 
   QFile mainWindowSource {QStringLiteral (JTDX_SOURCE_DIR "/mainwindow.cpp")};
   expect (mainWindowSource.open (QIODevice::ReadOnly), "open MainWindow source");
@@ -62,6 +67,8 @@ int main ()
   expect (!mainWindowCpp.contains ("m_secondaryMessageClient, &MessageClient::reply"), "secondary has no Reply control connection");
   expect (!mainWindowCpp.contains ("m_secondaryMessageClient, &MessageClient::trigger_CQ"), "secondary has no TriggerCQ control connection");
   expect (mainWindowCpp.contains ("Configuration::udp2_enabled_changed"), "secondary enable changes are wired dynamically");
+  expect (mainWindowCpp.contains ("setAutoAnswerDirectedCalls"), "directed-call action updates configuration");
+  expect (mainWindowCpp.contains ("actionAutoAnswerDirectedCalls->setChecked(m_config.autoAnswerDirectedCalls())"), "settings and menu stay synchronized");
   expect (!mainWindowCpp.contains ("QUdpSocket"), "secondary no longer sends raw ADIF datagrams");
 
   QFile messageClientSource {QStringLiteral (JTDX_SOURCE_DIR "/MessageClient.cpp")};
