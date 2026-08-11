@@ -2352,6 +2352,7 @@ void MainWindow::on_AutoTxButton_clicked (bool checked)
 void MainWindow::on_AutoSeqButton_clicked (bool checked)
 {
   m_autoseq = checked;
+  if (!checked) m_autoDirectedAnswerActive = false;
   if (checked) {
     m_wasAutoSeq=false; //in case of toggling AutoSeq button by user
 //txrb button selection by user can brake AutoSeq, disable all txrb buttons
@@ -3274,7 +3275,10 @@ void MainWindow::on_actionAutoCallNewGrid_toggled(bool checked) { m_config.setAu
 void MainWindow::on_actionAutoCallNewGridBandMode_toggled(bool checked) { m_config.setAutoCallNewGridBandMode(checked); ui->decodedTextBrowser->setConfiguration(&m_config); ui->decodedTextBrowser2->setConfiguration(&m_config); }
 void MainWindow::on_actionAutoCallNewCall_toggled(bool checked) { m_config.setAutoCallNewCall(checked); ui->decodedTextBrowser->setConfiguration(&m_config); ui->decodedTextBrowser2->setConfiguration(&m_config); }
 void MainWindow::on_actionAutoCallNewCallBand_toggled(bool checked) { m_config.setAutoCallNewCallBand(checked); ui->decodedTextBrowser->setConfiguration(&m_config); ui->decodedTextBrowser2->setConfiguration(&m_config); }
-void MainWindow::on_actionAutoAnswerDirectedCalls_toggled(bool checked) { m_config.setAutoAnswerDirectedCalls(checked); }
+void MainWindow::on_actionAutoAnswerDirectedCalls_toggled(bool checked) {
+  if (!checked) m_autoDirectedAnswerActive = false;
+  m_config.setAutoAnswerDirectedCalls(checked);
+}
 
 void MainWindow::on_actionSingleShot_toggled(bool checked)
 {
@@ -3293,6 +3297,7 @@ void MainWindow::on_actionAutoFilter_toggled(bool checked)
 
 void MainWindow::on_actionEnable_hound_mode_toggled(bool checked)
 {
+  m_autoDirectedAnswerActive = false;
   m_txFirst = false;  // Hound must always Tx odd (15/45)
 // Don't allow Hound frequency control in common FT8 bands if VFO Split mode is switched off
   QString message = "";
@@ -3728,6 +3733,20 @@ void MainWindow::process_Auto(bool forceCandidate)
       hisCall = m_hisCall;
       grid = m_hisGrid;
       m_status = QsoHistory::NONE;
+    } else if (DirectedCallPolicy::retryLimitAction (
+                   m_autoDirectedAnswerActive, m_status,
+                   m_config.answerInCallCount (), m_config.nAnswerInCallCounter (),
+                   m_config.sentRReportCount (), m_config.nSentRReportCounter (), count)
+               == DirectedCallPolicy::RetryAction::stopAndClear) {
+      autoStopTx ("Directed-call answer retry limit reached ");
+      m_qsoHistory.calllist (hisCall, rpt.toInt (), time);
+      count = m_qsoHistory.reset_count (hisCall);
+      clearDX (" cleared, directed-call answer retry limit reached");
+      hisCall = m_hisCall;
+      grid = m_hisGrid;
+      m_status = QsoHistory::NONE;
+      counters = false;
+      counters2 = false;
     } else if ((m_status == QsoHistory::RCQ || m_status == QsoHistory::SCALL)
         && m_config.autoCallRareTargets () && configuredRareTarget (prio)
         && m_config.answerCQCount() && m_config.nAnswerCQCounter() <= count) {
@@ -3757,19 +3776,6 @@ void MainWindow::process_Auto(bool forceCandidate)
       m_status = QsoHistory::NONE;
       if (m_singleshot)
         counters = false;
-    } else if (m_autoDirectedAnswerActive
-               && ((m_status == QsoHistory::RCALL && m_config.answerInCallCount ()
-                    && m_config.nAnswerInCallCounter () <= count)
-                   || (m_status == QsoHistory::RREPORT && m_config.sentRReportCount ()
-                       && m_config.nSentRReportCounter () <= count))) {
-      autoStopTx ("Directed-call answer retry limit reached ");
-      m_qsoHistory.calllist (hisCall, rpt.toInt (), time);
-      count = m_qsoHistory.reset_count (hisCall);
-      clearDX (" cleared, directed-call answer retry limit reached");
-      hisCall = m_hisCall;
-      grid = m_hisGrid;
-      m_status = QsoHistory::NONE;
-      counters2 = false;
     } else if ((m_status == QsoHistory::RCALL || (m_status == QsoHistory::SREPORT && !m_skipTx1)) && m_config.answerInCallCount() && 
         (m_config.nAnswerInCallCounter() <= count || m_reply_other)) {
       clearDX (" cleared, RCALL/SREPORT count reached");
@@ -6336,6 +6342,8 @@ void MainWindow::on_propLineEdit_textChanged(const QString &text) {
 
 void MainWindow::on_dxCallEntry_textChanged(const QString &t) //dxCall changed
 {
+  if (!m_hisCall.isEmpty () && t.toUpper ().trimmed () != m_hisCall)
+    m_autoDirectedAnswerActive = false;
   int n=t.length();
   if (n < 3 ) {
       if (t != t.toUpper().trimmed()) ui->dxCallEntry->setText(t.toUpper().trimmed());
@@ -6659,6 +6667,7 @@ void MainWindow::switch_mode (Mode mode)
 {
 // m_lastMode value is deliberately not assigned in constructor to let qsohistory init at SW startup 
   if(m_lastMode!=m_mode) {
+     m_autoDirectedAnswerActive = false;
      if (m_lastMode == "FT4") Q_EMIT m_config.transceiver_ft4_mode (false);
      else if (m_mode == "FT4") Q_EMIT m_config.transceiver_ft4_mode (true);
      m_qsoHistory.init(); 

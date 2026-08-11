@@ -13,6 +13,21 @@ namespace DirectedCallPolicy
   // valid standby entry points for this feature.
   constexpr int rcallStatus = 4;
   constexpr int rreportStatus = 6;
+  constexpr int sreportStatus = 7;
+  constexpr int srreportStatus = 9;
+
+  enum class RetryCounter
+  {
+    none,
+    answerInCall,
+    sentRReport
+  };
+
+  enum class RetryAction
+  {
+    continueSequence,
+    stopAndClear
+  };
 
   inline bool isDirectedCallStatus (int status)
   {
@@ -24,6 +39,37 @@ namespace DirectedCallPolicy
     if (status == rcallStatus) return 2;
     if (status == rreportStatus) return 3;
     return 0;
+  }
+
+  inline RetryCounter retryCounterForStatus (int status)
+  {
+    if (status == rcallStatus || status == sreportStatus)
+      return RetryCounter::answerInCall;
+    if (status == rreportStatus || status == srreportStatus)
+      return RetryCounter::sentRReport;
+    return RetryCounter::none;
+  }
+
+  inline RetryAction retryLimitAction (bool active, int status,
+                                       bool answerInCallEnabled,
+                                       int answerInCallLimit,
+                                       bool sentRReportEnabled,
+                                       int sentRReportLimit, int count)
+  {
+    if (!active) return RetryAction::continueSequence;
+
+    switch (retryCounterForStatus (status))
+      {
+      case RetryCounter::answerInCall:
+        return answerInCallEnabled && answerInCallLimit <= count
+          ? RetryAction::stopAndClear : RetryAction::continueSequence;
+      case RetryCounter::sentRReport:
+        return sentRReportEnabled && sentRReportLimit <= count
+          ? RetryAction::stopAndClear : RetryAction::continueSequence;
+      case RetryCounter::none:
+        return RetryAction::continueSequence;
+      }
+    return RetryAction::continueSequence;
   }
 
   inline bool canSelectStandbyCall (bool enabled, bool autoSeq,

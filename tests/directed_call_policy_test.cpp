@@ -70,6 +70,57 @@ int main ()
           "RREPORT maps to Tx3");
   expect (DirectedCallPolicy::standardTxButtonForStatus (12) == 0,
           "completion has no standby Tx mapping");
+  expect (DirectedCallPolicy::retryCounterForStatus (DirectedCallPolicy::rcallStatus)
+              == DirectedCallPolicy::RetryCounter::answerInCall,
+          "RCALL uses answer-in-call counter");
+  expect (DirectedCallPolicy::retryCounterForStatus (DirectedCallPolicy::sreportStatus)
+              == DirectedCallPolicy::RetryCounter::answerInCall,
+          "SREPORT uses answer-in-call counter after RCALL Tx2");
+  expect (DirectedCallPolicy::retryCounterForStatus (DirectedCallPolicy::rreportStatus)
+              == DirectedCallPolicy::RetryCounter::sentRReport,
+          "RREPORT uses sent-R-report counter");
+  expect (DirectedCallPolicy::retryCounterForStatus (DirectedCallPolicy::srreportStatus)
+              == DirectedCallPolicy::RetryCounter::sentRReport,
+          "SRREPORT uses sent-R-report counter after RREPORT Tx3");
+  expect (DirectedCallPolicy::retryLimitAction (true, DirectedCallPolicy::rcallStatus,
+                                               true, 3, true, 5, 2)
+              == DirectedCallPolicy::RetryAction::continueSequence,
+          "RCALL continues below answer-in-call limit");
+  expect (DirectedCallPolicy::retryLimitAction (true, DirectedCallPolicy::rcallStatus,
+                                               true, 3, true, 5, 3)
+              == DirectedCallPolicy::RetryAction::stopAndClear,
+          "RCALL stops and clears at answer-in-call limit");
+  expect (DirectedCallPolicy::retryLimitAction (true, DirectedCallPolicy::sreportStatus,
+                                               true, 3, true, 5, 3)
+              == DirectedCallPolicy::RetryAction::stopAndClear,
+          "SREPORT stops and clears at answer-in-call limit");
+  expect (DirectedCallPolicy::retryLimitAction (true, DirectedCallPolicy::rreportStatus,
+                                               true, 3, true, 5, 4)
+              == DirectedCallPolicy::RetryAction::continueSequence,
+          "RREPORT continues below sent-R-report limit");
+  expect (DirectedCallPolicy::retryLimitAction (true, DirectedCallPolicy::rreportStatus,
+                                               true, 3, true, 5, 5)
+              == DirectedCallPolicy::RetryAction::stopAndClear,
+          "RREPORT stops and clears at sent-R-report limit");
+  expect (DirectedCallPolicy::retryLimitAction (true, DirectedCallPolicy::srreportStatus,
+                                               true, 3, true, 5, 5)
+              == DirectedCallPolicy::RetryAction::stopAndClear,
+          "SRREPORT stops and clears at sent-R-report limit");
+  expect (DirectedCallPolicy::retryLimitAction (true, DirectedCallPolicy::sreportStatus,
+                                               false, 0, true, 5, 5)
+              == DirectedCallPolicy::RetryAction::continueSequence,
+          "SREPORT does not use sent-R-report counter");
+  expect (DirectedCallPolicy::retryLimitAction (true, DirectedCallPolicy::srreportStatus,
+                                               true, 3, false, 0, 5)
+              == DirectedCallPolicy::RetryAction::continueSequence,
+          "SRREPORT does not use answer-in-call counter");
+  expect (DirectedCallPolicy::retryLimitAction (false, DirectedCallPolicy::sreportStatus,
+                                               true, 1, true, 1, 1)
+              == DirectedCallPolicy::RetryAction::continueSequence,
+          "inactive directed answer cannot stop a manual QSO");
+  expect (DirectedCallPolicy::retryLimitAction (true, 12, true, 1, true, 1, 1)
+              == DirectedCallPolicy::RetryAction::continueSequence,
+          "completion status has no directed retry policy");
 
   expect (DirectedCallPolicy::isBetterCandidate (QStringLiteral ("K1AAA"), 0, 0, 0,
                                                  true, QStringLiteral ("W1ABC"), 0, 0, 0, false),
