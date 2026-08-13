@@ -2353,7 +2353,10 @@ void MainWindow::on_AutoTxButton_clicked (bool checked)
 void MainWindow::on_AutoSeqButton_clicked (bool checked)
 {
   m_autoseq = checked;
-  if (!checked) m_autoDirectedAnswerActive = false;
+  if (!checked) {
+    m_autoDirectedAnswerActive = false;
+    m_autoSeqRecovery.cancel ();
+  }
   if (checked) {
     m_wasAutoSeq=false; //in case of toggling AutoSeq button by user
 //txrb button selection by user can brake AutoSeq, disable all txrb buttons
@@ -3669,6 +3672,16 @@ void MainWindow::decode()                                       //decode()
 
 void MainWindow::process_Auto(bool forceCandidate)
 {
+  if (m_autoSeqRecovery.pending ()
+      && (m_autoSeqRecovery.recovered_at () == 0
+          || m_msDecStarted <= m_autoSeqRecovery.recovered_at ())) {
+    appendRecoveryLog (m_dataDir, "auto-call",
+                       QString {"recovery gate withheld stale decode forceCandidate=%1 decodeStarted=%2 recoveredAt=%3"}
+                       .arg (forceCandidate ? "true" : "false")
+                       .arg (m_msDecStarted)
+                       .arg (m_autoSeqRecovery.recovered_at ()));
+    return;
+  }
   int count = 0;
   int prio = 0;
   bool counters = true;
@@ -4011,6 +4024,20 @@ void MainWindow::process_Auto(bool forceCandidate)
       default: {
         break;
       }
+    }
+    bool const recoveryFreshCandidate = m_autoSeqRecovery.pending ()
+      && m_autoSeqRecovery.can_arm (m_msDecStarted,
+                                    !hisCall.isEmpty () && m_status > QsoHistory::NONE);
+    if (recoveryFreshCandidate) {
+      appendRecoveryLog (m_dataDir, "auto-call",
+                         QString {"recovery accepted fresh candidate=%1 decodeStarted=%2 recoveredAt=%3; normal AutoSeq gates remain authoritative"}
+                         .arg (hisCall)
+                         .arg (m_msDecStarted)
+                         .arg (m_autoSeqRecovery.recovered_at ()));
+      // This only releases the stale-decode gate.  It does not arm Enable Tx;
+      // the existing rare-target/direct-answer branches below remain the only
+      // branches changed by this block.
+      m_autoSeqRecovery.consume_candidate ();
     }
     if (autoRareTargetArm || autoDirectedAnswerArm) {
       // The candidate's period and standard Tx message have both been
@@ -7534,6 +7561,13 @@ void MainWindow::handle_transceiver_update (Transceiver::TransceiverState const&
 
   if (s.online () && m_rigRecovery.attempts ())
     {
+      if (m_autoSeqRecovery.pending ()) {
+        auto const recoveredAt = m_jtdxtime->currentMSecsSinceEpoch2 ();
+        m_autoSeqRecovery.reconnected (recoveredAt);
+        appendRecoveryLog (m_dataDir, "auto-call",
+                           QString {"recovery connected; waiting for fresh candidate recoveredAt=%1"}
+                           .arg (recoveredAt));
+      }
       appendRecoveryLog (m_dataDir, "rig-control", QString {"recovered after attempt %1"}.arg (m_rigRecovery.attempts ()));
       m_rigRecoveryTimer.stop ();
       m_rigRecovery.reset ();
@@ -7660,6 +7694,14 @@ void MainWindow::handle_transceiver_update (Transceiver::TransceiverState const&
 
 void MainWindow::handle_transceiver_failure (QString const& reason)
 {
+  bool const preserveAutoSeqIntent = m_autoseq
+    && (m_enableTx || m_transmitting || m_tx_when_ready || g_iptt != 0);
+  if (preserveAutoSeqIntent || m_autoSeqRecovery.pending ()) {
+    m_autoSeqRecovery.disconnected (preserveAutoSeqIntent || m_autoSeqRecovery.pending ());
+    appendRecoveryLog (m_dataDir, "auto-call",
+                       QString {"recovery disconnected preserveIntent=%1"}
+                       .arg (preserveAutoSeqIntent ? "true" : "false"));
+  }
   appendRecoveryLog (m_dataDir, "rig-control",
                      QString {"failure=%1; online=%2; ptt=%3; split=%4; "
                               "frequency=%5; tx_frequency=%6; g_iptt=%7; "

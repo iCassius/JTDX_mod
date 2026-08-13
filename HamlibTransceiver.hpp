@@ -10,6 +10,7 @@
 
 #include "TransceiverFactory.hpp"
 #include "PollingTransceiver.hpp"
+#include "ftx1_cat_poll_policy.hpp"
 
 extern "C"
 {
@@ -45,6 +46,9 @@ class HamlibTransceiver final
   void do_poll () override;
 
   void error_check (int ret_code, QString const& doing) const;
+  void check_poll_read (Ftx1CatPollPolicy::Operation, int ret_code,
+                        QString const& doing, bool legacy_ignore = false);
+  void observe_poll_success (Ftx1CatPollPolicy::Operation);
   void set_conf (char const * item, char const * value);
   QByteArray get_conf (char const * item);
   Transceiver::MODE map_mode (rmode_t) const;
@@ -77,6 +81,10 @@ class HamlibTransceiver final
   JTDXDateTime * m_jtdxtime;                                // establish the Tx VFO
   bool get_vfo_works_;          // Net rigctl promises what it can't deliver
   bool set_vfo_works_;          // More rigctl promises which it can't deliver
+  Ftx1CatPollPolicy::State ftx1_poll_policy_;
+  unsigned ftx1_nonessential_hold_polls_;
+  unsigned ptt_transition_hold_polls_;
+  bool ptt_state_known_;
   std::string debug_file_;
 };
 

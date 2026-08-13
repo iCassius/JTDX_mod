@@ -40,6 +40,7 @@
 #include "qsohistory.h"
 #include "JTDXDateTime.h"
 #include "recovery_policy.hpp"
+#include "autoseq_recovery_policy.hpp"
 
 
 //--------------------------------------------------------------- MainWindow
@@ -687,6 +688,7 @@ private:
   QTimer RxQSYTimer;
   QTimer m_rigRecoveryTimer;
   RecoveryPolicy m_rigRecovery;
+  AutoSeqRecoveryPolicy m_autoSeqRecovery;
 
   QString m_path;
   QString m_baseCall;
