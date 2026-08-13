@@ -95,6 +95,28 @@ int main ()
   require (nonessential_reads_allowed (false, false, true, true, true, 2, true),
            "non-FTX-1 polling schedule must remain unchanged");
 
+  // A legacy optional result completes the poll and clears the overall
+  // streak; a later transient error starts again at the first failure.
+  State optional_completion;
+  optional_completion.begin_poll ();
+  require (Decision::soft_ignore == optional_completion.observe_failure (
+      Operation::rx_frequency, idle ()),
+           "transient failure before optional completion must be counted");
+  require (1 == optional_completion.overall_failure_streak (),
+           "first transient failure must set overall=1");
+  optional_completion.begin_poll ();
+  require (legacy_optional_failure (Operation::mode, true, idle ()),
+           "optional legacy error must complete safely");
+  optional_completion.complete_poll ();
+  require (0 == optional_completion.overall_failure_streak (),
+           "optional legacy completion must clear overall streak");
+  optional_completion.begin_poll ();
+  require (Decision::soft_ignore == optional_completion.observe_failure (
+      Operation::rx_frequency, idle ()),
+           "transient failure after optional completion must be soft again");
+  require (1 == optional_completion.overall_failure_streak (),
+           "transient failure after completion must restart at overall=1");
+
   // h: recovery cannot arm on old/no-candidate decodes, only on a new one.
   AutoSeqRecoveryPolicy recovery;
   recovery.disconnected (true);

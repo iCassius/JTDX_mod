@@ -1,4 +1,24 @@
 $ErrorActionPreference = 'Stop'
+
+function Get-Sha256 {
+  param ([string] $Path)
+
+  $algorithm = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    $stream = [System.IO.File]::OpenRead($Path)
+    try {
+      $bytes = $algorithm.ComputeHash($stream)
+      return (($bytes | ForEach-Object { $_.ToString('x2') }) -join '').ToUpperInvariant()
+    }
+    finally {
+      $stream.Dispose()
+    }
+  }
+  finally {
+    $algorithm.Dispose()
+  }
+}
+
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $required = @(
   'bin\jtdx.exe',
@@ -12,7 +32,7 @@ foreach ($relative in $required) {
   }
 }
 $hamlib = Join-Path -Path $root -ChildPath 'bin\msys-hamlib-4.dll'
-$hash = (Get-FileHash -LiteralPath $hamlib -Algorithm SHA256).Hash
+$hash = Get-Sha256 -Path $hamlib
 Write-Output "root=$root"
 Write-Output "hamlib_sha256=$hash"
 if ($hash -ne '630A90E02F56E0D5F02A77E8D172F61F041399900DBFFA57A4FB989896895DB3') {

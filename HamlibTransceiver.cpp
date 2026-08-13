@@ -652,6 +652,10 @@ void HamlibTransceiver::check_poll_read (Ftx1CatPollPolicy::Operation operation,
                             context.ptt_known, context.ptt_request_pending,
                             context.ptt_transition_pending,
                             Ftx1CatPollPolicy::safe_idle (context));
+      // This optional legacy result completes the current poll without
+      // contributing to the next poll's overall failure streak.  No cached
+      // value is updated and do_poll() still returns immediately.
+      ftx1_poll_policy_.complete_poll ();
       return;
     }
   auto const decision = ftx1_poll_policy_.observe_failure (operation, context);
