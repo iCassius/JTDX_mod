@@ -1,5 +1,14 @@
 # JTDX 2.2.159.2.6-test 设计记录
 
+## 边界违规纠正（2.2.159.2.7-test 前置约束）
+
+本节先于实现固化本任务的工程边界（需求引用：`codex_delegation`，源会话 `01a03476-cff9-7fd1-86ed-4787d12a1dba`）：
+
+- FTX-1 的电台控制后端始终是 Hamlib model `1051`。不得安装、注册、运行或配置 OmniRig；不得把 OmniRig 作为 FTX-1 修复或新的运行时依赖。不得为了通过构建删除或永久关闭普通 JTDX 的 OmniRig 功能，也不得改变默认 Windows 构建语义。
+- 必须区分既有源码中的通用 OmniRig 兼容层、Windows CMake 历史上无条件执行的 COM/`dumpcpp` 依赖门槛，以及本次 FTX-1 Hamlib-only 运行时方案。构建依赖门槛不是 FTX-1 功能方案，不能把缺少 OmniRig 的配置失败误报为 Hamlib 修复完成。
+- Windows 构建选项必须明确表达 OmniRig 支持，默认开启；默认 ON 时保留既有源码、COM 检查、注册项和普通 JTDX 行为。仅本次明确的 Hamlib-only 测试包允许显式 OFF；OFF 不得静默自动降级，且配置/编译不得包含 `OmniRigTransceiver` 或 ActiveQt wrapper，不得注册 OmniRig Rig 1/2。Hamlib 及其他正常后端必须继续存在。
+- 不新增第三方组件、下载器、安装器、后端、运行时依赖、静默回退或伪成功；任何新增依赖、后端或默认行为必须另行批准。测试包若使用 OFF，必须在 README 和发布说明显著标注其只用于 Hamlib 后端验证，普通 OmniRig 用户应使用默认 ON 的完整源码构建。
+
 ## 现状证据
 
 - `PollingTransceiver::handle_timeout()` 在现有 500 ms 事件循环中调用具体实现的 `do_poll()`；异常会直接进入 `offline()`，随后由 `MainWindow::handle_transceiver_failure()` 停止发射并安排重连。
