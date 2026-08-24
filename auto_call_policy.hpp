@@ -5,6 +5,11 @@
 
 namespace AutoCallPolicy
 {
+  constexpr int rfinStatus = 1;
+  constexpr int rcqStatus = 2;
+  constexpr int scallStatus = 5;
+  constexpr int sreportStatus = 7;
+
   inline QStringList ft8Fields (QString const& message)
   {
     return message.simplified ().split (' ', Qt::SkipEmptyParts);
@@ -33,6 +38,23 @@ namespace AutoCallPolicy
         && priority >= 13 && priority <= 14;
     return retainedDxCall && hasNewGrid
         && (wholeGridPriority || gridBandModePriority);
+  }
+
+  // RFIN 是自动新目标首次发送 TX1 时的状态，也必须服从回答 CQ 次数上限。
+  inline bool isAnswerCQRetryStatus (int status, bool skipTx1, bool houndMode)
+  {
+    return !houndMode
+        && (status == rfinStatus || status == rcqStatus || status == scallStatus
+            || (status == sreportStatus && skipTx1));
+  }
+
+  inline bool answerCQRetryLimitReached (int status, bool skipTx1,
+                                         bool houndMode, bool counterEnabled,
+                                         int counterLimit, int count,
+                                         bool replyOther)
+  {
+    return isAnswerCQRetryStatus (status, skipTx1, houndMode)
+        && counterEnabled && (counterLimit <= count || replyOther);
   }
 
   // A retained DX entry may be replaced by a forced new-grid candidate only

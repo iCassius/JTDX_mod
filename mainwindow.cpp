@@ -3775,9 +3775,12 @@ void MainWindow::process_Auto(bool forceCandidate)
       grid = m_hisGrid;
       m_status = QsoHistory::NONE;
       counters = false;
-    } else if ((m_status == QsoHistory::RCQ || m_status == QsoHistory::SCALL || (m_status == QsoHistory::SREPORT && m_skipTx1 && !m_houndMode)) && m_config.answerCQCount() &&
-        ((prio > 4 && prio < 17) || prio < 2 || m_strictdirCQ) && (m_config.nAnswerCQCounter() <= count || m_reply_other)) {
-      clearDX (" cleared, RCQ/SCALL/SREPORT count reached");
+    } else if (AutoCallPolicy::answerCQRetryLimitReached (
+                   m_status, m_skipTx1, m_houndMode,
+                   m_config.answerCQCount(), m_config.nAnswerCQCounter (),
+                   count, m_reply_other)
+        && ((prio > 4 && prio < 17) || prio < 2 || m_strictdirCQ)) {
+      clearDX (" cleared, RFIN/RCQ/SCALL/SREPORT count reached");
       if (m_reply_other)
           counters2 = false;
       else {

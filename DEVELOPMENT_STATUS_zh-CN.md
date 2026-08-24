@@ -36,6 +36,8 @@
 
 本次 2.2.159.2.5 修复新网格强制重评估的竞态边界：同一批解码中，其他台的 RRR/RR73/73 完成消息不会覆盖仍在进行的 DX QSO。保留 DX 只有在该 QSO 已实际发送 Tx5，且当前周期没有等待对方首个 73、没有正在发射、普通 AutoSeq 尚未处理时，才允许进入新的候选选择；这些条件由 `AutoCallPolicy::canForceCandidate` 纯策略测试覆盖。
 
+本次回归修复补齐自动新目标 `RFIN` 状态的回答 CQ 次数上限：它对应首次 TX1，达到上限后与 `RCQ/SCALL` 一样清理 DX 呼号和网格，使后续新网格或新呼号候选重新进入 AutoSeq 选择。该边界由 `AutoCallPolicy::answerCQRetryLimitReached` 测试；Hound、活动发射、pending first 73、已处理周期和 Tx5 后候选抢占保护保持原有约束。
+
 无回应次数继续使用现有的呼入应答/发送报告次数设置。达到上限后停止发射、关闭 Enable Tx、执行“清除 DX”同等清理并回到待命；不会永久屏蔽该呼号，只有新的有效解码才可再次触发。
 
 ## Fake It 和拨盘频率

@@ -82,6 +82,31 @@ int main()
   expect(!AutoCallPolicy::newGridNeedsReevaluation (true, false, true, true, 15),
          "old DX without a new grid does not retrigger AutoSeq");
 
+  expect(AutoCallPolicy::isAnswerCQRetryStatus (AutoCallPolicy::rfinStatus, false, false),
+         "RFIN is an answer-CQ retry status for automatic TX1");
+  expect(AutoCallPolicy::isAnswerCQRetryStatus (AutoCallPolicy::rcqStatus, false, false),
+         "RCQ keeps the existing answer-CQ retry status");
+  expect(AutoCallPolicy::isAnswerCQRetryStatus (AutoCallPolicy::scallStatus, false, false),
+         "SCALL keeps the existing answer-CQ retry status");
+  expect(AutoCallPolicy::isAnswerCQRetryStatus (AutoCallPolicy::sreportStatus, true, false),
+         "skipped-TX1 SREPORT keeps the existing answer-CQ retry status");
+  expect(AutoCallPolicy::answerCQRetryLimitReached (AutoCallPolicy::rfinStatus, false, false,
+                                                    true, 2, 2, false),
+         "RFIN reaches the TX1 retry limit and must clear DX");
+  expect(!AutoCallPolicy::answerCQRetryLimitReached (AutoCallPolicy::rfinStatus, false, false,
+                                                     true, 2, 1, false),
+         "RFIN remains active below the TX1 retry limit");
+  expect(AutoCallPolicy::answerCQRetryLimitReached (AutoCallPolicy::rfinStatus, false, false,
+                                                    true, 2, 1, true),
+         "reply-to-other still terminates the RFIN retry");
+  expect(!AutoCallPolicy::answerCQRetryLimitReached (AutoCallPolicy::rfinStatus, false, true,
+                                                     true, 1, 1, false),
+         "Hound mode keeps its separate retry path");
+  expect(!AutoCallPolicy::isAnswerCQRetryStatus (AutoCallPolicy::sreportStatus, false, false),
+         "SREPORT without skipped TX1 is not an answer-CQ retry");
+  expect(AutoCallPolicy::canForceCandidate (false, false, false, false, false),
+         "cleared DX permits a fresh candidate to be selected and armed");
+
   expect(!AutoCallPolicy::canForceCandidate (true, false, false, false, false),
          "retained active QSO cannot be replaced");
   expect(!AutoCallPolicy::canForceCandidate (true, true, false, false, true),
