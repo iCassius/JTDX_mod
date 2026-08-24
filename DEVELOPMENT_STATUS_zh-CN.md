@@ -2,12 +2,19 @@
 
 ## 当前基线
 
-- 产品显示版本：JTDX `2.2.159.2.6`。
-- 标题：`JTDX v2.2.159.2.6 自动起呼版 By BI7KGD`。
-- Windows 四段版本资源保持可解析的 `2.2.159.2`；`.6` 是本次产品显示后缀，不改变 PE 资源字段布局。
+- 产品显示版本：JTDX `2.2.159.2.7-test`。
+- 标题：`JTDX v2.2.159.2.7 自动起呼版 By BI7KGD`。
+- Windows 四段版本资源保持可解析的 `2.2.159.2`；`.7` 是本次产品显示后缀，不改变 PE 资源字段布局。
 - 源码目录：`C:\JTDX64\jtdx_sourcecode`。
 - Hamlib 运行时：`4.7.2`，FTX-1 backend `20251224.0`。
-- `159` 是当前使用目录；本次 `159.2.6-test` 交付包独立放置，不覆盖 `159.2.5`、`159.bak` 或 `159`，包内脚本使用相对路径。
+- `159` 是当前使用目录；本次 `159.2.7-test` 交付包独立放置，不覆盖 `159.2.6-test`、`159.2.5`、`159.bak` 或 `159`，包内脚本使用相对路径。
+
+## FTX-1 与 OmniRig 构建边界
+
+- FTX-1 始终使用 Hamlib model `1051`；本任务不得安装、注册、运行或配置 OmniRig，也不得把 OmniRig 作为 FTX-1 修复或新的运行时依赖。
+- `WSJT_ENABLE_OMNIRIG` 是明确的 Windows 构建选项，默认 `ON`。默认 ON 保留既有 OmniRig 源码、ActiveQt/COM 检查、Rig 1/2 注册和普通 JTDX 行为；Windows CMake 的依赖门槛不等于 FTX-1 功能方案。
+- 本 `2.2.159.2.7-test` 包是显式 `WSJT_ENABLE_OMNIRIG=OFF` 的 Hamlib-only 测试包：配置/编译不包含 `OmniRigTransceiver`、`dumpcpp` 或 ActiveQt wrapper，不注册 OmniRig Rig 1/2；Hamlib、TCI、HRD、DXLab 等正常后端仍保留。普通 OmniRig 用户应使用默认 ON 的完整源码构建。
+- 不新增第三方组件、下载器、安装器、后端、运行时依赖、静默回退或伪成功；新增依赖、后端或默认行为必须另行批准。
 
 ## 自动起呼
 
@@ -74,7 +81,7 @@ FTX-1（Hamlib model `1051`）的 `do_poll()` 保持 PTT-first：PTT 未知、�
 - 中国普通呼号继续显示省级归属地，例如 `中国 河北`；归属地只用于显示，不改变 DXCC、日志 B4 或自动起呼资格。
 - 左右解码窗口可在呼号上右键选择“在 QRZ.com 查询”，通过安全的 `https://www.qrz.com/db/<CALL>` 地址打开浏览器。
 - 主窗口和主要控制按钮增加最小尺寸，修复小窗口下按钮被压缩到文字遮挡的问题。
-- 关于窗口和标题栏显示 `2.2.159.2.6 自动起呼版 By BI7KGD`。
+- 关于窗口和标题栏显示 `2.2.159.2.7 自动起呼版 By BI7KGD`。
 
 ## UDP 遥测镜像
 
@@ -85,10 +92,11 @@ FTX-1（Hamlib model `1051`）的 `do_poll()` 保持 PTT-first：PTT 未知、�
 
 ## 自动验证与边界
 
-本次 FTX-1 表计回归补丁的本地自动验证包括：
+本次 2.2.159.2.7-test 的本地自动验证包括：
 
-- 使用 `C:\msys64\mingw64\bin` 的 MinGW64 工具链，以 `-Wall -Wextra -Werror` 独立编译并通过 `ftx1_cat_policy_test`；
-- 完整 Windows CMake/CTest/Release 构建在隔离目录尝试，配置阶段因本机缺少 OmniRig、`dumpcpp` 未返回 AXSERVER 而停止，未伪报构建或 CTest 通过；
+- 使用 `C:\msys64\mingw64\bin` 的 MinGW64 工具链，在独立 clean Release 目录以 `WSJT_ENABLE_OMNIRIG=OFF` 完成配置和完整构建；
+- 完整 CTest 共 `12/12` 通过，含 `omnirig_build_option_test`：OFF 不缓存 `dumpcpp`，目标元数据不含 OmniRig/ActiveQt wrapper，Hamlib 及其他正常后端仍在；
+- 默认 ON 的独立配置探针保留 `dumpcpp -getfile` 与 Qt5 ActiveQt/COM 路径；未进行 ON 编译、未启动 JTDX，普通 Windows 构建语义仍由默认 ON 保持；
 - `callsignlocation_test`；
 - `autocall_policy_test`；
 - `auto_tx_period_policy_test`；
@@ -99,8 +107,8 @@ FTX-1（Hamlib model `1051`）的 `do_poll()` 保持 PTT-first：PTT 未知、�
 - `qrz_lookup_test`；
 - `ui_contract_test`；
 - `udp_mirror_test` 使用本机离线 UDP 捕获验证双通道 Heartbeat、Status、Decode、WSPRDecode、Clear、QSOLogged、LoggedADIF、Close、动态切换、禁用后的 heartbeat 静默、双向无效地址隔离和同目标实际 datagram 去重；`ui_contract_test` 验证辅助通道只读连接结构。
-- Windows PE 四段版本资源证据（`FileVersion=2.2.159.2`、显示版本 `2.2.159.2.6`）；交付目录需从最终提交完成依赖闭包、SHA256 和 ZIP 根目录检查。
+- Windows PE 四段版本资源证据（`FileVersion=2.2.159.2`、显示版本 `2.2.159.2.7-test`）；交付目录需从最终提交完成依赖闭包、SHA256 和 ZIP 根目录检查。
 
-最终交付为 `C:\JTDX64\159.2.6-test` 及同级 ZIP；包内启动脚本使用相对路径，自动验收不覆盖 `159`、`159.2.5` 或 `159.bak`。
+最终交付为 `C:\JTDX64\159.2.7-test` 及同级 ZIP；包内启动脚本使用相对路径，自动验收不覆盖 `159`、`159.2.6-test`、`159.2.5` 或 `159.bak`。
 
 `AUTO_VERIFIED` 不等于真机验证。以下仍需用户 HIL：真实 FTX-1 的 CAT/PTT、power/SWR 回读和 UI 刷新、meter-only 与 PTT 过渡时序、Fake It 时序、串口被其他程序占用时的启动交互、长时间挂机声卡恢复、实际自动起呼发射次数（包括两组网格 priority 的真实日志命中）、PTT/音频时序，以及不同 DPI/窗口尺寸下的界面观感。本版本不启动 JTDX、不操作 CAT/PTT/电台、不发射；`audio_policy_test` 只验证纯策略；Qt 真实音频端点和 processed 音频帧没有被伪造为自动 HIL。

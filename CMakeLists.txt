@@ -113,6 +113,7 @@ option (WSJT_RIG_NONE_CAN_SPLIT "Allow split operation with \"None\" as rig.")
 option (WSJT_TRACE_UDP "Debugging option that turns on UDP message protocol diagnostics.")
 option (WSJT_BUILD_UTILS "Build simulators and code demonstrators." ON)
 option (JTDX_DEBUG_TO_FILE "Write debu to jtdx_debug.txt.")
+option (WSJT_ENABLE_OMNIRIG "Enable the Windows OmniRig backend and ActiveQt COM wrapper." ON)
 
 CMAKE_DEPENDENT_OPTION (WSJT_HAMLIB_VERBOSE_TRACE "Debugging option that turns on full Hamlib internal diagnostics." OFF WSJT_HAMLIB_TRACE OFF)
 CMAKE_DEPENDENT_OPTION (WSJT_QDEBUG_IN_RELEASE "Leave Qt debugging statements in Release configuration." OFF
@@ -269,10 +270,12 @@ if (WIN32)
     killbyname.cpp
     )
 
-  set (wsjt_qt_CXXSRCS
-    ${wsjt_qt_CXXSRCS}
-    OmniRigTransceiver.cpp
-    )
+  if (WSJT_ENABLE_OMNIRIG)
+    set (wsjt_qt_CXXSRCS
+      ${wsjt_qt_CXXSRCS}
+      OmniRigTransceiver.cpp
+      )
+  endif (WSJT_ENABLE_OMNIRIG)
 endif (WIN32)
 
 set (wsjt_FSRCS
@@ -675,8 +678,8 @@ endif (WSJT_QDEBUG_IN_RELEASE)
 set_property (SOURCE ${all_C_and_CXXSRCS} APPEND_STRING PROPERTY COMPILE_FLAGS " -include wsjtx_config.h")
 set_property (SOURCE ${all_C_and_CXXSRCS} APPEND PROPERTY OBJECT_DEPENDS wsjtx_config.h)
 
-if (WIN32)
-  # generate the OmniRig COM interface source
+if (WIN32 AND WSJT_ENABLE_OMNIRIG)
+  # 仅在明确启用 OmniRig 时生成既有 COM 接口源文件。
   find_program (DUMPCPP dumpcpp)
   if (DUMPCPP-NOTFOUND)
     message (FATAL_ERROR "dumpcpp tool not found")
@@ -692,7 +695,7 @@ if (WIN32)
   endif (NOT AXSERVER)
   string (REPLACE "\"" "" AXSERVER ${AXSERVER})
   file (TO_CMAKE_PATH ${AXSERVER} AXSERVERSRCS)
-endif (WIN32)
+endif (WIN32 AND WSJT_ENABLE_OMNIRIG)
 
 
 #
@@ -764,8 +767,10 @@ find_package (Qt5 COMPONENTS Widgets SerialPort Multimedia LinguistTools WebSock
 
 if (WIN32)
   add_definitions (-DQT_NEEDS_QTMAIN)
-  find_package (Qt5AxContainer REQUIRED)
 endif (WIN32)
+if (WIN32 AND WSJT_ENABLE_OMNIRIG)
+  find_package (Qt5AxContainer REQUIRED)
+endif (WIN32 AND WSJT_ENABLE_OMNIRIG)
 
 #
 # sub-directories
@@ -1028,10 +1033,10 @@ qt5_add_resources (wsjtx_RESOURCES_RCC
 )
 
 # AX COM servers
-if (WIN32)
+if (WIN32 AND WSJT_ENABLE_OMNIRIG)
   include (QtAxMacros)
   wrap_ax_server (GENAXSRCS ${AXSERVERSRCS})
-endif (WIN32)
+endif (WIN32 AND WSJT_ENABLE_OMNIRIG)
 
 
 #
@@ -1075,9 +1080,10 @@ add_library (wsjt_qt STATIC ${wsjt_qt_CXXSRCS} ${wsjt_qt_GENUISRCS} ${GENAXSRCS}
 target_compile_definitions (wsjt_qt PUBLIC UDP_STATIC_DEFINE)
 target_link_libraries (wsjt_qt Hamlib::Hamlib Qt5::Widgets Qt5::Network Qt5::Gui Qt5::WebSockets)
 #target_include_directories (wsjt_qt BEFORE PRIVATE ${hamlib_INCLUDE_DIRS})
-if (WIN32)
+if (WIN32 AND WSJT_ENABLE_OMNIRIG)
+  target_compile_definitions (wsjt_qt PRIVATE WSJT_ENABLE_OMNIRIG)
   target_link_libraries (wsjt_qt Qt5::AxContainer Qt5::AxBase)
-endif (WIN32)
+endif (WIN32 AND WSJT_ENABLE_OMNIRIG)
 
 add_library (wsjt_qtmm STATIC ${wsjt_qtmm_CXXSRCS} ${wsjt_qtmm_GENUISRCS})
 target_link_libraries (wsjt_qtmm Qt5::Multimedia)
@@ -1601,6 +1607,14 @@ if (JTDX_BUILD_LOCAL_TESTS)
   target_include_directories (udp_mirror_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   target_link_libraries (udp_mirror_test wsjt_qt Qt5::Core Qt5::Network)
   add_test (NAME udp_mirror_test COMMAND udp_mirror_test)
+  if (WIN32)
+    add_test (NAME omnirig_build_option_test
+      COMMAND ${CMAKE_COMMAND}
+        -DPROJECT_SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+        -DBINARY_DIR=${CMAKE_BINARY_DIR}
+        -DWSJT_ENABLE_OMNIRIG=${WSJT_ENABLE_OMNIRIG}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/tests/omnirig_build_option_test.cmake)
+  endif ()
 endif ()
 
 

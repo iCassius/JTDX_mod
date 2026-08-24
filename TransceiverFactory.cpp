@@ -8,7 +8,7 @@
 #include "HRDTransceiver.hpp"
 #include "EmulateSplitTransceiver.hpp"
 
-#if defined (WIN32)
+#if defined (WIN32) && defined (WSJT_ENABLE_OMNIRIG)
 #include "OmniRigTransceiver.hpp"
 #endif
 
@@ -29,8 +29,10 @@ namespace
       , TCI2Id
       , CommanderId
       , HRDId
+#if defined (WIN32) && defined (WSJT_ENABLE_OMNIRIG)
       , OmniRigOneId
       , OmniRigTwoId
+#endif
     };
 }
 
@@ -41,8 +43,8 @@ TransceiverFactory::TransceiverFactory ()
   DXLabSuiteCommanderTransceiver::register_transceivers (&transceivers_, CommanderId);
   HRDTransceiver::register_transceivers (&transceivers_, HRDId);
   
-#if defined (WIN32)
-  // OmniRig is ActiveX/COM server so only on Windows
+#if defined (WIN32) && defined (WSJT_ENABLE_OMNIRIG)
+  // OmniRig 是 ActiveX/COM 服务，仅在明确启用时注册既有 Rig 1/2。
   OmniRigTransceiver::register_transceivers (&transceivers_, OmniRigOneId, OmniRigTwoId);
 #endif
 }
@@ -159,7 +161,7 @@ std::unique_ptr<Transceiver> TransceiverFactory::create (ParameterPack const& pa
       }
       break;
 
-#if defined (WIN32)
+#if defined (WIN32) && defined (WSJT_ENABLE_OMNIRIG)
     case OmniRigOneId:
       {
         std::unique_ptr<TransceiverBase> basic_transceiver;
