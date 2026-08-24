@@ -67,6 +67,8 @@ CAT 打开失败或运行中断后按 `2 秒 → 5 秒 → 15 秒` 有限重连�
 
 恢复事件写入数据目录的 `jtdx_recovery.log`，包含错误原因、RX/TX 频率、PTT、Split、发射和 Enable Tx 状态；日志约 256 KiB 后轮换。
 
+FTX-1（Hamlib model `1051`）的 `do_poll()` 保持 PTT-first：PTT 未知、请求与实际不一致、PTT 切换后的两个保持轮次内，继续暂停 VFO、Split、频率、模式和其他非必要查询。实际 PTT-on 已确认、请求已确认且保持结束后，只进入现有 power/SWR meter-only 读取路径，恢复发射期间表计刷新；不改变其他型号，也不改变 Hamlib 源码或 DLL。纯策略测试覆盖 PTT on/off、过渡保持、meter-only 放行、可选错误和连续瞬态错误边界；真实电台读数和界面刷新仍需 HIL。
+
 ## 其他界面功能
 
 - 中国普通呼号继续显示省级归属地，例如 `中国 河北`；归属地只用于显示，不改变 DXCC、日志 B4 或自动起呼资格。
@@ -83,10 +85,10 @@ CAT 打开失败或运行中断后按 `2 秒 → 5 秒 → 15 秒` 有限重连�
 
 ## 自动验证与边界
 
-本版本的本地自动验证包括：
+本次 FTX-1 表计回归补丁的本地自动验证包括：
 
-- 全新独立构建目录的完整 clean Release 构建；
-- 完整 CTest（包含待机自动应答行为测试）；
+- 使用 `C:\msys64\mingw64\bin` 的 MinGW64 工具链，以 `-Wall -Wextra -Werror` 独立编译并通过 `ftx1_cat_policy_test`；
+- 完整 Windows CMake/CTest/Release 构建在隔离目录尝试，配置阶段因本机缺少 OmniRig、`dumpcpp` 未返回 AXSERVER 而停止，未伪报构建或 CTest 通过；
 - `callsignlocation_test`；
 - `autocall_policy_test`；
 - `auto_tx_period_policy_test`；
@@ -101,4 +103,4 @@ CAT 打开失败或运行中断后按 `2 秒 → 5 秒 → 15 秒` 有限重连�
 
 最终交付为 `C:\JTDX64\159.2.6-test` 及同级 ZIP；包内启动脚本使用相对路径，自动验收不覆盖 `159`、`159.2.5` 或 `159.bak`。
 
-`AUTO_VERIFIED` 不等于真机验证。以下仍需用户 HIL：真实 FTX-1 的 CAT/PTT 和 Fake It 时序、串口被其他程序占用时的启动交互、长时间挂机声卡恢复、实际自动起呼发射次数（包括两组网格 priority 的真实日志命中）、PTT/音频时序，以及不同 DPI/窗口尺寸下的界面观感。本版本不启动 JTDX、不操作 CAT/PTT/电台、不发射；`audio_policy_test` 只验证纯策略；Qt 真实音频端点和 processed 音频帧没有被伪造为自动 HIL。
+`AUTO_VERIFIED` 不等于真机验证。以下仍需用户 HIL：真实 FTX-1 的 CAT/PTT、power/SWR 回读和 UI 刷新、meter-only 与 PTT 过渡时序、Fake It 时序、串口被其他程序占用时的启动交互、长时间挂机声卡恢复、实际自动起呼发射次数（包括两组网格 priority 的真实日志命中）、PTT/音频时序，以及不同 DPI/窗口尺寸下的界面观感。本版本不启动 JTDX、不操作 CAT/PTT/电台、不发射；`audio_policy_test` 只验证纯策略；Qt 真实音频端点和 processed 音频帧没有被伪造为自动 HIL。

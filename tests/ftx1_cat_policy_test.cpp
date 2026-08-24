@@ -84,6 +84,20 @@ int main ()
            "PTT intent must pause nonessential reads");
   require (nonessential_reads_allowed (true, true, false, false, false, 0, true),
            "Enable Tx alone must not pause safe standby reads");
+  require (!meter_reads_allowed (true, true, false, false, false, 0, 0),
+           "FTX-1 standby must not use the TX-only meter path");
+  require (!meter_reads_allowed (true, false, true, true, false, 0, 0),
+           "unknown PTT state must block the meter path");
+  require (!meter_reads_allowed (true, true, true, true, true, 0, 0),
+           "pending PTT request must block the meter path");
+  require (!meter_reads_allowed (true, true, true, true, false, 1, 0),
+           "non-essential transition hold must block the meter path");
+  require (!meter_reads_allowed (true, true, true, true, false, 0, 1),
+           "PTT transition hold must block the meter path");
+  require (meter_reads_allowed (true, true, true, true, false, 0, 0),
+           "confirmed FTX-1 TX after both holds must allow meters");
+  require (meter_reads_allowed (false, false, false, false, true, 2, 2),
+           "non-FTX-1 meter policy must remain unrestricted");
   require (legacy_optional_failure (Operation::mode, true, idle ()),
            "FTX-1 optional mode ENAVAIL/ENIMPL/EINVAL must retain old ignore semantics");
   require (!legacy_optional_failure (Operation::rx_frequency, true, idle ()),
@@ -92,6 +106,11 @@ int main ()
   optional_pending.ptt_request_pending = true;
   require (!legacy_optional_failure (Operation::mode, true, optional_pending),
            "optional query must not ignore errors during a PTT transition");
+  auto optional_transmitting = idle ();
+  optional_transmitting.ptt_intent = true;
+  optional_transmitting.ptt_actual = true;
+  require (!legacy_optional_failure (Operation::power, true, optional_transmitting),
+           "meter errors during TX must retain hard-failure semantics");
   require (nonessential_reads_allowed (false, false, true, true, true, 2, true),
            "non-FTX-1 polling schedule must remain unchanged");
 

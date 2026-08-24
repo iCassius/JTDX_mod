@@ -64,6 +64,20 @@ namespace Ftx1CatPollPolicy
                      && !ptt_request_pending && hold_polls == 0);
   }
 
+  // FTX-1 发射期间只允许在 PTT 实际开启、请求已确认且两个过渡保持窗口
+  // 均结束后读取功率/SWR 表计；VFO、频率、模式等非必要查询仍由上层暂停。
+  inline bool meter_reads_allowed (bool ftx1, bool ptt_known,
+                                   bool ptt_intent, bool ptt_actual,
+                                   bool ptt_request_pending,
+                                   unsigned nonessential_hold_polls,
+                                   unsigned ptt_transition_hold_polls)
+  {
+    return !ftx1 || (ptt_known && ptt_intent && ptt_actual
+                     && !ptt_request_pending
+                     && nonessential_hold_polls == 0
+                     && ptt_transition_hold_polls == 0);
+  }
+
   inline bool legacy_optional_failure (Operation operation,
                                        bool legacy_nonfatal_error,
                                        Context const& context)

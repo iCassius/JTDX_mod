@@ -1281,6 +1281,7 @@ void HamlibTransceiver::do_poll ()
   pbwidth_t w;
   split_t s;
   bool const ftx1 = is_ftx1_model (model_);
+  bool meter_only = false;
   if (ftx1) ftx1_poll_policy_.begin_poll ();
 #if JTDX_DEBUG_TO_FILE
   FILE * pFile = fopen (debug_file_.c_str(),"a");
@@ -1330,14 +1331,20 @@ void HamlibTransceiver::do_poll ()
         }
 
       bool const ptt_request_pending = ptt_on_ != state ().ptt ();
+      unsigned const nonessential_hold_polls = ftx1_nonessential_hold_polls_;
       bool const skip_nonessential = !Ftx1CatPollPolicy::nonessential_reads_allowed (
           true, ptt_state_known_, ptt_on_, state ().ptt (),
-          ptt_request_pending, ftx1_nonessential_hold_polls_, false);
+          ptt_request_pending, nonessential_hold_polls, false);
       if (ftx1_nonessential_hold_polls_)
         {
           --ftx1_nonessential_hold_polls_;
         }
-      if (skip_nonessential)
+      meter_only = skip_nonessential
+        && Ftx1CatPollPolicy::meter_reads_allowed (
+            true, ptt_state_known_, ptt_on_, state ().ptt (),
+            ptt_request_pending, nonessential_hold_polls,
+            ptt_transition_hold_polls_);
+      if (skip_nonessential && !meter_only)
         {
           TRACE_CAT_POLL ("HamlibTransceiver", "FTX-1 non-essential CAT reads paused during PTT safety window");
           ftx1_poll_policy_.complete_poll ();
@@ -1345,7 +1352,7 @@ void HamlibTransceiver::do_poll ()
         }
     }
 
-  if (get_vfo_works_ && rig_get_function_ptr (model_, RIG_FUNCTION_GET_VFO))
+  if (!meter_only && get_vfo_works_ && rig_get_function_ptr (model_, RIG_FUNCTION_GET_VFO))
     {
       vfo_t v;
       auto const rc = rig_get_vfo (rig_.data (), &v);
@@ -1364,7 +1371,7 @@ void HamlibTransceiver::do_poll ()
         }
     }
 
-  if ((WSJT_RIG_NONE_CAN_SPLIT || !is_dummy_)
+  if (!meter_only && (WSJT_RIG_NONE_CAN_SPLIT || !is_dummy_)
       && rig_get_function_ptr (model_, RIG_FUNCTION_GET_SPLIT_VFO) && split_query_works_)
     {
       vfo_t v {RIG_VFO_NONE};		// so we can tell if it doesn't get updated :(
@@ -1419,7 +1426,7 @@ void HamlibTransceiver::do_poll ()
         }
     }
 
-  if (freq_query_works_)
+  if (!meter_only && freq_query_works_)
     {
       // only read if possible and when receiving or simplex
       if (!state ().ptt () || !state ().split ())
@@ -1475,7 +1482,7 @@ void HamlibTransceiver::do_poll ()
     }
 
   // only read when receiving or simplex if direct VFO addressing unavailable
-  if ((!state ().ptt () || !state ().split ())
+  if (!meter_only && (!state ().ptt () || !state ().split ())
       && mode_query_works_)
     {
       // We have to ignore errors here because Yaesu FTdx... rigs can
@@ -1633,6 +1640,12 @@ void HamlibTransceiver::do_poll ()
               }
           } else  update_power (0);
       }
+    }
+
+  if (meter_only)
+    {
+      ftx1_poll_policy_.complete_poll ();
+      return;
     }
 
   // Preserve the historical non-FTX-1 order and error semantics: PTT is
