@@ -69,15 +69,21 @@ QString version (bool include_patch)
   QString v {WSJTX_STRINGIZE (WSJTX_VERSION_MAJOR) "." WSJTX_STRINGIZE (WSJTX_VERSION_MINOR)};
   if (include_patch)
     {
+      // 将显示版本保留为连续字面量，便于离线验收二进制版本字符串。
+# if defined (WSJTX_VERSION_DISPLAY_SUFFIX)
+      v = QStringLiteral (WSJTX_STRINGIZE (WSJTX_VERSION_MAJOR) "."
+                          WSJTX_STRINGIZE (WSJTX_VERSION_MINOR) "."
+                          WSJTX_STRINGIZE (WSJTX_VERSION_PATCH) "."
+                          WSJTX_STRINGIZE (WSJTX_VERSION_TWEAK)
+                          WSJTX_VERSION_DISPLAY_SUFFIX);
+# else
       v += "." WSJTX_STRINGIZE (WSJTX_VERSION_PATCH);
-# if defined (WSJTX_VERSION_TWEAK)
+#  if defined (WSJTX_VERSION_TWEAK)
       v += "." WSJTX_STRINGIZE (WSJTX_VERSION_TWEAK);
+#  endif
 # endif
 # if defined (WSJTX_RC)
       v += "-rc" WSJTX_STRINGIZE (WSJTX_RC);
-# endif
-# if defined (WSJTX_VERSION_DISPLAY_SUFFIX)
-      v += WSJTX_VERSION_DISPLAY_SUFFIX;
 # endif
     }
 #else
