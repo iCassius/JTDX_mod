@@ -45,7 +45,11 @@
 
 本次回归修复补齐自动新目标 `RFIN` 状态的回答 CQ 次数上限：它对应首次 TX1，达到上限后与 `RCQ/SCALL` 一样清理 DX 呼号和网格，使后续新网格或新呼号候选重新进入 AutoSeq 选择。该边界由 `AutoCallPolicy::answerCQRetryLimitReached` 测试；Hound、活动发射、pending first 73、已处理周期和 Tx5 后候选抢占保护保持原有约束。
 
-无回应次数继续使用现有的呼入应答/发送报告次数设置。达到上限后停止发射、关闭 Enable Tx、执行“清除 DX”同等清理并回到待命；不会永久屏蔽该呼号，只有新的有效解码才可再次触发。
+本次 `JTDX-AUTOSEQ-CLEANUP-20260830` 将回答 CQ 终止判定集中到 `AutoCallPolicy::answerCQRetryAction`：它先统一处理 `RFIN`、`RCQ`、`SCALL` 和跳过 TX1 时的 `SREPORT`，再按 Hound、计数开关、阈值和“转呼他台”判定 `none`、普通收尾或自动目标待机收尾。自动目标优先级统一由 `isConfiguredAutomaticTarget` 覆盖 22/23、20/21、15/16、13/14、7/8、5/6，不再由 `process_Auto` 的互斥优先级门漏掉高优先级目标。
+
+无回应次数继续使用现有的呼入应答/发送报告次数设置。自动目标达到阈值或检测到转呼他台后，只调用一次 `haltTx`（停止并关闭 Enable Tx），再调用一次 `clearDX` 和对应 `reset_count`，回到 `CALLING` 待机且本轮不重新选择候选；自动目标不写 `calllist`，避免旧解码立即重入，也不会永久屏蔽后续新的有效解码。普通非自动目标继续使用原有 `calllist`、`m_counter`、转呼他台和 single-shot 语义。Hound/WSPR、定向呼叫、手工双击、活动发射、pending first 73、已处理周期和 Tx5 后候选抢占保护不改变。
+
+该组合边界由 `autocall_policy_test` 覆盖：六组自动优先级的阈值待机动作、`RFIN/SCALL/SREPORT`、阈值内、计数关闭、reply-other、Hound、普通路径和无终止动作；既有 AutoSeq 抢占保护测试继续通过。仅完成离线自动测试和 clean Release 构建，未启动 JTDX、未连接 CAT/PTT、未操作真实电台或发射，真实自动起呼次数和 FTX-1 HIL 仍需人工确认。
 
 ## Fake It 和拨盘频率
 

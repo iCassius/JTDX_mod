@@ -22,6 +22,12 @@
 
 Hamlib 源码和 DLL 均未修改；日志记录 JTDX 层操作名、rc/类别、连续次数、FTX-1 标记和 PTT 安全字段，并复用 `jtdx_recovery.log` 的约 256 KiB 轮转。日志不包含 Hamlib 原始串口帧。
 
+## AutoSeq 回答 CQ 统一收尾
+
+- 任务 `JTDX-AUTOSEQ-CLEANUP-20260830` 将 `RFIN`、`RCQ`、`SCALL` 和跳过 TX1 时的 `SREPORT` 统一交给 `AutoCallPolicy::answerCQRetryAction` 判定；Hound 保持独立路径，回答 CQ 计数关闭或未达到阈值时不终止。
+- 已启用的自动目标优先级 5/6、7/8、13/14、15/16、20/21、22/23 在达到回答 CQ 阈值或转呼他台时选择唯一的待机收尾：一次停止并关闭 Enable Tx、一次清除 DX、重置该目标计数，本轮不立即重新选择；不写 `calllist`，新的有效解码仍可再次触发。
+- 普通非自动目标保留原有 `calllist`、`m_counter`、转呼他台和 single-shot 语义；定向呼叫、WSPR/Hound、手工操作和 AutoSeq 候选抢占保护不变。
+
 ## 自动验证
 
 在不启动 JTDX、不连接 CAT/PTT/电台、不进行真实发射的条件下，使用 `C:\msys64\mingw64\bin` 的 MinGW64 工具链完成独立 clean Release 构建和完整 CTest：`12/12` 通过。新增 `omnirig_build_option_test` 验证 OFF 不缓存 `dumpcpp`、目标元数据不含 OmniRig/ActiveQt wrapper，Hamlib 及其他正常后端仍在；独立 ON 配置探针验证默认 ON 仍保留原 `dumpcpp -getfile` 与 ActiveQt/COM 路径。

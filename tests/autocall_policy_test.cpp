@@ -104,6 +104,119 @@ int main()
          "Hound mode keeps its separate retry path");
   expect(!AutoCallPolicy::isAnswerCQRetryStatus (AutoCallPolicy::sreportStatus, false, false),
          "SREPORT without skipped TX1 is not an answer-CQ retry");
+
+  // 终止动作必须同时考虑回答 CQ 状态、计数开关、目标优先级和回复他台。
+  // 每个自动起呼优先级组都用其真实配置项组合验证，不能只测独立 helper。
+  const auto actionFor = [] (int status, int priority, bool autoTarget,
+                             bool skipTx1, bool houndMode, bool counterEnabled,
+                             int limit, int count, bool replyOther,
+                             bool strictDirectionalCQ) {
+    return AutoCallPolicy::answerCQRetryAction (
+        status, skipTx1, houndMode, counterEnabled, limit, count, replyOther,
+        autoTarget, priority, strictDirectionalCQ);
+  };
+  expect(AutoCallPolicy::isConfiguredAutomaticTarget (22, true, false, false, false, false, false),
+         "priority 22 maps to configured new DXCC");
+  expect(AutoCallPolicy::isConfiguredAutomaticTarget (23, true, false, false, false, false, false),
+         "priority 23 maps to configured new DXCC band variant");
+  expect(AutoCallPolicy::isConfiguredAutomaticTarget (20, false, true, false, false, false, false),
+         "priority 20 maps to configured DXCC band-mode");
+  expect(AutoCallPolicy::isConfiguredAutomaticTarget (21, false, true, false, false, false, false),
+         "priority 21 maps to configured DXCC band-mode variant");
+  expect(AutoCallPolicy::isConfiguredAutomaticTarget (15, false, false, true, false, false, false),
+         "priority 15 maps to configured new grid");
+  expect(AutoCallPolicy::isConfiguredAutomaticTarget (16, false, false, true, false, false, false),
+         "priority 16 maps to configured new grid LOTW variant");
+  expect(AutoCallPolicy::isConfiguredAutomaticTarget (13, false, false, false, true, false, false),
+         "priority 13 maps to configured grid band-mode");
+  expect(AutoCallPolicy::isConfiguredAutomaticTarget (14, false, false, false, true, false, false),
+         "priority 14 maps to configured grid band-mode LOTW variant");
+  expect(AutoCallPolicy::isConfiguredAutomaticTarget (7, false, false, false, false, true, false),
+         "priority 7 maps to configured new call");
+  expect(AutoCallPolicy::isConfiguredAutomaticTarget (8, false, false, false, false, true, false),
+         "priority 8 maps to configured new call LOTW variant");
+  expect(AutoCallPolicy::isConfiguredAutomaticTarget (5, false, false, false, false, false, true),
+         "priority 5 maps to configured new call band");
+  expect(AutoCallPolicy::isConfiguredAutomaticTarget (6, false, false, false, false, false, true),
+         "priority 6 maps to configured new call band LOTW variant");
+
+  struct AutomaticTargetConfig {
+    int priority;
+    bool newDXCC;
+    bool newDXCCBandMode;
+    bool newGrid;
+    bool newGridBandMode;
+    bool newCall;
+    bool newCallBand;
+  };
+  const AutomaticTargetConfig automaticTargets[] = {
+      {22, true, false, false, false, false, false},
+      {23, true, false, false, false, false, false},
+      {20, false, true, false, false, false, false},
+      {21, false, true, false, false, false, false},
+      {15, false, false, true, false, false, false},
+      {16, false, false, true, false, false, false},
+      {13, false, false, false, true, false, false},
+      {14, false, false, false, true, false, false},
+      {7, false, false, false, false, true, false},
+      {8, false, false, false, false, true, false},
+      {5, false, false, false, false, false, true},
+      {6, false, false, false, false, false, true}};
+  for (auto const& target : automaticTargets) {
+    bool const automaticTarget = AutoCallPolicy::isConfiguredAutomaticTarget (
+        target.priority, target.newDXCC, target.newDXCCBandMode, target.newGrid,
+        target.newGridBandMode, target.newCall, target.newCallBand);
+    expect(automaticTarget, "configured automatic target reaches action selector");
+    expect(actionFor (AutoCallPolicy::rcqStatus, target.priority, automaticTarget, false, false,
+                      true, 2, 2, false, false)
+               == AutoCallPolicy::AnswerCQRetryAction::standbyCleanup,
+           "automatic target threshold selects standby cleanup for every priority group");
+  }
+  expect(actionFor (AutoCallPolicy::rfinStatus, 20, true, false, false,
+                    true, 2, 2, false, false)
+             == AutoCallPolicy::AnswerCQRetryAction::standbyCleanup,
+         "automatic RFIN threshold selects standby cleanup");
+  expect(actionFor (AutoCallPolicy::scallStatus, 23, true, false, false,
+                    true, 2, 1, true, false)
+             == AutoCallPolicy::AnswerCQRetryAction::standbyCleanup,
+         "automatic SCALL reply-other selects standby cleanup");
+  expect(actionFor (AutoCallPolicy::sreportStatus, 15, true, true, false,
+                    true, 2, 2, false, false)
+             == AutoCallPolicy::AnswerCQRetryAction::standbyCleanup,
+         "automatic skipped-TX1 SREPORT selects standby cleanup");
+  expect(actionFor (AutoCallPolicy::rcqStatus, 22, true, false, false,
+                    true, 2, 1, false, false)
+             == AutoCallPolicy::AnswerCQRetryAction::none,
+         "automatic target below threshold remains active");
+  expect(actionFor (AutoCallPolicy::rcqStatus, 22, true, false, false,
+                    false, 2, 2, true, false)
+             == AutoCallPolicy::AnswerCQRetryAction::none,
+         "disabled answer-CQ counter does not terminate automatic target");
+  expect(actionFor (AutoCallPolicy::rcqStatus, 22, true, false, true,
+                    true, 2, 2, true, false)
+             == AutoCallPolicy::AnswerCQRetryAction::none,
+         "Hound remains isolated from automatic target cleanup");
+  expect(actionFor (AutoCallPolicy::sreportStatus, 15, true, false, false,
+                    true, 2, 2, false, false)
+             == AutoCallPolicy::AnswerCQRetryAction::none,
+         "SREPORT without skipped TX1 is not automatic answer-CQ cleanup");
+  expect(actionFor (AutoCallPolicy::rcqStatus, 15, false, false, false,
+                    true, 2, 2, false, false)
+             == AutoCallPolicy::AnswerCQRetryAction::legacyCleanup,
+         "ordinary priority uses legacy cleanup");
+  expect(actionFor (AutoCallPolicy::rcqStatus, 15, false, false, false,
+                    true, 2, 1, true, false)
+             == AutoCallPolicy::AnswerCQRetryAction::legacyCleanup,
+         "ordinary reply-other uses legacy cleanup");
+  expect(actionFor (AutoCallPolicy::rcqStatus, 22, false, false, false,
+                    true, 2, 2, false, false)
+             == AutoCallPolicy::AnswerCQRetryAction::none,
+         "unconfigured high priority has no answer-CQ cleanup");
+  expect(actionFor (AutoCallPolicy::rcqStatus, 22, false, false, false,
+                    true, 2, 2, false, true)
+             == AutoCallPolicy::AnswerCQRetryAction::legacyCleanup,
+         "strict directional CQ keeps ordinary high-priority cleanup");
+
   expect(AutoCallPolicy::canForceCandidate (false, false, false, false, false),
          "cleared DX permits a fresh candidate to be selected and armed");
 

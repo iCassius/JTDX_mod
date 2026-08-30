@@ -3707,12 +3707,11 @@ void MainWindow::process_Auto(bool forceCandidate)
   int tx = ui->TxFreqSpinBox->value ();
   QStringList StrStatus = {"NONE","RFIN","RCQ","SCQ","RCALL","SCALL","RREPORT","SREPORT","RRREPORT","SRREPORT","RRR","SRR","RRR73","SRR73","R73","S73","FIN"};
   auto const configuredRareTarget = [this] (int priority) {
-    return (m_config.autoCallNewDXCC () && priority >= 22 && priority <= 23)
-        || (m_config.autoCallNewDXCCBandMode () && priority >= 20 && priority <= 21)
-        || (m_config.autoCallNewGrid () && priority >= 15 && priority <= 16)
-        || (m_config.autoCallNewGridBandMode () && priority >= 13 && priority <= 14)
-        || (m_config.autoCallNewCall () && priority >= 7 && priority <= 8)
-        || (m_config.autoCallNewCallBand () && priority >= 5 && priority <= 6);
+    return AutoCallPolicy::isConfiguredAutomaticTarget (
+        priority, m_config.autoCallNewDXCC (),
+        m_config.autoCallNewDXCCBandMode (), m_config.autoCallNewGrid (),
+        m_config.autoCallNewGridBandMode (), m_config.autoCallNewCall (),
+        m_config.autoCallNewCallBand ());
   };
   if (!hisCall.isEmpty ()) {
     if (m_houndMode) count = -1; //marker for changing status to FIN when status is RRR73
@@ -3724,6 +3723,11 @@ void MainWindow::process_Auto(bool forceCandidate)
       else if(m_status == QsoHistory::NONE) StrDirection = " auto sequence is not started;";
       writeToALLTXT("hisCall:" + hisCall + " time:" + QString::number(time) + " autoseq: " + StrDirection + " status: " + StrStatus[m_status] + " count: " + QString::number(count)+ " prio: " + QString::number(prio));
     }
+    auto const retryAction = AutoCallPolicy::answerCQRetryAction (
+        m_status, m_skipTx1, m_houndMode, m_config.answerCQCount (),
+        m_config.nAnswerCQCounter (), count, m_reply_other,
+        m_config.autoCallRareTargets () && configuredRareTarget (prio),
+        prio, m_strictdirCQ);
     if (m_houndMode ) { //WSJT-X Fox will drop QSO if R+Report from Hound is not decoded after three attempts 
       if (m_status == QsoHistory::SRREPORT || m_status == QsoHistory::RREPORT) {
         if(count > 3) {
@@ -3761,38 +3765,38 @@ void MainWindow::process_Auto(bool forceCandidate)
       m_status = QsoHistory::NONE;
       counters = false;
       counters2 = false;
-    } else if ((m_status == QsoHistory::RCQ || m_status == QsoHistory::SCALL)
-        && m_config.autoCallRareTargets () && configuredRareTarget (prio)
-        && m_config.answerCQCount() && m_config.nAnswerCQCounter() <= count) {
-      // Automatic rare-target calls are bounded by the existing "answered
-      // someone's CQ with no response" counter.  Unlike the legacy branch,
-      // their terminal state is standby, not a return to CQ transmission.
-      QString const failedRareTarget = hisCall;
-      autoStopTx("Rare-target AutoSeq retry limit reached ");
-      clearDX(" cleared, rare-target AutoSeq retry limit reached");
-      m_qsoHistory.reset_count(failedRareTarget);
-      hisCall = m_hisCall;
-      grid = m_hisGrid;
-      m_status = QsoHistory::NONE;
-      counters = false;
-    } else if (AutoCallPolicy::answerCQRetryLimitReached (
-                   m_status, m_skipTx1, m_houndMode,
-                   m_config.answerCQCount(), m_config.nAnswerCQCounter (),
-                   count, m_reply_other)
-        && ((prio > 4 && prio < 17) || prio < 2 || m_strictdirCQ)) {
-      clearDX (" cleared, RFIN/RCQ/SCALL/SREPORT count reached");
-      if (m_reply_other)
-          counters2 = false;
-      else {
-          m_counter = m_config.nAnswerCQCounter(); 
-          m_qsoHistory.calllist(hisCall,rpt.toInt(),time);
-      }
-      count = m_qsoHistory.reset_count(hisCall);
-      hisCall = m_hisCall;
-      grid = m_hisGrid;
-      m_status = QsoHistory::NONE;
-      if (m_singleshot)
+    } else if (retryAction == AutoCallPolicy::AnswerCQRetryAction::standbyCleanup) {
+        // 自动目标达到阈值或转呼他台后只收尾一次，并停在待机；不调用
+        // autoStopTx，避免其按配置再次调用 clearDX。
+        QString const reason = m_reply_other
+            ? QStringLiteral ("automatic target answer-CQ retry terminated: reply-other; standby cleanup")
+            : QStringLiteral ("automatic target answer-CQ retry threshold reached; standby cleanup");
+        if (m_enableTx || m_transmitting || m_btxok || g_iptt == 1)
+          haltTx (reason);
+        clearDX (QStringLiteral (" cleared, ") + reason);
+        count = m_qsoHistory.reset_count (hisCall);
+        hisCall = m_hisCall;
+        grid = m_hisGrid;
+        m_status = QsoHistory::NONE;
         counters = false;
+        counters2 = false;
+    } else if (retryAction == AutoCallPolicy::AnswerCQRetryAction::legacyCleanup) {
+        QString const reason = m_reply_other
+            ? QStringLiteral ("ordinary answer-CQ retry terminated: reply-other")
+            : QStringLiteral ("ordinary answer-CQ retry threshold reached");
+        clearDX (QStringLiteral (" cleared, ") + reason);
+        if (m_reply_other)
+            counters2 = false;
+        else {
+            m_counter = m_config.nAnswerCQCounter ();
+            m_qsoHistory.calllist (hisCall, rpt.toInt (), time);
+        }
+        count = m_qsoHistory.reset_count (hisCall);
+        hisCall = m_hisCall;
+        grid = m_hisGrid;
+        m_status = QsoHistory::NONE;
+        if (m_singleshot)
+          counters = false;
     } else if ((m_status == QsoHistory::RCALL || (m_status == QsoHistory::SREPORT && !m_skipTx1)) && m_config.answerInCallCount() && 
         (m_config.nAnswerInCallCounter() <= count || m_reply_other)) {
       clearDX (" cleared, RCALL/SREPORT count reached");

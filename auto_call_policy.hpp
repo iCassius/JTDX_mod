@@ -57,6 +57,45 @@ namespace AutoCallPolicy
         && counterEnabled && (counterLimit <= count || replyOther);
   }
 
+  enum class AnswerCQRetryAction
+  {
+    none,
+    legacyCleanup,
+    standbyCleanup
+  };
+
+  // 统一识别六组自动起呼优先级；优先级条件只保留在策略层。
+  inline bool isConfiguredAutomaticTarget (int priority,
+                                           bool newDXCC,
+                                           bool newDXCCBandMode,
+                                           bool newGrid,
+                                           bool newGridBandMode,
+                                           bool newCall,
+                                           bool newCallBand)
+  {
+    return (newDXCC && priority >= 22 && priority <= 23)
+        || (newDXCCBandMode && priority >= 20 && priority <= 21)
+        || (newGrid && priority >= 15 && priority <= 16)
+        || (newGridBandMode && priority >= 13 && priority <= 14)
+        || (newCall && priority >= 7 && priority <= 8)
+        || (newCallBand && priority >= 5 && priority <= 6);
+  }
+
+  // 统一回答 CQ 终止判定；界面层只按动作选择对应的收尾语义。
+  inline AnswerCQRetryAction answerCQRetryAction (
+      int status, bool skipTx1, bool houndMode, bool counterEnabled,
+      int counterLimit, int count, bool replyOther, bool automaticTarget,
+      int priority, bool strictDirectionalCQ)
+  {
+    if (!answerCQRetryLimitReached (status, skipTx1, houndMode, counterEnabled,
+                                    counterLimit, count, replyOther))
+      return AnswerCQRetryAction::none;
+    if (automaticTarget) return AnswerCQRetryAction::standbyCleanup;
+    if ((priority > 4 && priority < 17) || priority < 2 || strictDirectionalCQ)
+      return AnswerCQRetryAction::legacyCleanup;
+    return AnswerCQRetryAction::none;
+  }
+
   // A retained DX entry may be replaced by a forced new-grid candidate only
   // after its QSO has actually sent Tx5.  A pending first 73, an active
   // transmission, or an already processed AutoSeq interval must win over
