@@ -24,8 +24,8 @@ Hamlib 源码和 DLL 均未修改；日志记录 JTDX 层操作名、rc/类别�
 
 ## AutoSeq 回答 CQ 统一收尾
 
-- 任务 `JTDX-AUTOSEQ-CLEANUP-20260830` 将 `RFIN`、`RCQ`、`SCALL` 和跳过 TX1 时的 `SREPORT` 统一交给 `AutoCallPolicy::answerCQRetryAction` 判定；Hound 保持独立路径，回答 CQ 计数关闭或未达到阈值时不终止。
-- 已启用的自动目标优先级 5/6、7/8、13/14、15/16、20/21、22/23 在达到回答 CQ 阈值或转呼他台时选择唯一的待机收尾：一次停止并关闭 Enable Tx、一次清除 DX、重置该目标计数，本轮不立即重新选择；不写 `calllist`，新的有效解码仍可再次触发。
+- 任务 `JTDX-AUTOSEQ-CLEANUP-20260830` 将 `RFIN`、`RCQ`、`SCALL` 和跳过 TX1 时的 `SREPORT` 统一交给 `AutoCallPolicy::answerCQRetryAction` 判定；Hound 保持独立路径，阈值仍由回答 CQ 计数开关独立控制。
+- 转呼终止与阈值是独立 OR 条件，但只有 `m_reply_other` 且频谱与当前 TX 保护范围重叠，或 `SeqHaltTxReplyOther` 开启时才成立；设置关闭且不重叠不会改变原有行为。已启用的自动目标优先级 5/6、7/8、13/14、15/16、20/21、22/23 在达到阈值或收到符合条件的转呼信号时选择唯一的待机收尾：一次停止并关闭 Enable Tx（若此前已停发则不重复停止）、一次清除 DX、重置该目标计数，本轮不立即重新选择；不写 `calllist`，新的有效解码仍可再次触发。
 - 普通非自动目标保留原有 `calllist`、`m_counter`、转呼他台和 single-shot 语义；定向呼叫、WSPR/Hound、手工操作和 AutoSeq 候选抢占保护不变。
 
 ## 自动验证

@@ -51,10 +51,17 @@ namespace AutoCallPolicy
   inline bool answerCQRetryLimitReached (int status, bool skipTx1,
                                          bool houndMode, bool counterEnabled,
                                          int counterLimit, int count,
-                                         bool replyOther)
+                                         bool replyOtherTerminates)
   {
     return isAnswerCQRetryStatus (status, skipTx1, houndMode)
-        && counterEnabled && (counterLimit <= count || replyOther);
+        && ((counterEnabled && counterLimit <= count) || replyOtherTerminates);
+  }
+
+  // 与 readFromStdout 的停发条件保持一致；原始转呼标记不单独触发收尾。
+  inline bool replyOtherTerminates (bool replyOther, bool frequencyOverlapsTx,
+                                    bool haltTxReplyOther)
+  {
+    return replyOther && (frequencyOverlapsTx || haltTxReplyOther);
   }
 
   enum class AnswerCQRetryAction
@@ -84,11 +91,11 @@ namespace AutoCallPolicy
   // 统一回答 CQ 终止判定；界面层只按动作选择对应的收尾语义。
   inline AnswerCQRetryAction answerCQRetryAction (
       int status, bool skipTx1, bool houndMode, bool counterEnabled,
-      int counterLimit, int count, bool replyOther, bool automaticTarget,
+      int counterLimit, int count, bool replyOtherTerminates, bool automaticTarget,
       int priority, bool strictDirectionalCQ)
   {
     if (!answerCQRetryLimitReached (status, skipTx1, houndMode, counterEnabled,
-                                    counterLimit, count, replyOther))
+                                    counterLimit, count, replyOtherTerminates))
       return AnswerCQRetryAction::none;
     if (automaticTarget) return AnswerCQRetryAction::standbyCleanup;
     if ((priority > 4 && priority < 17) || priority < 2 || strictDirectionalCQ)

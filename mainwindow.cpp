@@ -3723,9 +3723,13 @@ void MainWindow::process_Auto(bool forceCandidate)
       else if(m_status == QsoHistory::NONE) StrDirection = " auto sequence is not started;";
       writeToALLTXT("hisCall:" + hisCall + " time:" + QString::number(time) + " autoseq: " + StrDirection + " status: " + StrStatus[m_status] + " count: " + QString::number(count)+ " prio: " + QString::number(prio));
     }
+    bool const replyOtherTerminates = AutoCallPolicy::replyOtherTerminates (
+        m_reply_other,
+        qAbs (m_used_freq - ui->TxFreqSpinBox->value ()) < m_nguardfreq,
+        m_config.halttxreplyother ());
     auto const retryAction = AutoCallPolicy::answerCQRetryAction (
         m_status, m_skipTx1, m_houndMode, m_config.answerCQCount (),
-        m_config.nAnswerCQCounter (), count, m_reply_other,
+        m_config.nAnswerCQCounter (), count, replyOtherTerminates,
         m_config.autoCallRareTargets () && configuredRareTarget (prio),
         prio, m_strictdirCQ);
     if (m_houndMode ) { //WSJT-X Fox will drop QSO if R+Report from Hound is not decoded after three attempts 
@@ -3768,10 +3772,10 @@ void MainWindow::process_Auto(bool forceCandidate)
     } else if (retryAction == AutoCallPolicy::AnswerCQRetryAction::standbyCleanup) {
         // 自动目标达到阈值或转呼他台后只收尾一次，并停在待机；不调用
         // autoStopTx，避免其按配置再次调用 clearDX。
-        QString const reason = m_reply_other
+        QString const reason = replyOtherTerminates
             ? QStringLiteral ("automatic target answer-CQ retry terminated: reply-other; standby cleanup")
             : QStringLiteral ("automatic target answer-CQ retry threshold reached; standby cleanup");
-        if (m_enableTx || m_transmitting || m_btxok || g_iptt == 1)
+        if (!m_haltTrans && (m_enableTx || m_transmitting || m_btxok || g_iptt == 1))
           haltTx (reason);
         clearDX (QStringLiteral (" cleared, ") + reason);
         count = m_qsoHistory.reset_count (hisCall);
@@ -3781,11 +3785,11 @@ void MainWindow::process_Auto(bool forceCandidate)
         counters = false;
         counters2 = false;
     } else if (retryAction == AutoCallPolicy::AnswerCQRetryAction::legacyCleanup) {
-        QString const reason = m_reply_other
+        QString const reason = replyOtherTerminates
             ? QStringLiteral ("ordinary answer-CQ retry terminated: reply-other")
             : QStringLiteral ("ordinary answer-CQ retry threshold reached");
         clearDX (QStringLiteral (" cleared, ") + reason);
-        if (m_reply_other)
+        if (replyOtherTerminates)
             counters2 = false;
         else {
             m_counter = m_config.nAnswerCQCounter ();
@@ -4389,7 +4393,11 @@ void MainWindow::readFromStdout()                             //readFromStdout
          }
       } else if (!deCall.isEmpty() && Radio::base_callsign (deCall) == Radio::base_callsign (m_hisCall) && decodedtextmsg.left(3) != "CQ " && decodedtextmsg.left(3) != "DE " && decodedtextmsg.left(4) != "QRZ " && !decodedtextmsg.contains(" 73") && !decodedtextmsg.contains(" RR73") && !decodedtextmsg.contains(" RRR")) {
         m_used_freq = decodedtext.frequencyOffset();
-         if (m_enableTx && !m_reply_me && !m_houndMode && (abs(m_used_freq - ui->TxFreqSpinBox->value ()) < m_nguardfreq || m_config.halttxreplyother ())) { 
+         if (m_enableTx && !m_reply_me && !m_houndMode
+             && AutoCallPolicy::replyOtherTerminates (
+                  m_reply_other,
+                  abs (m_used_freq - ui->TxFreqSpinBox->value ()) < m_nguardfreq,
+                  m_config.halttxreplyother ())) {
            haltTx("readFromStdout, not owner of the frequency or reply to other ");/* if(m_skipTx1) m_qsoHistory.remove(m_hisCall); */
          }
       }

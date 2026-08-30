@@ -99,6 +99,17 @@ int main()
   expect(AutoCallPolicy::answerCQRetryLimitReached (AutoCallPolicy::rfinStatus, false, false,
                                                     true, 2, 1, true),
          "reply-to-other still terminates the RFIN retry");
+  expect(AutoCallPolicy::answerCQRetryLimitReached (AutoCallPolicy::rfinStatus, false, false,
+                                                    false, 2, 1, true),
+         "reply-to-other termination is independent of answer-CQ counter");
+  expect(!AutoCallPolicy::replyOtherTerminates (true, false, false),
+         "reply-to-other is ignored when HaltTxReplyOther is off and frequencies do not overlap");
+  expect(AutoCallPolicy::replyOtherTerminates (true, false, true),
+         "HaltTxReplyOther enables reply-to-other termination");
+  expect(AutoCallPolicy::replyOtherTerminates (true, true, false),
+         "overlapping reply-to-other frequency enables termination");
+  expect(!AutoCallPolicy::replyOtherTerminates (false, true, true),
+         "without a reply-to-other decode no termination is signaled");
   expect(!AutoCallPolicy::answerCQRetryLimitReached (AutoCallPolicy::rfinStatus, false, true,
                                                      true, 1, 1, false),
          "Hound mode keeps its separate retry path");
@@ -190,8 +201,25 @@ int main()
          "automatic target below threshold remains active");
   expect(actionFor (AutoCallPolicy::rcqStatus, 22, true, false, false,
                     false, 2, 2, true, false)
+             == AutoCallPolicy::AnswerCQRetryAction::standbyCleanup,
+         "counter-disabled reply-other still selects automatic standby cleanup");
+  expect(actionFor (AutoCallPolicy::rcqStatus, 15, false, false, false,
+                    false, 2, 1, true, false)
+             == AutoCallPolicy::AnswerCQRetryAction::legacyCleanup,
+         "counter-disabled reply-other still selects ordinary legacy cleanup");
+  expect(actionFor (AutoCallPolicy::rcqStatus, 22, true, false, false,
+                    false, 2, 1, false, false)
              == AutoCallPolicy::AnswerCQRetryAction::none,
-         "disabled answer-CQ counter does not terminate automatic target");
+         "threshold disabled with no reply remains none");
+  bool const rawReplyOther = true;
+  bool const replyOtherWithoutPolicy = AutoCallPolicy::replyOtherTerminates (
+      rawReplyOther, false, false);
+  expect(!replyOtherWithoutPolicy,
+         "raw reply-other is rejected when its UI policy is false");
+  expect(actionFor (AutoCallPolicy::rcqStatus, 22, true, false, false,
+                    false, 2, 1, replyOtherWithoutPolicy, false)
+             == AutoCallPolicy::AnswerCQRetryAction::none,
+         "raw reply-other without termination policy selects none");
   expect(actionFor (AutoCallPolicy::rcqStatus, 22, true, false, true,
                     true, 2, 2, true, false)
              == AutoCallPolicy::AnswerCQRetryAction::none,
