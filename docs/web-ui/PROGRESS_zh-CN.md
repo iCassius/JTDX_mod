@@ -7,9 +7,10 @@
 - 当前阶段：`P0 文档与事实基线`。
 - 本批状态：已完成并提交；下一步等待用户检查额度后进入 P1。
 - 基线分支/提交：`main` / `582296c8d140e3f23bad785de1f7d9585b212197`。
-- P0 结果提交：以本文件所在提交为准，提交后必须用 `git show --stat --oneline HEAD` 和 `git status --short --branch` 复核。
+- P0 初始结果提交：`02153b0`（提交后修订不 amend，使用 `git log --oneline -- docs/web-ui` 追踪后续文档提交）；提交后必须用 `git show --stat --oneline HEAD` 和 `git status --short --branch` 复核。
 - 工作树预期：干净；任何后续未提交修改必须在恢复记录中列出。
-- 额度策略：每批开始读取当前额度；额度接近上限先写恢复记录再暂停。本任务不创建 5 小时定时任务或自动化监控。
+- 模型策略：按用户要求使用 `gpt-5.6-luna`、`high`；不自行升级模型或推理档位。
+- 配额策略：本批开始账户共享快照为 5 小时剩余 85%、周剩余 94%；最近结束快照为 5 小时剩余 64%、周剩余 91%，这些是账户共享读数，不是本任务独占额度。每批开始/结束读取并落盘；低于 20% 不开启新批，只写恢复检查点。本任务不创建 5 小时定时任务或自动化监控。
 
 ## P0 本批记录
 
@@ -29,6 +30,7 @@
 - 没有新增配置 Tab、菜单动作、API 路由、HTTP/SSE 实现或自动化测试。
 - 没有配置/编译/运行 JTDX；没有进行浏览器、HIL、生产部署验证。
 - 频率、DX、CQ/AutoSeq、停止的最终可复用业务入口和状态回读合同仍待 P1/P4/P5 源码审查。
+- P3/P6 的本地浏览器验证仅可在隔离配置、`Rig=None`、已证明不会自动连接硬件且无真实 CAT 连接时进行；真实 CAT/PTT/TX/HIL 仍需单独授权。
 
 ### 下一步
 
@@ -41,7 +43,7 @@ Set-Location C:\JTDX64\jtdx_sourcecode
 git status --short --branch
 git log -3 --oneline --decorate
 git show --stat --oneline HEAD
-rg -n "MessageClient|MessageServer|status_update|decode|handle_transceiver_update|band_changed|process_Auto|AutoSeq|haltTx|on_stopTxButton_clicked|on_pbCallCQ_clicked" main.cpp mainwindow.cpp mainwindow.h MessageClient.cpp MessageClient.hpp MessageServer.cpp MessageServer.hpp Configuration.cpp Configuration.hpp
+rg -n "MessageClient|MessageServer|statusUpdate|status_update|decode|handle_transceiver_update|band_changed|process_Auto|AutoSeq|haltTx|on_stopTxButton_clicked|on_pbCallCQ_clicked" main.cpp mainwindow.cpp mainwindow.h MessageClient.cpp MessageClient.hpp MessageServer.cpp MessageServer.hpp Configuration.cpp Configuration.hpp
 ```
 
 若恢复时发现 HEAD、分支、工作树或源码锚点改变，先把差异写入本文件，再重新核对，不覆盖他人修改。

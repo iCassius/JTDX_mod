@@ -6,7 +6,7 @@
 
 在现有 JTDX Qt/C++ 程序内提供轻量 Web UI，查看状态、解码、DX、RX/TX 和运行结果，并支持有限的频率切换、DX 选择、CQ/自动呼叫启动和停止。前端使用原生 HTML/CSS/JavaScript，内置资源优先使用 Qt Resource；采用深色卡片、响应式布局、大字体频率/DX/RX/TX 和实时更新方向，不复制 TX-5DR 的代码、资源、CSS、图标或品牌。
 
-页面分为顶部状态、RX、DX、TX、频率五区。RX 解码行只能选择 DX，选择与开始呼叫始终是两个动作。设置 Tab“Web UI/ Web 服务”包含启用、状态、TCP 端口自动/手动、仅本机/LAN、打开 UI、访问地址、端口冲突、重启、只读令牌/保护配置。View/Help 菜单“打开 Web UI”检查配置、确保唯一服务、用 `QDesktopServices::openUrl()` 打开浏览器并显示失败原因。
+页面分为顶部状态、RX、DX、TX、频率五区。顶部显示在线、Web 状态、模式、频段、当前实际频率、更新时间、新鲜度和实例标识。RX 显示时间、SNR、频偏、模式、文本、Call/Grid、新解码和过期提示。DX 显示 Call、Grid、报告、RX/TX 频率、TX mode、选择来源和应用结果。TX 显示 TX Enabled、Transmitting、Decoding、TX First、watchdog 状态、自动流程、当前 TX 文本/阶段及启停结果。频率区显示常用频率、频段、手动输入、当前实际频率和切换结果。RX 解码行只能选择 DX，选择与开始呼叫始终是两个动作。设置 Tab“Web UI/ Web 服务”包含启用、状态、独立 Web TCP 端口自动/手动、仅本机/LAN、打开 UI、访问地址、端口冲突、重启、只读令牌/保护配置；配置使用 Web 专用持久键，不能复用或写入 UDP 键。自动 TCP 端口只在安全范围内候选并排除已知 UDP 数字端口，端口检查只读读取配置，不 bind UDP。View/Help 菜单“打开 Web UI”检查配置、确保唯一服务、用 `QDesktopServices::openUrl()` 打开浏览器并显示失败原因。
 
 ## R02-R05 网络、进程和数据边界
 
@@ -27,14 +27,22 @@ LAN 只有用户明确开启才允许绑定；LAN 必须强保护并显示风险
 
 当前源码中的 UI 槽函数和消息处理可能带有清 DX、Enable Tx、恢复票据等副作用，不能直接当 Web 业务入口。尤其不能把会触发自动发射的双击/`processMessage` 复用为“只选择 DX”；需要抽取最小只选择入口并验证所有 AutoTx/AutoSeq 组合不改变 Enable Tx。呼号输入先做长度/空值边界，再复用既有校验，避免短输入触发不安全访问。
 
+逐编号追踪：`R06` 对应状态快照、最近解码、新鲜度和字段上限；`R07` 对应频率切换与 DX 选择的校验、分离动作和实际回读；`R08` 对应 CQ/AutoSeq 启动、停止、二次确认和既有 TX 安全门。
+
 ## R09-R12 API 与结果口径
 
 只提供：`GET /`、`/healthz`、`/api/v1/state`、`/api/v1/decodes`、`/api/v1/events`（SSE 或经论证的同等通道），以及 `POST /api/v1/control/frequency`、`select-dx`、`start-cq`、`start-auto-call`、`stop-auto-call`。不增加 Reply、FreeText、远程日志、音频、WebRTC、OpenWebRX 或通用远程控制。
 
 所有控制均有 `request_id`、时间、epoch、初始 revision、截止时间、结果、失败原因和状态快照，结果使用 `accepted`/`pending`/`completed`/`failed`/`rejected`/`timeout`/`unknown`。HTTP 200、UDP 发送或 accepted 都不能表示已经完成或已经发射。非法输入返回 400，状态不允许/版本冲突返回 409，超时明确 pending/timeout；服务重启使旧操作失效且不自动重试。重复 request id 幂等，退出中拒绝控制。
 
+逐编号追踪：`R09` 对应最小 API 路由和 JSON；`R10` 对应 request/result/timeout/revision/epoch/幂等与回读合同；`R11` 对应设置 Tab、持久配置、菜单入口和浏览器打开；`R12` 对应状态、解码、事件推送和页面实时更新。
+
 ## R13-R15 安全、测试与交付
 
 读与控制分级鉴权；LAN 必须令牌/强保护。校验 `Host`/`Origin`，控制 POST 使用 CSRF 防护；限制 body、头/行、并发/单 IP 连接、慢连接、处理时间、SSE 队列、事件大小、日志长度。SSE 支持背压、断线重连和 revision/`Last-Event-ID` 重同步，无法补齐时要求全量 resync。
 
 测试分为静态、单元、API 合同、浏览器手测、HIL、生产部署六层。必须覆盖启动/停止、自动/手动端口、占用、UDP 分离、重复菜单、设置保存重载、状态/解码/SSE、频率/DX/CQ/AutoSeq/停止、超时/重复/退出/冲突、异常隔离及原有 UDP/CAT/解码/自动呼叫回归。没有真实设备时不得声称验证 PTT、实际发射或无线电行为；HIL 和部署需独立授权。
+
+逐编号追踪：`R13` 对应 read/control 鉴权、LAN 强保护、Host/Origin/CSRF 和资源限制；`R14` 对应六层测试与原有回归；`R15` 对应分阶段交付、恢复日志、真实设备/HIL 和生产部署授权边界。
+
+计划文件清单（实现前仍需按阶段冻结）：三个模块各一组 `JtdxWebState.hpp/.cpp`、`JtdxWebControl.hpp/.cpp`、`JtdxWebServer.hpp/.cpp`；`resources/web-ui/index.html`、`style.css`、`app.js`、`web_ui.qrc`；`CMakeLists.txt`；`MainWindow`/`Configuration` 的最小接入；以及 `tests/` 下的状态、端口、API 合同和控制状态机测试。文件名是计划，不代表已存在。

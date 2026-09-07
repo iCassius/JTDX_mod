@@ -17,7 +17,7 @@
 2. 检查 `git status --short --branch`、`git log -1 --oneline`；若基线或工作树与记录不符，先更新恢复日志，不覆盖已有修改。
 3. 每一阶段只做一个可审查批次：先源码事实和文件计划，再实现，再做该阶段静态/单元/API 验证，最后写恢复记录并提交中文 commit。
 4. 每批开始读取当前配额；发现额度接近上限时，立即把已完成、未完成、命令和证据写入恢复日志，再停止，不把“请求已发出”当成完成。
-5. 未经另外授权，不启动 JTDX、不连接真实电台、不执行 CAT/PTT/TX/HIL、不向群晖部署。
+5. P0 文档阶段不启动 JTDX、不连接真实电台、不执行 CAT/PTT/TX/HIL、不向群晖部署。用户后续继续到 P3/P6 时，可在隔离配置、`Rig=None` 且无真实 CAT 连接的条件下进行本地浏览器验证；开始前必须证明不会自动连接硬件。真实 CAT/PTT/TX 和无线电行为仍需单独授权。
 
 ## 阶段顺序
 
@@ -41,21 +41,21 @@ P1 至 P6 每次只推进一个阶段；用户检查额度后再继续。HIL 不
 - `main.cpp` 创建 `MainWindow`；`mainwindow.cpp` 持有两个 `MessageClient`，并连接现有状态、解码和控制信号。
 - `MessageServer.cpp` 是既有 UDP 服务；Web 服务器只能新增独立 TCP 监听，禁止复用、改写或镜像为新的 UDP 监听器。
 - `Configuration.hpp/.cpp` 已有 UDP 地址/端口和频率、收发器等配置入口；Web 配置应新增独立键名，不能改动现有 UDP 键。
-- `mainwindow.cpp` 的 `band_changed()`、`setRig()`、`handle_transceiver_update()`、`status_update()` 和解码路径是后续状态/频率接入的事实核对点。当前不能把请求写入的目标频率当作 CAT 实际回读频率。
+- `mainwindow.cpp` 的 `band_changed()`、`setRig()`、`handle_transceiver_update()`、`statusUpdate()` 和解码路径，以及 `MessageClient::status_update()`，是后续状态/频率接入的事实核对点。当前不能把请求写入的目标频率当作 CAT 实际回读频率。
 - 现有 CQ、AutoSeq、Enable Tx、停止流程有 UI 槽函数和内部副作用；后续必须先抽取或复用业务入口，不能从 Web 模拟鼠标点击或直接调用 PTT。
 - `CMakeLists.txt` 生成 `jtdx`、`jtdxjt9` 等目标；Qt5 Network 已存在；`JTDX_BUILD_LOCAL_TESTS` 控制本地 CTest 目标。本阶段没有配置或构建新的目标。
 
 已探测到的工具版本仅用于恢复参考：`C:\msys64\mingw64\bin\cmake.exe` 4.4.0、`g++.exe`/`gfortran.exe` 16.1.0 Rev5、`qmake-qt5.exe` Qt 5.15.19；未验证本项目配置/编译兼容性。后续先确认独立构建目录和依赖，不自动升级工具链。
 
-建议的本地构建/测试形式（只在实现阶段、确认依赖和独立构建目录后使用）：
+建议的本地构建/测试形式（仅模板；只在实现阶段、确认依赖和独立构建目录后使用，不代表本轮执行结果）：
 
 ```powershell
-cmake -S C:\JTDX64\jtdx_sourcecode -B C:\JTDX64\build-webui-dev -DJTDX_BUILD_LOCAL_TESTS=ON
-cmake --build C:\JTDX64\build-webui-dev --config Release
-ctest --test-dir C:\JTDX64\build-webui-dev -C Release --output-on-failure
+C:\msys64\mingw64\bin\cmake.exe -G "MinGW Makefiles" -S C:\JTDX64\jtdx_sourcecode -B C:\JTDX64\build-webui-dev -DCMAKE_BUILD_TYPE=Release -DJTDX_BUILD_LOCAL_TESTS=ON -DWSJT_ENABLE_OMNIRIG=OFF -DCMAKE_C_COMPILER=C:\msys64\mingw64\bin\gcc.exe -DCMAKE_CXX_COMPILER=C:\msys64\mingw64\bin\g++.exe -DCMAKE_Fortran_COMPILER=C:\msys64\mingw64\bin\gfortran.exe
+C:\msys64\mingw64\bin\cmake.exe --build C:\JTDX64\build-webui-dev --parallel 2
+C:\msys64\mingw64\bin\ctest.exe --test-dir C:\JTDX64\build-webui-dev --output-on-failure
 ```
 
-上述是构建模板，不是本轮执行结果；现有历史构建目录和 `CMakeCache.txt` 不作为当前证据。
+上述模板沿用当前 Hamlib-only 验证边界（`WSJT_ENABLE_OMNIRIG=OFF`）；现有历史构建目录和 `CMakeCache.txt` 不作为当前证据。若工具路径、Qt 或生成器不同，先记录探针结果再调整，不自动升级依赖。
 
 ## 文档索引
 

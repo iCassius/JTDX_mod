@@ -26,7 +26,9 @@
 | `start-auto-call` | 与 CQ 相同，并检查 AutoSeq 当前允许状态 | 状态回读进入自动流程；不自行调度 TX |
 | `stop-auto-call` | 退出/鉴权/幂等检查，停止请求有优先级 | 既有 Halt/AutoSeq 回读为停止/安全；不直接强切 PTT |
 
-超时不自动重试；停止不能被普通队列无限阻塞，但仍不能绕过 TX watchdog 和安全门。控制响应应同时返回状态快照和 `request_id`。
+开始类请求必须携带客户端看到的 `server_epoch` 和 `state_revision`；服务端登记后仍须在实际调用前重新读取并复检当前 epoch、revision、退出状态和安全门。超时不自动重试；迟到的业务反馈必须标为 `unknown`/迟到反馈并附实际最新状态，不能追溯性地改写为已完成。停止不能被普通队列无限阻塞，但仍不能绕过 TX watchdog 和安全门。控制响应应同时返回状态快照和 `request_id`。
+
+不新增结果查询 API。操作进展通过 SSE 的有限 `operation` 事件和 `/api/v1/state` 中的有限 `operations` 摘要恢复；摘要有数量、大小和保留时间上限，服务重启后旧操作失效，不保留无限日志。
 
 ## 鉴权、资源和失败隔离
 
@@ -34,4 +36,4 @@
 
 ## 真实入口待验证
 
-P1/P4/P5 必须以当前源码复核 `MessageClient` 状态/解码信号、`status_update`、`handle_transceiver_update`、`band_changed`/`setRig`、DX 选择、CQ/AutoSeq 和停止入口。已知 UI 路径存在副作用，不能直接把 UI click、双击解码或 `processMessage` 作为 Web 业务 API。若需抽取共用入口，应保持原 UI 语义并增加回归测试。当前没有任何 Web 代码、HTTP 合同或真实设备证据。
+P1/P4/P5 必须以当前源码复核 `MessageClient` 状态/解码信号、`MainWindow::statusUpdate()`、`MessageClient::status_update()`、`handle_transceiver_update`、`band_changed`/`setRig`、DX 选择、CQ/AutoSeq 和停止入口。已知 UI 路径存在副作用，不能直接把 UI click、双击解码或 `processMessage` 作为 Web 业务 API。若需抽取共用入口，应保持原 UI 语义并增加回归测试。当前没有任何 Web 代码、HTTP 合同或真实设备证据。
