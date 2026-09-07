@@ -5,12 +5,12 @@
 ## 当前恢复点
 
 - 当前阶段：`P1 状态模型`。
-- 本批状态：进行中；已确认文档基线为 `04df89fc7be6066fb8b6ff243dece8ead7103dbb`，开始源码事实核对和文件计划。
+- 本批状态：代码已提交，阶段验收未完成；`083b708` 已通过 Qt-only 局部证据，但完整配置/构建被 Hamlib SDK 缺失阻塞。
 - 基线分支/提交：`main` / `04df89fc7be6066fb8b6ff243dece8ead7103dbb`。
 - P0 初始结果提交：`02153b0`（提交后修订不 amend，使用 `git log --oneline -- docs/web-ui` 追踪后续文档提交）；提交后必须用 `git show --stat --oneline HEAD` 和 `git status --short --branch` 复核。
 - 工作树预期：干净；任何后续未提交修改必须在恢复记录中列出。
 - 模型策略：按用户要求使用 `gpt-5.6-luna`、`high`；不自行升级模型或推理档位。
-- 配额策略：本批开始账户共享快照为 5 小时剩余 85%、周剩余 94%；最近结束快照为 5 小时剩余 64%、周剩余 91%，这些是账户共享读数，不是本任务独占额度。每批开始/结束读取并落盘；低于 20% 不开启新批，只写恢复检查点。本任务不创建 5 小时定时任务或自动化监控。
+- 配额策略：本批开始账户共享快照为 5 小时剩余 53%、周剩余 89%；结束快照为 5 小时剩余 17%、周剩余 84%，这些是账户共享读数，不是本任务独占额度。已低于 20%，暂停新批，只保留恢复记录。本任务不创建 5 小时定时任务或自动化监控。
 
 ## P1 本批记录
 
@@ -32,11 +32,14 @@
 ### P1 当前成果与限制
 
 - 已实现：`JtdxWebState.hpp/.cpp`、主 `MessageClient` 本地观察信号、`MainWindow` 的状态/解码/clear/CAT 实测频率只读接入；不增加 UDP/TCP、线程、进程、控制、设置或菜单。UDP 目标为空或关闭时仍先更新本地状态；secondary mirror 不重复发布。
-- 已覆盖：空状态未知/null、状态 fresh→stale、CAT offline 与 PTT 未确认、CAT stale、目标/实测频率分离、默认 300/硬 500 解码上限、最旧淘汰、clear/revision、JSON 类型、replay 不增长、不刷新、off-air 不刷新、解码过期、WSPR 64 位频率和字段、实例 ID。
+- 已覆盖：空状态未知/null、状态 fresh→stale、CAT offline 与 PTT 未确认、CAT stale、目标/实测频率分离、默认 300/硬 500 解码上限、最旧淘汰、clear/revision、JSON 类型、replay 不增长、不刷新、off-air 不刷新、实例 ID。off-air 仍可进入展示队列，但不刷新实时新鲜度且不可作为实时候选，未宣称不淘汰实时条目。
 - 尚未接入的业务状态保留为 `null`：`auto_sequence_state`、`cq_state`、`current_tx_text`；FT8 解码 Call/Grid 仍保留原始 message，未新增解析器。P1 不将这些字段宣称为已完成业务接入。
-- Qt-only 手工证据：`jtdx_web_state_test` 使用本机 Qt5 Core/MinGW 16.1.0 编译并运行通过（退出码 0）；`MessageClient.cpp` 及生成 moc 做语法检查通过。完整配置、应用构建和原有 13 项 CTest 受 Hamlib 开发头/库缺失阻塞，未运行。
+- Qt-only 手工证据：`C:\JTDX64\build-webui-dev-msys2\jtdx_web_state_test.exe` 使用本机 Qt5 Core/MinGW 16.1.0 编译并运行通过（退出码 0）。完整复现命令和 `MessageClient.cpp` moc/语法检查命令已记录在本节末；完整配置、应用构建和原有 13 项 CTest 受 Hamlib 开发头/库缺失阻塞，未运行。
+- 可复现 Qt-only 命令：`C:\msys64\usr\bin\bash.exe -lc 'export PATH=/mingw64/bin:/usr/bin:/c/Windows/System32:/c/Windows; g++ -std=gnu++14 -I/c/msys64/mingw64/include -I/c/msys64/mingw64/include/QtCore -I/c/JTDX64/jtdx_sourcecode /c/JTDX64/jtdx_sourcecode/JtdxWebState.cpp /c/JTDX64/jtdx_sourcecode/tests/jtdx_web_state_test.cpp /c/JTDX64/build-webui-dev-msys2/moc/moc_JtdxWebState.cpp -L/c/msys64/mingw64/lib -lQt5Core -o /c/JTDX64/build-webui-dev-msys2/jtdx_web_state_test.exe; /c/JTDX64/build-webui-dev-msys2/jtdx_web_state_test.exe'`，输出 exe 为 `C:\JTDX64\build-webui-dev-msys2\jtdx_web_state_test.exe`，退出码 0。MessageClient 语法检查使用 `moc.exe MessageClient.cpp -o C:\JTDX64\jtdx_sourcecode\MessageClient.moc` 后，以 `g++ -std=gnu++14 -fsyntax-only` 加入 `/c/JTDX64/build-webui-dev-msys2/moc`、QtCore/QtNetwork/QtGui/QtWidgets 和源码目录，结果通过；临时 moc 已删除。
+- 阶段结论：P1 代码批次已提交但未验收完成。恢复后先恢复本机 Hamlib SDK，再执行 `build-webui-dev` 全构建、原有 13 项回归和 P1 集成合同测试；FT8 Call/Grid、`auto_sequence_state`、`cq_state`、`current_tx_text` 仍待接入并保留为 null。下一批还需补做 live decode 从 fresh 到 stale、`>UINT32_MAX` WSPR 频率边界、UDP 禁用/镜像观察端到端测试。
+- 结束额度：5 小时窗口剩余 17%，周窗口剩余 84%；不再开启新批。
 
-## P0 本批记录
+## P0 本批记录（历史记录；不覆盖当前 P1 状态）
 
 ### 已完成
 

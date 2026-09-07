@@ -4,11 +4,11 @@
 
 ## 当前状态
 
-- 阶段：`P1 状态模型`，本轮进行中；P0 文档与事实基线已完成。
+- 阶段：`P1 状态模型`，本批代码已提交但尚未完成阶段验收；P0 文档与事实基线已完成。
 - 基线：分支 `main`，HEAD `04df89fc7be6066fb8b6ff243dece8ead7103dbb`，工作树在本轮开始时干净。
 - 代码根目录：`C:\JTDX64\jtdx_sourcecode`。用户需求中的 `jtdx\_sourcecode` 按当前实际仓库路径解释。
 - 本轮范围：实现 P1 状态快照、有限解码和既有 MessageClient/MainWindow 的最小只读接入；不新增 TCP/UDP、线程、进程、控制、设置或菜单；没有启动 JTDX，没有连接 CAT/PTT/真实电台，没有部署。
-- 已确认：主程序已有 Qt5 Network、`MessageClient`、`MessageServer` 和 `JTDX_BUILD_LOCAL_TESTS`；当前没有 Web UI 实现。
+- 已确认：主程序已有 Qt5 Network、`MessageClient`、`MessageServer` 和 `JTDX_BUILD_LOCAL_TESTS`；P1 状态模型已提交，P2 及后续 Web 服务器/UI 仍未实现。
 - 进程边界：Web 功能必须零新增进程、零新增常驻线程，优先使用 JTDX 主 Qt 事件循环。当前程序已有 `proc_jtdxjt9` 解码子进程，Web 任务不得把它误写成 Web 新增进程，也不得为了 Web 重构或删除它。
 
 ## 继续工作的最短路径
