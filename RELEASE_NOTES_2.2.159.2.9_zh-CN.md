@@ -21,4 +21,4 @@
 
 未执行真实电台、CAT/PTT、音频或发射验证。运行时包若交付，仅允许包含顶层 `bin/`、`plugins/`、`share/`；SHA256 sidecar 放在 ZIP 外部；不覆盖已安装的 `C:\JTDX64\159`。
 
-设计和源码基线见 [DESIGN_2.2.159.2.9_zh-CN.md](DESIGN_2.2.159.2.9_zh-CN.md) 与 `b8d94539fea8a163b137dbd0fe30681e2dca2252`；结果提交哈希在本地交付提交后补入。
+设计和源码基线见 [DESIGN_2.2.159.2.9_zh-CN.md](DESIGN_2.2.159.2.9_zh-CN.md)、基线 `b8d94539fea8a163b137dbd0fe30681e2dca2252` 与结果提交 `e5a4381e6ac496c7d1a0088e39c1e3a08d94ad2a`。
