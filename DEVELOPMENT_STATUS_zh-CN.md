@@ -2,12 +2,34 @@
 
 ## 当前基线
 
-- 产品显示版本：JTDX `2.2.159.2.8`。
-- 标题：`JTDX v2.2.159.2.8 自动起呼版 By BI7KGD`。
-- Windows 四段版本资源保持可解析的 `2.2.159.2`；`.8` 是本次产品显示后缀，不改变 PE 资源字段布局。
+- 产品显示版本：JTDX `2.2.159.2.9`。
+- 标题：`JTDX v2.2.159.2.9 自动起呼版 By BI7KGD`。
+- Windows 四段版本资源保持可解析的 `2.2.159.2`；`.9` 是本次产品显示后缀，不改变 PE 资源字段布局。
 - 源码目录：`C:\JTDX64\jtdx_sourcecode`。
 - Hamlib 运行时：`4.7.2`，FTX-1 backend `20251224.0`。
-- `159` 是当前使用目录；本次 `159.2.8-autoseq-cleanup-test` 只提供可覆盖 `159` 的 `bin/`、`plugins/`、`share/` 三个运行时目录。用户应先自行备份并关闭相关程序，再自行覆盖现有 `159`；本任务不替用户覆盖或删除既有目录。
+- `159` 是当前使用目录；本次 `159.2.9-cat-recovery-test` 只提供可覆盖 `159` 的 `bin/`、`plugins/`、`share/` 三个运行时目录。用户应先自行备份并关闭相关程序，再自行覆盖现有 `159`；本任务不替用户覆盖或删除既有目录。
+
+## JTDX-CAT-RECOVERY-20260906
+
+本次恢复修复以 Git 基线 `b8d94539fea8a163b137dbd0fe30681e2dca2252` 为依据，结果提交由本地交付记录补入。FTX-1 Hamlib 4.7.2 的 `RIG_DEBUG_ERR`、PTT-first 轮询和错误恢复日志只增加诊断，不放宽 PTT/CAT 安全门，也不替换现有运行时 DLL。
+
+- 硬故障后只有在 CAT 重新在线且实际 PTT 已确认关闭时才释放旧 DX；恢复票据等待新的完整解码批次。
+- 新批次优先接受明确发给本台的标准报文，并按 `QsoHistory` 已有 RCALL、RREPORT、RRREPORT、RRR、RRR73、R73 状态恢复 Tx2/Tx3/Tx4/Tx5；完整中断呼号保留在 DX 字段，匹配键单独使用基本呼号。
+- 首个 73 的历史记录可能在 TX 开始时已经写成 `FIN`。只有本批实际收到原台的 `RRR`、`RR73` 或 `73` 才允许判断结束；若故障时 Tx5 在途则重发 Tx5，否则不凭旧 `FIN` 再发射。
+- 没有原台续联或新候选时 DX 保持为空、票据继续等待；实际新候选才消费恢复票据。用户停发、Escape、UDP HaltTx、禁用、清除、目标/模式/波段/Tx 周期变化均取消票据；内部故障 halt 保留票据。
+- `jtdx_recovery.log` 的 Hamlib 错误记录与 FTX-1 聚合失败计数使用同一受限日志轮换；日志互斥只覆盖 Hamlib 写入者，不宣称覆盖 MainWindow 的全局线程安全。
+
+本 `.9` 构建明确使用 `WSJT_ENABLE_OMNIRIG=OFF`，沿用 Hamlib-only 交付边界；默认选项仍保持 `ON`。权威 `build-159.2.9` 的 MinGW64 Release 增量重编译完成，完整 CTest 为 `13/13` 通过（含 `autoseq_recovery_policy_test` 与 `omnirig_build_option_test`）；未启动 JTDX，未连接 CAT/PTT，未操作真实电台。
+
+本任务的 Hamlib 4.7.2 源码分析锚点：
+
+- [ftx1_tx.c](https://github.com/Hamlib/Hamlib/blob/4.7.2/rigs/yaesu/ftx1/ftx1_tx.c)
+- [ftx1_vfo.c](https://github.com/Hamlib/Hamlib/blob/4.7.2/rigs/yaesu/ftx1/ftx1_vfo.c)
+- [newcat.c](https://github.com/Hamlib/Hamlib/blob/4.7.2/rigs/yaesu/newcat.c)
+
+## 2.2.159.2.8 历史验证记录
+
+以下内容记录前一版 `.8` 自动起呼清理包的构建、验证和 HIL 边界，不作为本次 `.9` CAT 恢复包的结果声明。
 
 ## FTX-1 与 OmniRig 构建边界
 

@@ -1591,6 +1591,14 @@ if (JTDX_BUILD_LOCAL_TESTS)
   target_include_directories (ftx1_cat_policy_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   add_test (NAME ftx1_cat_policy_test COMMAND ftx1_cat_policy_test)
 
+  add_executable (autoseq_recovery_policy_test
+    tests/autoseq_recovery_policy_test.cpp
+    qsohistory.cpp
+    Radio.cpp)
+  target_include_directories (autoseq_recovery_policy_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_link_libraries (autoseq_recovery_policy_test Qt5::Core)
+  add_test (NAME autoseq_recovery_policy_test COMMAND autoseq_recovery_policy_test)
+
   add_executable (fake_it_state_test tests/fake_it_state_test.cpp)
   target_include_directories (fake_it_state_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   target_link_libraries (fake_it_state_test Qt5::Core)

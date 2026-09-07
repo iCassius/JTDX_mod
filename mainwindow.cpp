@@ -2439,6 +2439,9 @@ void MainWindow::on_actionAbout_triggered() { CAboutDlg {this}.exec (); } //Disp
 
 void MainWindow::on_enableTxButton_clicked (bool checked)
 {
+  if (!checked && m_autoSeqRecovery.pending () && !m_autoSeqRecoveryInternalHalt
+      && !m_autoSeqRecoveryInternalUiChange)
+    m_autoSeqRecovery.cancel ();
   ui->pbBandHopping->setChecked(false); // disable band hopping when Tx is enabled
   if(m_enableTx && !checked && m_curMsgTx.startsWith(m_hisCall+" ")) m_lasthint=true;
   if(checked && m_lasthint) m_lasthint=false;
@@ -2516,12 +2519,14 @@ void MainWindow::keyPressEvent( QKeyEvent *e )                //keyPressEvent
       return;
     case Qt::Key_E:
       if(e->modifiers() & Qt::ShiftModifier) {
+        if (m_autoSeqRecovery.pending ()) m_autoSeqRecovery.cancel ();
         m_txFirst=false;
         ui->TxMinuteButton->setChecked(m_txFirst);
         setMinButton();
         return;
       }
       if(e->modifiers() & Qt::ControlModifier) {
+        if (m_autoSeqRecovery.pending ()) m_autoSeqRecovery.cancel ();
         m_txFirst=true;
         ui->TxMinuteButton->setChecked(m_txFirst);
         setMinButton();
@@ -3532,6 +3537,8 @@ void MainWindow::decode()                                       //decode()
   if(m_diskData && !m_mode.startsWith("FT")) dec_data.params.nutc=dec_data.params.nutc/100;
   if(dec_data.params.newdat==1) {
     m_msDecStarted=m_jtdxtime->currentMSecsSinceEpoch2();
+    if (!m_manualDecode && !m_diskData)
+      m_autoSeqRecovery.begin_decode_batch (m_msDecStarted);
     if(!m_mode.startsWith("FT")) {
       qint64 ms = m_msDecStarted % 86400000;
       int imin=ms/60000;
@@ -3672,14 +3679,43 @@ void MainWindow::decode()                                       //decode()
 
 void MainWindow::process_Auto(bool forceCandidate)
 {
-  if (m_autoSeqRecovery.pending ()
-      && (m_autoSeqRecovery.recovered_at () == 0
-          || m_msDecStarted <= m_autoSeqRecovery.recovered_at ())) {
+  if (m_autoSeqRecovery.pending () && (m_manualDecode || m_diskData)) {
+    appendRecoveryLog (m_dataDir, "auto-call",
+                       QStringLiteral ("recovery gate withheld manual or disk decode"));
+    return;
+  }
+  if (m_autoSeqRecovery.pending () &&
+      (m_autoSeqRecoveryMode != m_mode
+       || (!m_autoSeqRecoveryBand.isEmpty ()
+           && m_autoSeqRecoveryBand != m_config.bands ()->find (m_freqNominal)))) {
+    appendRecoveryLog (m_dataDir, "auto-call",
+                       QStringLiteral ("recovery canceled after manual band or mode change"));
+    m_autoSeqRecovery.cancel ();
+  }
+  bool const recoveryFreshBatch = !m_manualDecode && !m_diskData
+    && m_autoSeqRecovery.is_fresh_batch (m_msDecStarted);
+  if (m_autoSeqRecovery.pending () && !recoveryFreshBatch) {
     appendRecoveryLog (m_dataDir, "auto-call",
                        QString {"recovery gate withheld stale decode forceCandidate=%1 decodeStarted=%2 recoveredAt=%3"}
                        .arg (forceCandidate ? "true" : "false")
                        .arg (m_msDecStarted)
                        .arg (m_autoSeqRecovery.recovered_at ()));
+    return;
+  }
+  // 恢复票据存在时，候选选择必须等到 <DecodeFinished>。同一批中稍后出现的
+  // 原台续联报文优先于较早出现的新 DX 候选。
+  if (recoveryFreshBatch && forceCandidate) {
+    appendRecoveryLog (m_dataDir, "auto-call",
+                       QString {"recovery defers incremental candidate selection decodeStarted=%1"}
+                       .arg (m_msDecStarted));
+    return;
+  }
+  bool const recoveryFreshBatchEligible = m_autoSeqRecovery.can_process_fresh_batch (
+    m_houndMode, m_mode.startsWith ("WSPR"), m_transmitting, m_tune,
+    g_iptt != 0, m_callFirst73);
+  if (recoveryFreshBatch && !recoveryFreshBatchEligible) {
+    appendRecoveryLog (m_dataDir, "auto-call",
+                       QStringLiteral ("recovery gate withheld by TX/PTT guard; ticket retained"));
     return;
   }
   int count = 0;
@@ -3695,16 +3731,58 @@ void MainWindow::process_Auto(bool forceCandidate)
   QString grid = m_hisGrid;
   QString mode = "";
   unsigned time = 0;
+  int rx = ui->RxFreqSpinBox->value ();
+  int tx = ui->TxFreqSpinBox->value ();
   bool rareTargetRejected = false;
   bool autoRareTargetArm = false;
   bool autoDirectedAnswerArm = false;
+  bool recoveryResumeArm = false;
+  bool recoveryFallbackArm = false;
+  if (recoveryFreshBatch
+      && m_autoSeqRecovery.target_seen_in_fresh_batch (m_msDecStarted)) {
+    QString continuationCall {QString::fromStdString (m_autoSeqRecovery.target ())};
+    QString continuationGrid;
+    QString continuationReport;
+    QString continuationMode;
+    unsigned continuationTime = 0;
+    int continuationCount = 0;
+    int continuationPriority = 0;
+    int continuationRx = ui->RxFreqSpinBox->value ();
+    int continuationTx = ui->TxFreqSpinBox->value ();
+    auto const continuationStatus = m_qsoHistory.autoseq (
+        continuationCall, continuationGrid, continuationReport, continuationRx,
+        continuationTx, continuationTime, continuationCount, continuationPriority,
+        continuationMode);
+    auto const continuationAction = m_autoSeqRecovery.action_for_status (continuationStatus);
+    if (continuationAction == AutoSeqRecoveryPolicy::Action::finish_without_tx) {
+      appendRecoveryLog (m_dataDir, "auto-call",
+                         QString {"recovery accepted completed continuation=%1 status=%2; no TX"}
+                         .arg (continuationCall).arg (continuationStatus));
+      m_autoSeqRecovery.consume_candidate ();
+      m_status = continuationStatus;
+      return;
+    }
+    if (continuationAction == AutoSeqRecoveryPolicy::Action::arm_existing_stage) {
+      hisCall = continuationCall;
+      grid = continuationGrid;
+      rpt = continuationReport;
+      mode = continuationMode;
+      time = continuationTime;
+      count = continuationCount;
+      prio = continuationPriority;
+      rx = continuationRx;
+      tx = continuationTx;
+      recoveryResumeArm = true;
+      appendRecoveryLog (m_dataDir, "auto-call",
+                         QString {"recovery accepted continuation=%1 status=%2 decodeStarted=%3"}
+                         .arg (hisCall).arg (continuationStatus).arg (m_msDecStarted));
+    }
+  }
   bool const directedAnswerIdle = DirectedCallPolicy::canSelectStandbyCall (
       m_config.autoAnswerDirectedCalls (), m_autoseq, m_hisCall.isEmpty (),
       m_houndMode, m_mode.startsWith ("WSPR"), m_transmitting, m_tune,
       g_iptt != 0);
   bool const directedOnlySelection = directedAnswerIdle && m_callMode == 0;
-  int rx = ui->RxFreqSpinBox->value ();
-  int tx = ui->TxFreqSpinBox->value ();
   QStringList StrStatus = {"NONE","RFIN","RCQ","SCQ","RCALL","SCALL","RREPORT","SREPORT","RRREPORT","SRREPORT","RRR","SRR","RRR73","SRR73","R73","S73","FIN"};
   auto const configuredRareTarget = [this] (int priority) {
     return AutoCallPolicy::isConfiguredAutomaticTarget (
@@ -3834,6 +3912,26 @@ void MainWindow::process_Auto(bool forceCandidate)
         counters = false;
     }
   }
+  // 原台续联不进入仅处理空 DX 的新候选块。这里在既有状态机选定 Tx2..Tx5
+  // 前恢复 DX、按本批真实接收时隙设置周期并重建标准报文。
+  bool const recoveryResumeReady = recoveryResumeArm && !hisCall.isEmpty ()
+    && m_status > QsoHistory::NONE;
+  if (recoveryResumeReady) {
+    if (m_callToClipboard) clipboard->setText (hisCall);
+    m_autoSeqRecoveryInternalUiChange = true;
+    ui->dxCallEntry->setText (hisCall);
+    m_autoSeqRecoveryInternalUiChange = false;
+    if (m_mode == "JT9+JT65" && m_modeTx != mode) {
+      m_modeTx = mode;
+      if (m_modeTx == "JT9") ui->pbTxMode->setText ("Tx JT9  @");
+      else ui->pbTxMode->setText ("Tx JT65  #");
+      m_wideGraph->setModeTx (m_modeTx);
+      ui->TxFreqSpinBox->setValue (rx);
+    }
+    if (!rpt.isEmpty () && rpt == m_rpt) m_rpt = "-60";
+    applyAutoTxPeriod (hisCall, m_autoSeqRecovery.target_receive_time ());
+    genStdMsgs (m_rpt);
+  }
   if (hisCall.isEmpty () && counters && !m_houndMode
       && (m_callMode != 0 || directedAnswerIdle)) {
     auto ms = m_msDecStarted % 86400000;
@@ -3897,6 +3995,20 @@ void MainWindow::process_Auto(bool forceCandidate)
       && allowedRareTarget && (m_status == QsoHistory::RCQ || m_status == QsoHistory::RFIN);
     autoDirectedAnswerArm = directedAnswerIdle && !hisCall.isEmpty ()
       && DirectedCallPolicy::isDirectedCallStatus (m_status);
+    recoveryFallbackArm = recoveryFreshBatch && !recoveryResumeArm
+      && (autoRareTargetArm || autoDirectedAnswerArm);
+    if (recoveryFreshBatch && !recoveryResumeArm && !hisCall.isEmpty ()
+        && !recoveryFallbackArm) {
+      appendRecoveryLog (m_dataDir, "auto-call",
+                         QString {"recovery rejected unsupported fallback candidate=%1 status=%2; ticket retained"}
+                         .arg (hisCall).arg (m_status));
+      hisCall.clear ();
+      grid.clear ();
+      rpt.clear ();
+      mode.clear ();
+      m_status = QsoHistory::NONE;
+      counters = false;
+    }
     if(m_config.write_decoded_debug()) {
       QString StrDirection = "";
       if(m_status == QsoHistory::FIN) StrDirection = " auto sequence is finished;";
@@ -3915,7 +4027,9 @@ void MainWindow::process_Auto(bool forceCandidate)
     }
     if (!hisCall.isEmpty ()) {
       if (m_callToClipboard) clipboard->setText(hisCall);
+      if (recoveryFallbackArm) m_autoSeqRecoveryInternalUiChange = true;
       ui->dxCallEntry->setText(hisCall);
+      if (recoveryFallbackArm) m_autoSeqRecoveryInternalUiChange = false;
       if(m_mode=="JT9+JT65" && m_modeTx != mode) {
       m_modeTx = mode;
       if (m_modeTx == "JT9") ui->pbTxMode->setText("Tx JT9  @");
@@ -3933,7 +4047,8 @@ void MainWindow::process_Auto(bool forceCandidate)
       if (autoDirectedAnswerArm) m_autoDirectedAnswerActive = true;
       // Enable Tx is armed after the status-specific standard message is
       // selected below, so period, DX/report, and Tx2/Tx3 are all settled.
-    } else if (m_callMode != 0 && !forceCandidate && !rareTargetRejected && m_transmittedQSOProgress != CALLING){
+    } else if (m_callMode != 0 && !forceCandidate && !recoveryFreshBatch
+               && !rareTargetRejected && m_transmittedQSOProgress != CALLING){
         on_txb6_clicked();
         if(ui->tabWidget->currentIndex()==1) ui->genMsg->setText(ui->tx6->text());
     }
@@ -4007,7 +4122,10 @@ void MainWindow::process_Auto(bool forceCandidate)
         break;
       }
       case QsoHistory::SRR73: {
-        if (!m_singleshot && !m_config.autolog() && m_lastloggedcall == m_hisCall)
+        if (recoveryResumeReady) {
+          on_txb5_clicked();
+          if(ui->tabWidget->currentIndex()==1) ui->genMsg->setText(ui->tx5->currentText());
+        } else if (!m_singleshot && !m_config.autolog() && m_lastloggedcall == m_hisCall)
           autoStopTx("SRR73, none received ");
         break;
       }
@@ -4017,12 +4135,20 @@ void MainWindow::process_Auto(bool forceCandidate)
         break;
       }
       case QsoHistory::S73: {
+        if (recoveryResumeReady) {
+          on_txb5_clicked();
+          if(ui->tabWidget->currentIndex()==1) ui->genMsg->setText(ui->tx5->currentText());
+        } else {
 //        if (!m_singleshot && !m_config.autolog() && m_lastloggedcall == m_hisCall)
           autoStopTx("S73, none received ");
+        }
         break;
       }
       case QsoHistory::FIN: {
-        if (m_singleshot) 
+        if (recoveryResumeReady) {
+          on_txb5_clicked();
+          if(ui->tabWidget->currentIndex()==1) ui->genMsg->setText(ui->tx5->currentText());
+        } else if (m_singleshot)
           autoStopTx("FIN, end of QSO, Singleshot ");
         else if (m_config.autolog())
           autoStopTx("FIN, end of QSO, Autolog ");
@@ -4036,25 +4162,34 @@ void MainWindow::process_Auto(bool forceCandidate)
         break;
       }
     }
-    bool const recoveryFreshCandidate = m_autoSeqRecovery.pending ()
-      && m_autoSeqRecovery.can_arm (m_msDecStarted,
-                                    !hisCall.isEmpty () && m_status > QsoHistory::NONE);
-    if (recoveryFreshCandidate) {
+    bool const recoverySelectedNormalCandidate = recoveryFallbackArm
+      && !recoveryResumeReady && !hisCall.isEmpty () && m_status > QsoHistory::NONE;
+    if (recoverySelectedNormalCandidate) {
       appendRecoveryLog (m_dataDir, "auto-call",
-                         QString {"recovery accepted fresh candidate=%1 decodeStarted=%2 recoveredAt=%3; normal AutoSeq gates remain authoritative"}
+                         QString {"recovery accepted normal candidate=%1 decodeStarted=%2 recoveredAt=%3"}
                          .arg (hisCall)
                          .arg (m_msDecStarted)
                          .arg (m_autoSeqRecovery.recovered_at ()));
-      // This only releases the stale-decode gate.  It does not arm Enable Tx;
-      // the existing rare-target/direct-answer branches below remain the only
-      // branches changed by this block.
       m_autoSeqRecovery.consume_candidate ();
     }
-    if (autoRareTargetArm || autoDirectedAnswerArm) {
+    bool const recoveryMayArm = recoveryResumeReady && !m_houndMode
+      && !m_mode.startsWith ("WSPR") && !m_transmitting && !m_tune
+      && g_iptt == 0 && !m_callFirst73;
+    if (autoRareTargetArm || autoDirectedAnswerArm || recoveryMayArm) {
       // The candidate's period and standard Tx message have both been
       // applied before the watchdog and Enable Tx transition.
       txwatchdog (false);
       if (!m_enableTx) ui->enableTxButton->click ();
+      if (recoveryMayArm) {
+        appendRecoveryLog (m_dataDir, "auto-call",
+                           QString {"recovery armed continuation=%1 status=%2"}
+                           .arg (hisCall).arg (m_status));
+        m_autoSeqRecovery.consume_candidate ();
+      }
+    } else if (recoveryResumeReady) {
+      appendRecoveryLog (m_dataDir, "auto-call",
+                         QString {"recovery continuation withheld by existing TX guard target=%1 status=%2"}
+                         .arg (hisCall).arg (m_status));
     }
   } else {
     if (!counters) {
@@ -4280,8 +4415,24 @@ void MainWindow::readFromStdout()                             //readFromStdout
                                                     , distance
                                                     );
 
+      // 只有已经按标准报文解析且明确呼叫本台的本批消息，才可恢复原台 QSO。
+      // displayDecodedText 已先写入 QsoHistory，随后 process_Auto 才读取该阶段。
+      if (m_autoSeqRecovery.awaiting_fresh_batch () && !m_manualDecode && !m_diskData
+          && decodedtext.isStandardMessage () && mycallinmsg && !deCall.isEmpty ())
+        {
+          auto const fields = decodedtext.message ().split (' ', SkipEmptyParts);
+          bool const completionMessage = fields.size () >= 3
+            && (fields.back () == "RRR" || fields.back () == "RR73"
+                || fields.back () == "73");
+          m_autoSeqRecovery.observe_targeted_message (
+            m_msDecStarted, deCall.toStdString (),
+            Radio::base_callsign (deCall).toStdString (),
+            decodedtext.timeInSeconds (), completionMessage);
+        }
+
       if ((notified & 128) && (m_config.autoCallNewGrid () || m_config.autoCallNewGridBandMode ()) && m_autoseq
           && !m_manualDecode && !m_newGridAutoCallDone
+          && !m_autoSeqRecovery.awaiting_fresh_batch ()
           && AutoCallPolicy::canForceCandidate (
               !m_hisCall.isEmpty (), m_processAuto_done, m_callFirst73,
               m_transmitting, m_transmittedQSOProgress == SIGNOFF)) {
@@ -4380,7 +4531,8 @@ void MainWindow::readFromStdout()                             //readFromStdout
 		bcontent = false;
       }
 
-      if (mycallinmsg && !m_manualDecode) {
+      if (mycallinmsg && !m_manualDecode
+          && !m_autoSeqRecovery.awaiting_fresh_batch ()) {
          if (!deCall.isEmpty() && Radio::base_callsign (deCall) == Radio::base_callsign (m_hisCall)) {
            if (!m_processAuto_done && m_autoseq && ((!decodedtextmsg.contains(" 73") && !decodedtextmsg.contains("RR73")) 
            || (decodedtextmsg.contains(" 73") && m_status==QsoHistory::RRREPORT && m_rrr) || (decodedtextmsg.contains("RR73") && m_status==QsoHistory::RREPORT) || m_callMode==0 || m_singleshot || m_houndMode)) {
@@ -5280,6 +5432,7 @@ void MainWindow::ba2msg(QByteArray ba, char message[])             //ba2msg()
 
 void MainWindow::on_TxMinuteButton_clicked(bool checked)        //TxFirst
 {
+  if (m_autoSeqRecovery.pending ()) m_autoSeqRecovery.cancel ();
   m_txFirst=checked;
   if(m_transmitting && m_config.write_decoded_debug()) writeToALLTXT("Tx halted: period changed via TX period button");
   if (m_txGenerated != checked && m_enableTx && m_autoseq)  clearDX (" cleared, Tx Minute button clicked");
@@ -6015,6 +6168,8 @@ void MainWindow::TxAgain() { enableTx_mode(true); }
 
 void MainWindow::clearDX (QString reason)
 {
+  if (m_autoSeqRecovery.pending () && !m_autoSeqRecoveryInternalUiChange)
+    m_autoSeqRecovery.cancel ();
   QString dxcallclr=m_hisCall;
   clearDXfields("");
   genStdMsgs(QString {});
@@ -6388,6 +6543,8 @@ void MainWindow::on_propLineEdit_textChanged(const QString &text) {
 
 void MainWindow::on_dxCallEntry_textChanged(const QString &t) //dxCall changed
 {
+  if (m_autoSeqRecovery.pending () && !m_autoSeqRecoveryInternalUiChange)
+    m_autoSeqRecovery.cancel ();
   if (!m_hisCall.isEmpty () && t.toUpper ().trimmed () != m_hisCall)
     m_autoDirectedAnswerActive = false;
   int n=t.length();
@@ -6712,6 +6869,8 @@ void MainWindow::on_actionWSPR_2_triggered()
 void MainWindow::switch_mode (Mode mode)
 {
 // m_lastMode value is deliberately not assigned in constructor to let qsohistory init at SW startup 
+  if (m_autoSeqRecovery.pending () && m_autoSeqRecoveryMode != m_mode)
+    m_autoSeqRecovery.cancel ();
   if(m_lastMode!=m_mode) {
      m_autoDirectedAnswerActive = false;
      if (m_lastMode == "FT4") Q_EMIT m_config.transceiver_ft4_mode (false);
@@ -7011,6 +7170,9 @@ void MainWindow::on_bandComboBox_activated (int index)
 
 void MainWindow::band_changed (Frequency f)
 {
+  if (m_autoSeqRecovery.pending () && !m_autoSeqRecoveryBand.isEmpty ()
+      && m_autoSeqRecoveryBand != m_config.bands ()->find (f))
+    m_autoSeqRecovery.cancel ();
   if (m_bandEdited) {
     if (!m_mode.startsWith ("WSPR")) { // band hopping preserves auto Tx
       if (f + m_wideGraph->nStartFreq () > m_freqNominal + ui->TxFreqSpinBox->value ()
@@ -7373,6 +7535,8 @@ void MainWindow::stopTuneATU() { on_tuneButton_clicked(false); m_bTxTime=false; 
 
 void MainWindow::on_stopTxButton_clicked()                    //Stop Tx
 {
+  if (m_autoSeqRecovery.pending () && !m_autoSeqRecoveryInternalHalt)
+    m_autoSeqRecovery.cancel ();
   m_autoDirectedAnswerActive = false;
   if (m_transmitting || m_tune) m_addtx = -1;
   if (m_tune) stop_tuning ();
@@ -7574,15 +7738,37 @@ void MainWindow::handle_transceiver_update (Transceiver::TransceiverState const&
   // qDebug () << "MainWindow::handle_transceiver_update:" << s;
   Transceiver::TransceiverState old_state {m_rigState};
 
+  // CAT 重连后仍须看到实际 PTT 关闭；首次在线状态可能只反映初始化，
+  // 因此重连计数复位后仍保留票据等待随后的 PTT-off 更新。
+  if (s.online () && m_autoSeqRecovery.awaiting_reconnect ())
+    {
+      bool const changedContext = m_autoSeqRecoveryMode != m_mode
+        || (s.frequency () != 0 && !m_autoSeqRecoveryBand.isEmpty ()
+            && m_autoSeqRecoveryBand != m_config.bands ()->find (s.frequency ()));
+      if (changedContext)
+        {
+          appendRecoveryLog (m_dataDir, "auto-call",
+                             QStringLiteral ("recovery canceled after band or mode changed while CAT was offline"));
+          m_autoSeqRecovery.cancel ();
+        }
+      else if (!s.ptt ())
+        {
+          auto const recoveredAt = m_jtdxtime->currentMSecsSinceEpoch2 ();
+          m_autoSeqRecovery.reconnected_ptt_off (recoveredAt);
+          m_autoSeqRecoveryInternalUiChange = true;
+          clearDX (" cleared after CAT recovery; waiting for fresh decode");
+          m_autoSeqRecoveryInternalUiChange = false;
+          appendRecoveryLog (m_dataDir, "auto-call",
+                             QString {"recovery PTT off; DX released and waiting for fresh decode recoveredAt=%1"}
+                             .arg (recoveredAt));
+        }
+      else
+        appendRecoveryLog (m_dataDir, "auto-call",
+                           QStringLiteral ("recovery online but PTT on; DX remains occupied"));
+    }
+
   if (s.online () && m_rigRecovery.attempts ())
     {
-      if (m_autoSeqRecovery.pending ()) {
-        auto const recoveredAt = m_jtdxtime->currentMSecsSinceEpoch2 ();
-        m_autoSeqRecovery.reconnected (recoveredAt);
-        appendRecoveryLog (m_dataDir, "auto-call",
-                           QString {"recovery connected; waiting for fresh candidate recoveredAt=%1"}
-                           .arg (recoveredAt));
-      }
       appendRecoveryLog (m_dataDir, "rig-control", QString {"recovered after attempt %1"}.arg (m_rigRecovery.attempts ()));
       m_rigRecoveryTimer.stop ();
       m_rigRecovery.reset ();
@@ -7709,13 +7895,29 @@ void MainWindow::handle_transceiver_update (Transceiver::TransceiverState const&
 
 void MainWindow::handle_transceiver_failure (QString const& reason)
 {
-  bool const preserveAutoSeqIntent = m_autoseq
+  bool const recoverySupported = m_autoseq && !m_houndMode
+    && !m_mode.startsWith ("WSPR");
+  bool const preserveAutoSeqIntent = recoverySupported && !m_hisCall.isEmpty ()
     && (m_enableTx || m_transmitting || m_tx_when_ready || g_iptt != 0);
-  if (preserveAutoSeqIntent || m_autoSeqRecovery.pending ()) {
-    m_autoSeqRecovery.disconnected (preserveAutoSeqIntent || m_autoSeqRecovery.pending ());
+  // transmittedQSOProgress 在 Tx 开始时更新，不能单独证明首个 73 已完成。
+  // 仅当故障时仍有真实发射意图/状态，才把结束阶段标记为需要重发。
+  bool const signoffTxInterrupted = recoverySupported
+    && (m_QSOProgress == SIGNOFF || m_transmittedQSOProgress == SIGNOFF)
+    && (m_transmitting || m_tx_when_ready || g_iptt != 0 || m_btxok);
+  if (!recoverySupported && m_autoSeqRecovery.pending ()) {
+    m_autoSeqRecovery.cancel ();
+  } else if (preserveAutoSeqIntent || m_autoSeqRecovery.pending ()) {
+    if (!m_autoSeqRecovery.pending () && preserveAutoSeqIntent) {
+      m_autoSeqRecoveryBand = m_config.bands ()->find (m_freqNominal);
+      m_autoSeqRecoveryMode = m_mode;
+    }
+    m_autoSeqRecovery.disconnected (
+      true, m_hisCall.toStdString (),
+      Radio::base_callsign (m_hisCall).toStdString (), signoffTxInterrupted);
     appendRecoveryLog (m_dataDir, "auto-call",
-                       QString {"recovery disconnected preserveIntent=%1"}
-                       .arg (preserveAutoSeqIntent ? "true" : "false"));
+                       QString {"recovery disconnected preserveIntent=%1 signoffTxInterrupted=%2"}
+                       .arg (preserveAutoSeqIntent ? "true" : "false")
+                       .arg (signoffTxInterrupted ? "true" : "false"));
   }
   appendRecoveryLog (m_dataDir, "rig-control",
                      QString {"failure=%1; online=%2; ptt=%3; split=%4; "
@@ -7733,7 +7935,9 @@ void MainWindow::handle_transceiver_failure (QString const& reason)
   ui->readFreq->setStyleSheet(ui->readFreq->styleSheet().left(230)+QString("background: %1;\n color: %2;\n}").arg(Radio::convert_dark("#ff0000",m_useDarkStyle),Radio::convert_dark("#000000",m_useDarkStyle)));
   m_rigOk=false;
   ui->readFreq->setEnabled (true);
+  m_autoSeqRecoveryInternalHalt = true;
   haltTx("Rig control error: " + reason + " ");
+  m_autoSeqRecoveryInternalHalt = false;
   rigFailure (tr("Rig Control Error"), reason);
 }
 

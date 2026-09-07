@@ -1,5 +1,4 @@
 #include "ftx1_cat_poll_policy.hpp"
-#include "autoseq_recovery_policy.hpp"
 
 #include <cstdlib>
 #include <iostream>
@@ -135,17 +134,6 @@ int main ()
            "transient failure after optional completion must be soft again");
   require (1 == optional_completion.overall_failure_streak (),
            "transient failure after completion must restart at overall=1");
-
-  // h: recovery cannot arm on old/no-candidate decodes, only on a new one.
-  AutoSeqRecoveryPolicy recovery;
-  recovery.disconnected (true);
-  require (!recovery.can_arm (900, true), "old decode must not arm before reconnect");
-  recovery.reconnected (1000);
-  require (!recovery.can_arm (1000, true), "decode at reconnect boundary is not fresh");
-  require (!recovery.can_arm (1001, false), "fresh decode without candidate must not arm");
-  require (recovery.can_arm (1001, true), "fresh candidate after reconnect may arm");
-  recovery.consume_candidate ();
-  require (recovery.can_arm (1002, true), "normal AutoSeq resumes after candidate gate");
 
   // Alternating read operations still reach the bounded overall threshold;
   // per-operation counters alone must not allow an endless failure sequence.

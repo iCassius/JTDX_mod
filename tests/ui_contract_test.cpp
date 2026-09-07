@@ -70,6 +70,47 @@ int main ()
   expect (mainWindowCpp.contains ("setAutoAnswerDirectedCalls"), "directed-call action updates configuration");
   expect (mainWindowCpp.contains ("actionAutoAnswerDirectedCalls->setChecked(m_config.autoAnswerDirectedCalls())"), "settings and menu stay synchronized");
   expect (!mainWindowCpp.contains ("QUdpSocket"), "secondary no longer sends raw ADIF datagrams");
+  expect (mainWindowCpp.contains ("m_autoSeqRecovery.observe_targeted_message"),
+          "recovery adapter observes a decoded continuation");
+  expect (mainWindowCpp.contains ("decodedtext.isStandardMessage () && mycallinmsg"),
+          "recovery continuation requires a standard message addressed to this station");
+  expect (mainWindowCpp.contains ("if (!m_manualDecode && !m_diskData)"),
+          "manual and disk decodes cannot start a recovery batch");
+  expect (mainWindowCpp.contains ("recovery gate withheld manual or disk decode"),
+          "pending recovery rejects manual and disk AutoSeq processing");
+  expect (mainWindowCpp.contains ("recoveryFreshBatchEligible"),
+          "recovery applies the existing TX/PTT guard before any fresh batch fallback");
+  expect (mainWindowCpp.contains ("m_autoSeqRecovery.can_process_fresh_batch"),
+          "the production recovery gate is centralized in the tested policy helper");
+  auto const resumeGuard = mainWindowCpp.indexOf ("if (recoveryFreshBatch && !recoveryFreshBatchEligible)");
+  auto const resumeRestore = mainWindowCpp.indexOf ("ui->dxCallEntry->setText (hisCall)", resumeGuard);
+  expect (resumeGuard >= 0 && resumeRestore > resumeGuard,
+          "a blocked continuation cannot occupy DX before a later fallback batch");
+  expect (mainWindowCpp.contains ("completionMessage"),
+          "historical signoff handling records the fresh completion token");
+  expect (mainWindowCpp.contains ("m_autoSeqRecovery.reconnected_ptt_off"),
+          "recovery waits for an actual PTT-off update");
+  expect (mainWindowCpp.contains ("clearDX (\" cleared after CAT recovery; waiting for fresh decode\")"),
+          "PTT-off release clears the stale DX selection");
+  expect (mainWindowCpp.contains ("m_autoSeqRecoveryInternalHalt"),
+          "fault halt is distinguished from user halt cancellation");
+  auto const recoveryPeriod = mainWindowCpp.indexOf ("applyAutoTxPeriod (hisCall, m_autoSeqRecovery.target_receive_time ())");
+  auto const recoveryMessages = mainWindowCpp.indexOf ("genStdMsgs (m_rpt);", recoveryPeriod);
+  auto const recoveryEnable = mainWindowCpp.indexOf ("if (!m_enableTx) ui->enableTxButton->click ();", recoveryMessages);
+  expect (recoveryPeriod >= 0 && recoveryMessages > recoveryPeriod && recoveryEnable > recoveryMessages,
+          "recovery settles period and messages before Enable Tx");
+  expect (mainWindowCpp.contains ("recovery rejected unsupported fallback candidate="),
+          "unsupported fallback candidate is rejected while recovery ticket remains pending");
+  expect (mainWindowCpp.contains ("bool const recoverySelectedNormalCandidate = recoveryFallbackArm"),
+          "only an actually armable new candidate may consume recovery ticket");
+
+  QFile hamlibSource {QStringLiteral (JTDX_SOURCE_DIR "/HamlibTransceiver.cpp")};
+  expect (hamlibSource.open (QIODevice::ReadOnly), "open Hamlib source");
+  auto const hamlibCpp = hamlibSource.readAll ();
+  expect (hamlibCpp.contains ("append_hamlib_error_log (message)"),
+          "Hamlib ERR callback is persisted to bounded recovery diagnostics");
+  expect (hamlibCpp.contains ("overall_consecutive="),
+          "poll diagnostics include aggregate failure streak");
 
   QFile messageClientSource {QStringLiteral (JTDX_SOURCE_DIR "/MessageClient.cpp")};
   expect (messageClientSource.open (QIODevice::ReadOnly), "open MessageClient source");

@@ -14,16 +14,36 @@
 #include <QFileInfo>
 #include <QDir>
 #include <QTextStream>
+#include <QRegularExpression>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QJsonValue>
 #include <QDebug>
+#include <QMutex>
+#include <QMutexLocker>
 //#include <QThread>
 #include "moc_HamlibTransceiver.cpp"
 
 namespace
 {
   unsigned constexpr ftx1_model_number {1051};
+  QMutex recovery_log_mutex;
+
+  QString recovery_log_path ()
+  {
+    return QDir (QStandardPaths::writableLocation (QStandardPaths::DataLocation))
+      .absoluteFilePath (QStringLiteral ("jtdx_recovery.log"));
+  }
+
+  void rotate_recovery_log_if_needed (QString const& path)
+  {
+    QFileInfo const info {path};
+    if (info.exists () && info.size () >= 256 * 1024)
+      {
+        QFile::remove (path + ".1");
+        QFile::rename (path, path + ".1");
+      }
+  }
 
   bool is_ftx1_model (unsigned model)
   {
@@ -85,19 +105,15 @@ namespace
 
   void append_ftx1_poll_log (Ftx1CatPollPolicy::Operation operation,
                              int rc, Ftx1CatPollPolicy::Decision decision,
-                             unsigned consecutive, bool ptt_intent,
+                             unsigned consecutive, unsigned overall_consecutive,
+                             bool ptt_intent,
                              bool ptt_actual, bool ptt_known,
                              bool ptt_pending, bool ptt_transition,
                              bool safe_idle)
   {
-    auto const path = QDir (QStandardPaths::writableLocation (QStandardPaths::DataLocation))
-      .absoluteFilePath (QStringLiteral ("jtdx_recovery.log"));
-    QFileInfo const info {path};
-    if (info.exists () && info.size () >= 256 * 1024)
-      {
-        QFile::remove (path + ".1");
-        QFile::rename (path, path + ".1");
-      }
+    QMutexLocker locker {&recovery_log_mutex};
+    auto const path = recovery_log_path ();
+    rotate_recovery_log_if_needed (path);
 
     QFile log {path};
     if (log.open (QIODevice::WriteOnly | QIODevice::Text | QIODevice::Append))
@@ -110,6 +126,7 @@ namespace
                << " rc=" << rc
                << " category=" << hamlib_error_category (rc)
                << " consecutive=" << consecutive
+               << " overall_consecutive=" << overall_consecutive
                << " ftx1=true"
                << " ptt_intent=" << (ptt_intent ? "true" : "false")
                << " ptt_actual=" << (ptt_actual ? "true" : "false")
@@ -118,6 +135,23 @@ namespace
                << " ptt_transition=" << (ptt_transition ? "true" : "false")
                << " safe_idle=" << (safe_idle ? "true" : "false")
                << " decision=" << poll_decision_name (decision) << '\n';
+      }
+  }
+
+  void append_hamlib_error_log (QString diagnostic)
+  {
+    diagnostic.replace (QRegularExpression ("\\s+"), " ");
+    diagnostic = diagnostic.left (512).trimmed ();
+    QMutexLocker locker {&recovery_log_mutex};
+    auto const path = recovery_log_path ();
+    rotate_recovery_log_if_needed (path);
+    QFile log {path};
+    if (log.open (QIODevice::WriteOnly | QIODevice::Text | QIODevice::Append))
+      {
+        QTextStream stream {&log};
+        stream.setCodec ("UTF-8");
+        stream << QDateTime::currentDateTime ().toString (Qt::ISODateWithMs)
+               << " [rig-control] hamlib-error level=ERR message=" << diagnostic << '\n';
       }
   }
 
@@ -149,6 +183,7 @@ namespace
         break;
 
       case RIG_DEBUG_ERR:
+        append_hamlib_error_log (message);
         qCritical (fmt, message.toLocal8Bit ().data ());
         break;
 
@@ -602,7 +637,7 @@ void HamlibTransceiver::observe_poll_success (Ftx1CatPollPolicy::Operation opera
       context.ptt_request_pending = ptt_on_ != state ().ptt ();
       context.ptt_transition_pending = ptt_transition_hold_polls_ != 0;
       append_ftx1_poll_log (operation, RIG_OK,
-                            Ftx1CatPollPolicy::Decision::soft_ignore, 0,
+                            Ftx1CatPollPolicy::Decision::soft_ignore, 0, 0,
                             ptt_on_, state ().ptt (), ptt_state_known_,
                             ptt_on_ != state ().ptt (),
                             context.ptt_transition_pending,
@@ -647,7 +682,7 @@ void HamlibTransceiver::check_poll_read (Ftx1CatPollPolicy::Operation operation,
       // does not touch a cached value or a write path, and remains disabled
       // whenever PTT safety is uncertain.
       append_ftx1_poll_log (operation, ret_code,
-                            Ftx1CatPollPolicy::Decision::soft_ignore, 0,
+                            Ftx1CatPollPolicy::Decision::soft_ignore, 0, 0,
                             context.ptt_intent, context.ptt_actual,
                             context.ptt_known, context.ptt_request_pending,
                             context.ptt_transition_pending,
@@ -660,7 +695,8 @@ void HamlibTransceiver::check_poll_read (Ftx1CatPollPolicy::Operation operation,
     }
   auto const decision = ftx1_poll_policy_.observe_failure (operation, context);
   auto const consecutive = ftx1_poll_policy_.failure_count (operation);
-  append_ftx1_poll_log (operation, ret_code, decision, consecutive,
+  auto const overall_consecutive = ftx1_poll_policy_.overall_failure_streak ();
+  append_ftx1_poll_log (operation, ret_code, decision, consecutive, overall_consecutive,
                         context.ptt_intent, context.ptt_actual,
                         context.ptt_known, context.ptt_request_pending,
                         context.ptt_transition_pending,

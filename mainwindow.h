@@ -689,6 +689,10 @@ private:
   QTimer m_rigRecoveryTimer;
   RecoveryPolicy m_rigRecovery;
   AutoSeqRecoveryPolicy m_autoSeqRecovery;
+  bool m_autoSeqRecoveryInternalUiChange {false};
+  bool m_autoSeqRecoveryInternalHalt {false};
+  QString m_autoSeqRecoveryBand;
+  QString m_autoSeqRecoveryMode;
 
   QString m_path;
   QString m_baseCall;
