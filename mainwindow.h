@@ -812,7 +812,8 @@ private:
   void processMessage(QString const& messages, qint32 position, bool alt, bool ctrl);
   void replyToUDP (QTime, qint32 snr, float delta_time, quint32 delta_frequency, QString const& mode, QString const& message_text, bool low_confidence, quint8 modifiers);
   void replayDecodes ();
-  void postDecode (bool is_new, QString const& message);
+  void postDecode (bool is_new, QString const& message,
+                   QString const& callsign = {}, QString const& grid = {});
   void postWSPRDecode (bool is_new, QStringList message_parts);
   void enable_DXCC_entity ();
   void switch_mode (Mode);

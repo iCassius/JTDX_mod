@@ -4566,7 +4566,7 @@ void MainWindow::readFromStdout()                             //readFromStdout
 
       if((!m_config.prevent_spotting_false () || (m_config.prevent_spotting_false () && !decodedtext.isWrong ()))
          && (!m_config.filterUDP () || (m_config.filterUDP () && notified & 2))) {
-         postDecode (true, decodedtext.string ());
+         postDecode (true, decodedtext.string (), deCall, grid);
       }
       // find and extract any report for myCall
       QString rpt_type;
@@ -8392,7 +8392,8 @@ void MainWindow::replayDecodes ()
   statusChanged ();
 }
 
-void MainWindow::postDecode (bool is_new, QString const& message)
+void MainWindow::postDecode (bool is_new, QString const& message,
+                             QString const& callsign, QString const& grid)
 {
   auto const& decode = message.trimmed ();
   QStringList parts = decode.left (22).split (' ', SkipEmptyParts);
@@ -8405,7 +8406,9 @@ void MainWindow::postDecode (bool is_new, QString const& message)
                                , parts[2].toFloat (), parts[3].toUInt (), parts[4]
                                , decode.mid (has_seconds ? 23 : 21, 23)
                                , low_confidence
-                               , m_diskData);
+                               , m_diskData
+                               , callsign
+                               , grid);
   }
 }
 
@@ -8720,6 +8723,22 @@ void MainWindow::statusUpdate () const
 {
   if (!ui) return;
   m_webState->observe_band (m_config.bands ()->find (m_freqNominal));
+  QString qso_stage;
+  switch (m_QSOProgress)
+    {
+    case CALLING: qso_stage = QStringLiteral ("calling"); break;
+    case REPLYING: qso_stage = QStringLiteral ("replying"); break;
+    case REPORT: qso_stage = QStringLiteral ("report"); break;
+    case ROGER_REPORT: qso_stage = QStringLiteral ("roger_report"); break;
+    case ROGERS: qso_stage = QStringLiteral ("rogers"); break;
+    case SIGNOFF: qso_stage = QStringLiteral ("signoff"); break;
+    }
+  // These are internal business fields.  The AutoSeq flag means enabled/disabled;
+  // it is not evidence that a CQ has started or that a transmission is active.
+  bool const cq_selected = m_QSOProgress == CALLING
+    && m_curMsgTx.trimmed ().startsWith (QStringLiteral ("CQ "));
+  QString const cq_state = JtdxWebState::project_cq_state (cq_selected, m_enableTx, m_transmitting);
+  m_webState->observe_business_state (m_autoseq, qso_stage, cq_state, m_curMsgTx);
   QChar submode {0};
   m_messageClient->status_update (m_freqNominal, m_mode, m_hisCall,
                                   QString::number (ui->rptSpinBox->value ()),

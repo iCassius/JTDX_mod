@@ -70,7 +70,7 @@ public:
                              , bool fast_mode, bool tx_first, bool force);
   Q_SLOT void decode (bool is_new, QTime time, qint32 snr, float delta_time, quint32 delta_frequency
                       , QString const& mode, QString const& message, bool low_confidence
-                      , bool off_air);
+                      , bool off_air, QString const& callsign = {}, QString const& grid = {});
   Q_SLOT void WSPR_decode (bool is_new, QTime time, qint32 snr, float delta_time, Frequency
                            , qint32 drift, QString const& callsign, QString const& grid, qint32 power
                            , bool off_air);
@@ -138,7 +138,7 @@ public:
                                   , bool fast_mode, bool tx_first, bool force);
   Q_SIGNAL void decode_observed (bool is_new, QTime time, qint32 snr, float delta_time, quint32 delta_frequency
                                  , QString const& mode, QString const& message, bool low_confidence
-                                 , bool off_air);
+                                 , bool off_air, QString const& callsign, QString const& grid);
   Q_SIGNAL void WSPR_decode_observed (bool is_new, QTime time, qint32 snr, float delta_time, Frequency
                                       , qint32 drift, QString const& callsign, QString const& grid, qint32 power
                                       , bool off_air);

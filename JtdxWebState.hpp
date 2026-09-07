@@ -23,6 +23,7 @@ public:
   using Frequency = Radio::Frequency;
   static constexpr int default_decode_limit = 300;
   static constexpr int hard_decode_limit = 500;
+  static QString project_cq_state (bool cq_selected, bool enable_tx, bool transmitting);
 
   explicit JtdxWebState (QString application_name, QString application_version,
                          QString instance_id = QString {}, QObject * parent = nullptr);
@@ -44,11 +45,14 @@ public:
   void observe_band (QString const& band);
   void observe_decode (bool is_new, QTime time, qint32 snr, float delta_time,
                        quint32 delta_frequency, QString const& mode,
-                       QString const& message, bool low_confidence, bool off_air);
+                       QString const& message, bool low_confidence, bool off_air,
+                       QString const& callsign = {}, QString const& grid = {});
   void observe_wspr_decode (bool is_new, QTime time, qint32 snr, float delta_time,
                             Frequency frequency, qint32 drift,
                             QString const& callsign, QString const& grid,
                             qint32 power, bool off_air);
+  void observe_business_state (bool auto_sequence_enabled, QString const& qso_stage,
+                               QString const& cq_state, QString const& current_tx_text);
   void clear_decodes ();
 
   // 测试时使用单调时钟，避免墙上时钟调整影响新鲜度断言。
@@ -66,6 +70,8 @@ private:
     quint32 delta_frequency {0};
     QString mode;
     QString message;
+    QString callsign;
+    QString grid;
     bool low_confidence {false};
     bool off_air {false};
     bool is_new {false};
@@ -75,8 +81,6 @@ private:
     Frequency frequency {0};
     qint32 drift {0};
     qint32 power {0};
-    QString callsign;
-    QString grid;
   };
 
   qint64 monotonic_now () const;
@@ -112,6 +116,11 @@ private:
   QString de_call_;
   QString de_grid_;
   QString dx_grid_;
+  bool has_business_state_ {false};
+  bool auto_sequence_enabled_ {false};
+  QString qso_stage_;
+  QString cq_state_;
+  QString current_tx_text_;
   bool watchdog_timeout_ {false};
   QString sub_mode_;
   bool fast_mode_ {false};

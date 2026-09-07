@@ -598,10 +598,10 @@ void MessageClient::status_update (Frequency f, QString const& mode, QString con
 
 void MessageClient::decode (bool is_new, QTime time, qint32 snr, float delta_time, quint32 delta_frequency
                             , QString const& mode, QString const& message_text, bool low_confidence
-                            , bool off_air)
+                            , bool off_air, QString const& callsign, QString const& grid)
 {
    Q_EMIT decode_observed (is_new, time, snr, delta_time, delta_frequency, mode, message_text,
-                           low_confidence, off_air);
+                           low_confidence, off_air, callsign, grid);
    if (m_->server_port_ && !m_->server_string_.isEmpty ())
     {
       QByteArray message;
@@ -613,7 +613,7 @@ void MessageClient::decode (bool is_new, QTime time, qint32 snr, float delta_tim
    if (m_->mirror_)
     {
       m_->mirror_->decode (is_new, time, snr, delta_time, delta_frequency, mode, message_text,
-                           low_confidence, off_air);
+                           low_confidence, off_air, callsign, grid);
     }
 }
 

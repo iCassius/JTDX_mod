@@ -157,12 +157,34 @@ int main (int argc, char * argv[])
   expect (drain_counts (secondary_invalid_capture).value (NetworkMessage::Status) == 1,
           "invalid secondary does not block primary telemetry");
 
+  // Observation is local admission and remains available when UDP is not
+  // configured; this is the source consumed by the Web state model.
+  MessageClient empty_target {"udp-mirror-test", "2.2.159.2.4", QString {}, 0};
+  int empty_target_observations = 0;
+  QObject::connect (&empty_target, &MessageClient::decode_observed,
+                    [&empty_target_observations] (bool, QTime, qint32, float, quint32,
+                                                   QString const&, QString const&, bool, bool,
+                                                   QString const&, QString const&) {
+                      ++empty_target_observations;
+                    });
+  empty_target.decode (true, QTime {12, 34}, -10, 0.4f, 1200, "FT8", "CQ W1ABC FN31", false, false,
+                       "W1ABC", "FN31");
+  expect (empty_target_observations == 1, "empty UDP target still emits local observation");
+
   // A disabled client produces neither structured telemetry nor a heartbeat.
   QUdpSocket disabled_capture;
   expect (disabled_capture.bind (QHostAddress {QHostAddress::LocalHost}, 0), "bind disabled capture socket");
   MessageClient disabled {"udp-mirror-test", "2.2.159.2.4", "127.0.0.1", disabled_capture.localPort (), nullptr, false};
+  int disabled_observations = 0;
+  QObject::connect (&disabled, &MessageClient::decode_observed,
+                    [&disabled_observations] (bool, QTime, qint32, float, quint32,
+                                               QString const&, QString const&, bool, bool,
+                                               QString const&, QString const&) {
+                      ++disabled_observations;
+                    });
   send_sample_telemetry (disabled);
   pump (100);
+  expect (disabled_observations == 1, "disabled UDP client still emits local observation");
   expect (!disabled_capture.hasPendingDatagrams (), "disabled secondary sends no packets");
 
   // Dynamic target changes take effect without reconstructing the client.

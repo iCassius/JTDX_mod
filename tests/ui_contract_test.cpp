@@ -103,6 +103,16 @@ int main ()
           "unsupported fallback candidate is rejected while recovery ticket remains pending");
   expect (mainWindowCpp.contains ("bool const recoverySelectedNormalCandidate = recoveryFallbackArm"),
           "only an actually armable new candidate may consume recovery ticket");
+  expect (mainWindowCpp.contains ("postDecode (true, decodedtext.string (), deCall, grid)"),
+          "Web decode metadata reuses the production DecodedText sender call");
+  expect (!mainWindowCpp.contains ("postDecode (true, decodedtext.string (), decodedtext.call (), grid)"),
+          "Web decode metadata does not mistake the CQ target call for the sender");
+  expect (mainWindowCpp.contains ("m_webState->observe_business_state"),
+          "Web state reads internal business state from the existing status path");
+  expect (mainWindowCpp.contains ("m_curMsgTx.trimmed ().startsWith (QStringLiteral (\"CQ \"))"),
+          "CQ state is projected only for an internally selected CQ message");
+  expect (mainWindowCpp.contains ("JtdxWebState::project_cq_state"),
+          "CQ projection keeps selected, armed and transmitting states distinct");
 
   QFile hamlibSource {QStringLiteral (JTDX_SOURCE_DIR "/HamlibTransceiver.cpp")};
   expect (hamlibSource.open (QIODevice::ReadOnly), "open Hamlib source");

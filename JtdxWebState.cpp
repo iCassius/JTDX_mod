@@ -14,6 +14,13 @@ constexpr qint64 stale_after_ms = 5000;
 constexpr int JtdxWebState::default_decode_limit;
 constexpr int JtdxWebState::hard_decode_limit;
 
+QString JtdxWebState::project_cq_state (bool cq_selected, bool enable_tx, bool transmitting)
+{
+  if (!cq_selected) return QStringLiteral ("not_selected");
+  if (transmitting) return QStringLiteral ("transmitting");
+  return enable_tx ? QStringLiteral ("armed") : QStringLiteral ("idle");
+}
+
 JtdxWebState::JtdxWebState (QString application_name, QString application_version,
                             QString instance_id, QObject * parent)
   : QObject {parent}
@@ -91,7 +98,8 @@ void JtdxWebState::observe_band (QString const& band)
 void JtdxWebState::observe_decode (bool is_new, QTime time, qint32 snr,
                                    float delta_time, quint32 delta_frequency,
                                    QString const& mode, QString const& message,
-                                   bool low_confidence, bool off_air)
+                                   bool low_confidence, bool off_air,
+                                   QString const& callsign, QString const& grid)
 {
   Q_ASSERT (QThread::currentThread () == thread ());
   // replayDecodes 明确使用 is_new=false；回放数据已在 UI 流中，不能挤占实时条目。
@@ -106,6 +114,8 @@ void JtdxWebState::observe_decode (bool is_new, QTime time, qint32 snr,
   decode.delta_frequency = delta_frequency;
   decode.mode = mode;
   decode.message = message;
+  decode.callsign = callsign;
+  decode.grid = grid;
   decode.low_confidence = low_confidence;
   decode.off_air = off_air;
   decode.is_new = is_new;
@@ -153,6 +163,20 @@ void JtdxWebState::observe_wspr_decode (bool is_new, QTime time, qint32 snr,
       decode_seen_ms_ = decode.received_ms;
       decode_wall_ = QDateTime::currentDateTimeUtc ();
     }
+}
+
+void JtdxWebState::observe_business_state (bool auto_sequence_enabled,
+                                           QString const& qso_stage,
+                                           QString const& cq_state,
+                                           QString const& current_tx_text)
+{
+  Q_ASSERT (QThread::currentThread () == thread ());
+  ++revision_;
+  has_business_state_ = true;
+  auto_sequence_enabled_ = auto_sequence_enabled;
+  qso_stage_ = qso_stage;
+  cq_state_ = cq_state;
+  current_tx_text_ = current_tx_text;
 }
 
 void JtdxWebState::clear_decodes ()
@@ -264,9 +288,16 @@ QJsonObject JtdxWebState::json_snapshot () const
   object.insert (QStringLiteral ("ptt"), nullable_bool (rig_ptt_, has_rig_ && rig_online_
                                                           && now - rig_seen_ms_ <= stale_after_ms));
   object.insert (QStringLiteral ("web_server_state"), QJsonValue {QJsonValue::Null});
-  object.insert (QStringLiteral ("auto_sequence_state"), QJsonValue {QJsonValue::Null});
-  object.insert (QStringLiteral ("cq_state"), QJsonValue {QJsonValue::Null});
-  object.insert (QStringLiteral ("current_tx_text"), QJsonValue {QJsonValue::Null});
+  object.insert (QStringLiteral ("auto_sequence_state"), has_business_state_
+                ? QJsonValue {auto_sequence_enabled_ ? QStringLiteral ("enabled")
+                                                     : QStringLiteral ("disabled")}
+                : QJsonValue {QJsonValue::Null});
+  object.insert (QStringLiteral ("qso_stage"), has_business_state_ ? nullable_string (qso_stage_)
+                                                                      : QJsonValue {QJsonValue::Null});
+  object.insert (QStringLiteral ("cq_state"), has_business_state_ ? nullable_string (cq_state_)
+                                                                     : QJsonValue {QJsonValue::Null});
+  object.insert (QStringLiteral ("current_tx_text"), has_business_state_
+                ? nullable_string (current_tx_text_) : QJsonValue {QJsonValue::Null});
 
   QJsonArray decode_array;
   for (auto const& decode : decodes_)
@@ -279,6 +310,8 @@ QJsonObject JtdxWebState::json_snapshot () const
       item.insert (QStringLiteral ("delta_frequency"), static_cast<qint64> (decode.delta_frequency));
       item.insert (QStringLiteral ("mode"), nullable_string (decode.mode));
       item.insert (QStringLiteral ("message"), nullable_string (decode.message));
+      item.insert (QStringLiteral ("callsign"), nullable_string (decode.callsign));
+      item.insert (QStringLiteral ("grid"), nullable_string (decode.grid));
       item.insert (QStringLiteral ("low_confidence"), decode.low_confidence);
       item.insert (QStringLiteral ("off_air"), decode.off_air);
       item.insert (QStringLiteral ("is_new"), decode.is_new);
@@ -288,8 +321,6 @@ QJsonObject JtdxWebState::json_snapshot () const
       item.insert (QStringLiteral ("age_ms"), qMax<qint64> (0, now - decode.received_ms));
       item.insert (QStringLiteral ("frequency"), nullable_frequency (decode.frequency, decode.wspr));
       item.insert (QStringLiteral ("drift"), decode.wspr ? QJsonValue {decode.drift} : QJsonValue {QJsonValue::Null});
-      item.insert (QStringLiteral ("callsign"), nullable_string (decode.callsign));
-      item.insert (QStringLiteral ("grid"), nullable_string (decode.grid));
       item.insert (QStringLiteral ("power"), decode.wspr ? QJsonValue {decode.power} : QJsonValue {QJsonValue::Null});
       item.insert (QStringLiteral ("source_revision"), static_cast<qint64> (decode.source_revision));
       decode_array.append (item);
