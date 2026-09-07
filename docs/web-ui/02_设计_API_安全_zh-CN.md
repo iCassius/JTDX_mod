@@ -8,7 +8,7 @@
 
 ## 状态和只读 API
 
-`/api/v1/state` 至少含：`application_name`、`application_version`、`instance_id`、`online`、`last_seen`、`frequency`、`band`、`mode`、`dx_call`、`dx_grid`、`report`、`tx_mode`、`tx_enabled`、`transmitting`、`decoding`、`rx_df`、`tx_df`、`de_call`、`de_grid`、`watchdog_timeout`、`sub_mode`、`fast_mode`、`tx_first`、`auto_sequence_state`、`cq_state`、`web_server_state`、`last_status_update`、`last_decode_update`、`recent_decodes`。外层建议加 `schema_version`、`server_epoch`、`state_revision`、`generated_at`、`freshness` 和 `stale_after_ms`。
+`/api/v1/state` 至少含：`application_name`、`application_version`、`instance_id`、`online`、`last_seen`、`frequency`、`band`、`mode`、`dx_call`、`dx_grid`、`report`、`tx_mode`、`tx_enabled`、`transmitting`、`decoding`、`rx_df`、`tx_df`、`de_call`、`de_grid`、`watchdog_timeout`、`sub_mode`、`fast_mode`、`tx_first`、`auto_sequence_state`、`qso_stage`、`cq_state`、`current_tx_text`、`web_server_state`、`last_status_update`、`last_decode_update`、`recent_decodes`。外层建议加 `schema_version`、`server_epoch`、`state_revision`、`generated_at`、`freshness` 和 `stale_after_ms`。P1 中 `auto_sequence_state` 表示 AutoSeq 开关，`qso_stage` 表示内部 QSO 阶段，`cq_state` 仅在内部选中 CQ 文本时投影为 `idle`/`armed`/`transmitting`，不能把它们互相替代。
 
 解码对象至少含短期有效 `decode_id`、时间、SNR、频偏、模式、文本、Call/Grid、是否新解码和来源 revision。队列有硬上限，淘汰最旧项并记计数。状态在事件循环中写入/读取；若未来跨线程必须改为锁或消息转发并增加生命周期测试。
 
@@ -36,4 +36,4 @@
 
 ## 真实入口待验证
 
-P1/P4/P5 必须以当前源码复核 `MessageClient` 状态/解码信号、`MainWindow::statusUpdate()`、`MessageClient::status_update()`、`handle_transceiver_update`、`band_changed`/`setRig`、DX 选择、CQ/AutoSeq 和停止入口。已知 UI 路径存在副作用，不能直接把 UI click、双击解码或 `processMessage` 作为 Web 业务 API。若需抽取共用入口，应保持原 UI 语义并增加回归测试。当前没有任何 Web 代码、HTTP 合同或真实设备证据。
+P2/P4/P5 必须以当前源码复核 `MessageClient` 状态/解码信号、`MainWindow::statusUpdate()`、`MessageClient::status_update()`、`handle_transceiver_update`、`band_changed`/`setRig`、DX 选择、CQ/AutoSeq 和停止入口。P1 已完成状态模型和只读接入；当前仍没有 HTTP 合同、TCP 服务器或真实设备证据。已知 UI 路径存在副作用，不能直接把 UI click、双击解码或 `processMessage` 作为 Web 业务 API。若需抽取共用入口，应保持原 UI 语义并增加回归测试。

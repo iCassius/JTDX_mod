@@ -4,8 +4,8 @@
 
 ## 当前状态
 
-- 阶段：`P1 状态模型`，本批代码已提交但尚未完成阶段验收；P0 文档与事实基线已完成。
-- 基线：分支 `main`，HEAD `04df89fc7be6066fb8b6ff243dece8ead7103dbb`，工作树在本轮开始时干净。
+- 阶段：`P1 状态模型`，本批代码和独立构建/CTest 验收已完成；P0 文档与事实基线已完成。P2 及后续仍未开始。
+- 基线：分支 `main`，本批开始 HEAD `1f5b71fe6b65e039cc8df6c4ebbd2477ec4f73e1`，源码结果已提交 `0420a21`，中文文档随本次收尾提交；本批开始工作树干净。
 - 代码根目录：`C:\JTDX64\jtdx_sourcecode`。用户需求中的 `jtdx\_sourcecode` 按当前实际仓库路径解释。
 - 本轮范围：实现 P1 状态快照、有限解码和既有 MessageClient/MainWindow 的最小只读接入；不新增 TCP/UDP、线程、进程、控制、设置或菜单；没有启动 JTDX，没有连接 CAT/PTT/真实电台，没有部署。
 - 已确认：主程序已有 Qt5 Network、`MessageClient`、`MessageServer` 和 `JTDX_BUILD_LOCAL_TESTS`；P1 状态模型已提交，P2 及后续 Web 服务器/UI 仍未实现。
@@ -24,7 +24,7 @@
 | 阶段 | 边界 | 交付重点 | 当前状态 |
 | --- | --- | --- | --- |
 | P0 | 文档与事实基线 | 需求、网络/进程安全边界、API 草案、验收矩阵、恢复入口 | 已完成 |
-| P1 | 状态模型 | `JtdxWebState`、状态新鲜度、解码上限、事件循环安全读接口；只读数据接入 | 未开始 |
+| P1 | 状态模型 | `JtdxWebState`、状态新鲜度、解码上限、事件循环安全读接口；只读数据接入 | 已通过（独立构建/14 项 CTest；未启动 JTDX/HIL） |
 | P2 | 只读服务器 | `JtdxWebServer`、TCP 端口生命周期、`/`、`/healthz`、`/api/v1/state`、`/api/v1/decodes`、SSE | 未开始 |
 | P3 | 设置/菜单/前端骨架 | Web UI 设置 Tab、端口/绑定策略、菜单入口、内置资源、响应式只读页面 | 未开始 |
 | P4 | 普通控制 | `JtdxWebControl`、频率切换、过期解码 ID、DX 选择、状态回读 | 未开始 |
