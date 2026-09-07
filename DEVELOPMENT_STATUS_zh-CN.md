@@ -19,7 +19,9 @@
 - 没有原台续联或新候选时 DX 保持为空、票据继续等待；实际新候选才消费恢复票据。用户停发、Escape、UDP HaltTx、禁用、清除、目标/模式/波段/Tx 周期变化均取消票据；内部故障 halt 保留票据。
 - `jtdx_recovery.log` 的 Hamlib 错误记录与 FTX-1 聚合失败计数使用同一受限日志轮换；日志互斥只覆盖 Hamlib 写入者，不宣称覆盖 MainWindow 的全局线程安全。
 
-本 `.9` 构建明确使用 `WSJT_ENABLE_OMNIRIG=OFF`，沿用 Hamlib-only 交付边界；默认选项仍保持 `ON`。权威 `build-159.2.9` 的 MinGW64 Release 增量重编译完成，完整 CTest 为 `13/13` 通过（含 `autoseq_recovery_policy_test` 与 `omnirig_build_option_test`）；未启动 JTDX，未连接 CAT/PTT，未操作真实电台。
+本 `.9` 构建明确使用 `WSJT_ENABLE_OMNIRIG=OFF`，沿用 Hamlib-only 交付边界；默认选项仍保持 `ON`。以实现提交 `e5a4381e6ac496c7d1a0088e39c1e3a08d94ad2a`、文档结果提交/构建 artifact code HEAD `651bf9f674d0e028ed0a6e03e5e7cd86c72701bc` 为依据，权威 `build-159.2.9` MinGW64 Release 构建完成，最终 CTest `13/13` 通过（总耗时 22.00 秒，含 `autoseq_recovery_policy_test` 与 `omnirig_build_option_test`）。
+
+最终交付 ZIP 为 `C:\JTDX64\159.2.9-cat-recovery-test.zip`，大小 56,071,897 字节，压缩包共 75 条记录，顶层目录严格为 `bin`、`plugins`、`share`；同级 SHA256 sidecar 为 `2b7f75bf3987490583b06eb1fce7ef92608dfc794046e0c071d4547affc005ab`。包内 `jtdx.exe` 与权威构建产物一致，Hamlib 运行时 DLL 与既有 4.7.2 运行时一致。未启动 JTDX，未连接 CAT/PTT，未操作真实电台，也未覆盖 `C:\JTDX64\159`。
 
 本任务的 Hamlib 4.7.2 源码分析锚点：
 

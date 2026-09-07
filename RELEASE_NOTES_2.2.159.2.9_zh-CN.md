@@ -17,7 +17,9 @@
 
 ## 验证
 
-本 `.9` 包明确使用 `WSJT_ENABLE_OMNIRIG=OFF`；源码默认选项仍为 `ON`。权威 `build-159.2.9` MinGW64 Release 增量重编译完成，完整 CTest `13/13` 通过，含真实 `QsoHistory` 事件链、生产恢复门控源码断言、FTX-1 CAT 策略和 OmniRig OFF 构建门。运行时依赖闭包、ZIP 和 SHA256 由同一结果提交后的交付流程复核。
+本 `.9` 包明确使用 `WSJT_ENABLE_OMNIRIG=OFF`；源码默认选项仍为 `ON`。以 artifact code HEAD `651bf9f674d0e028ed0a6e03e5e7cd86c72701bc` 构建的权威 `build-159.2.9` MinGW64 Release 通过完整 CTest `13/13`（22.00 秒），含真实 `QsoHistory` 事件链、生产恢复门控源码断言、FTX-1 CAT 策略和 OmniRig OFF 构建门。
+
+交付物 `C:\JTDX64\159.2.9-cat-recovery-test.zip` 为 56,071,897 字节、75 条 ZIP 记录，顶层仅有 `bin`、`plugins`、`share`；外置 SHA256 为 `2b7f75bf3987490583b06eb1fce7ef92608dfc794046e0c071d4547affc005ab`。包内 `jtdx.exe` 已与权威构建产物核对一致，Hamlib 4.7.2 DLL 与既有运行时核对一致。
 
 未执行真实电台、CAT/PTT、音频或发射验证。运行时包若交付，仅允许包含顶层 `bin/`、`plugins/`、`share/`；SHA256 sidecar 放在 ZIP 外部；不覆盖已安装的 `C:\JTDX64\159`。
 
