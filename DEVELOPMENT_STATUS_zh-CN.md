@@ -1,5 +1,9 @@
 # 石家庄业余无线俱乐部版开发状态
 
+## 内置 Web UI 设计与阶段入口
+
+Web UI 工作从阶段 `P0 文档与事实基线` 开始，当前只完成需求/边界/设计草案/验收矩阵/恢复日志整理，未实现代码，未启动 JTDX，未连接 CAT/PTT/真实电台，未做浏览器、HIL 或部署验证。后续请从 [`WEB_UI_START_HERE_zh-CN.md`](WEB_UI_START_HERE_zh-CN.md) 恢复，并按 `docs/web-ui/PROGRESS_zh-CN.md` 逐阶段推进。Web 必须使用独立 TCP 端口、零新增 Web 进程和常驻线程，不改变既有 UDP 配置；当前程序已有 `jtdxjt9` 解码子进程，该既有边界不属于 Web 新增进程。
+
 ## 当前基线
 
 - 产品显示版本：JTDX `2.2.159.2.9`。
