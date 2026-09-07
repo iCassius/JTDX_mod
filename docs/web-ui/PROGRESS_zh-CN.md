@@ -4,13 +4,37 @@
 
 ## 当前恢复点
 
-- 当前阶段：`P0 文档与事实基线`。
-- 本批状态：已完成并提交；下一步等待用户检查额度后进入 P1。
-- 基线分支/提交：`main` / `582296c8d140e3f23bad785de1f7d9585b212197`。
+- 当前阶段：`P1 状态模型`。
+- 本批状态：进行中；已确认文档基线为 `04df89fc7be6066fb8b6ff243dece8ead7103dbb`，开始源码事实核对和文件计划。
+- 基线分支/提交：`main` / `04df89fc7be6066fb8b6ff243dece8ead7103dbb`。
 - P0 初始结果提交：`02153b0`（提交后修订不 amend，使用 `git log --oneline -- docs/web-ui` 追踪后续文档提交）；提交后必须用 `git show --stat --oneline HEAD` 和 `git status --short --branch` 复核。
 - 工作树预期：干净；任何后续未提交修改必须在恢复记录中列出。
 - 模型策略：按用户要求使用 `gpt-5.6-luna`、`high`；不自行升级模型或推理档位。
 - 配额策略：本批开始账户共享快照为 5 小时剩余 85%、周剩余 94%；最近结束快照为 5 小时剩余 64%、周剩余 91%，这些是账户共享读数，不是本任务独占额度。每批开始/结束读取并落盘；低于 20% 不开启新批，只写恢复检查点。本任务不创建 5 小时定时任务或自动化监控。
+
+## P1 本批记录
+
+### 进行中检查点（先于代码）
+
+- 开始额度：账户共享 5 小时窗口已用 47%（剩余 53%），周窗口已用 11%（剩余 89%）；低于 20% 前不开始新批。
+- P1 目标：新增 `JtdxWebState.hpp/.cpp`，在主 Qt 事件循环线程维护只读状态快照；默认最多 300、硬上限 500 条解码；提供完整状态字段、未知值/null、单调新鲜度和递增 revision；复用主 `MessageClient` 状态/解码流并最小接入 `MainWindow`。
+- 明确边界：不新增 TCP/UDP、线程、进程、控制、设置、菜单；不重复解析 UDP；不从 UI 控件反读字段；replay 解码不刷新实时新鲜度；应用在线与 rig 在线分开；名义/目标频率不冒充 CAT 实测频率。
+- 计划文件：`JtdxWebState.hpp`、`JtdxWebState.cpp`、现有 `MainWindow` 接入点、P1 本地测试源/`CMakeLists.txt`（仅必要改动）、本文件及根入口同步事实。
+- 验收：独立 `build-webui-dev` 配置/构建，原有 13 项 CTest 基线，P1 状态单测覆盖未知/刷新过期/上限淘汰/clear/revision/JSON 类型/实测频率与目标频率区分；不运行 `jtdx.exe`，不连接 CAT/PTT/TX，不做 HIL/部署。
+
+### P1 构建前置探针（进行中）
+
+- `C:\msys64\mingw64\bin\cmake.exe` 4.4.0、GCC/G++/GFortran 16.1.0、Ninja 均可用；MSYS2 bash 中显式加入 `/c/Windows/System32` 后，C/C++/Fortran 编译器识别和 ABI 探针通过。
+- 独立目录 `C:\JTDX64\build-webui-dev-msys2` 已完成工具链探针，但配置在 `FindHamlib.cmake` 停止：`Hamlib_INCLUDE_DIR=<not found>`、`Hamlib_LIBRARY=<not found>`；定点递归检查 `C:\msys64` 未找到 `hamlib*.h`、`libhamlib*.a` 或 `*.dll.a`。
+- 首次直接 PowerShell 配置还因生成器环境未发现 `mingw32-make`，第二次显式指定 make 后因系统 PATH 未传入 `chcp` 导致编译器检查失败；这两项已通过 MSYS2 bash + `/c/Windows/System32` 环境纠正，当前实质阻塞是 Hamlib 开发依赖缺失。
+- 恢复命令（不下载/升级依赖）：`C:\msys64\usr\bin\bash.exe -lc 'export PATH=/mingw64/bin:/usr/bin:/c/Windows/System32:/c/Windows; cmake -G Ninja -S /c/JTDX64/jtdx_sourcecode -B /c/JTDX64/build-webui-dev-msys2 -DCMAKE_BUILD_TYPE=Release -DJTDX_BUILD_LOCAL_TESTS=ON -DWSJT_ENABLE_OMNIRIG=OFF -DCMAKE_C_COMPILER=/mingw64/bin/gcc.exe -DCMAKE_CXX_COMPILER=/mingw64/bin/g++.exe -DCMAKE_Fortran_COMPILER=/mingw64/bin/gfortran.exe -DCMAKE_MAKE_PROGRAM=/mingw64/bin/ninja.exe'`。
+
+### P1 当前成果与限制
+
+- 已实现：`JtdxWebState.hpp/.cpp`、主 `MessageClient` 本地观察信号、`MainWindow` 的状态/解码/clear/CAT 实测频率只读接入；不增加 UDP/TCP、线程、进程、控制、设置或菜单。UDP 目标为空或关闭时仍先更新本地状态；secondary mirror 不重复发布。
+- 已覆盖：空状态未知/null、状态 fresh→stale、CAT offline 与 PTT 未确认、CAT stale、目标/实测频率分离、默认 300/硬 500 解码上限、最旧淘汰、clear/revision、JSON 类型、replay 不增长、不刷新、off-air 不刷新、解码过期、WSPR 64 位频率和字段、实例 ID。
+- 尚未接入的业务状态保留为 `null`：`auto_sequence_state`、`cq_state`、`current_tx_text`；FT8 解码 Call/Grid 仍保留原始 message，未新增解析器。P1 不将这些字段宣称为已完成业务接入。
+- Qt-only 手工证据：`jtdx_web_state_test` 使用本机 Qt5 Core/MinGW 16.1.0 编译并运行通过（退出码 0）；`MessageClient.cpp` 及生成 moc 做语法检查通过。完整配置、应用构建和原有 13 项 CTest 受 Hamlib 开发头/库缺失阻塞，未运行。
 
 ## P0 本批记录
 

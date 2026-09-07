@@ -41,6 +41,7 @@
 #include "JTDXDateTime.h"
 #include "recovery_policy.hpp"
 #include "autoseq_recovery_policy.hpp"
+#include "JtdxWebState.hpp"
 
 
 //--------------------------------------------------------------- MainWindow
@@ -753,6 +754,7 @@ private:
   QTimer m_heartbeat;
   MessageClient * m_messageClient;
   MessageClient * m_secondaryMessageClient;
+  JtdxWebState * m_webState;
   PSK_Reporter *psk_Reporter;
   DisplayManual m_manual;
   QHash<QString, QVariant> m_pwrBandTxMemory; // Remembers power level by band

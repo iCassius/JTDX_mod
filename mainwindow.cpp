@@ -483,11 +483,21 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
   m_secondaryMessageClient {new MessageClient {QApplication::applicationName (), QCoreApplication::applicationVersion (),
                               m_config.udp2_server_name (), m_config.udp2_server_port (),
                               this, m_config.enable_udp2_broadcast ()}},
+  m_webState {new JtdxWebState {QApplication::applicationName (), QCoreApplication::applicationVersion (),
+                                QString {}, this}},
   psk_Reporter {new PSK_Reporter {m_messageClient, this}},
   m_manual {network_manager}
 {
   ui->setupUi(this);
   m_messageClient->set_mirror (m_secondaryMessageClient);
+  connect (m_messageClient, &MessageClient::status_observed,
+           m_webState, &JtdxWebState::observe_status);
+  connect (m_messageClient, &MessageClient::decode_observed,
+           m_webState, &JtdxWebState::observe_decode);
+  connect (m_messageClient, &MessageClient::WSPR_decode_observed,
+           m_webState, &JtdxWebState::observe_wspr_decode);
+  connect (m_messageClient, &MessageClient::decodes_cleared,
+           m_webState, &JtdxWebState::clear_decodes);
   updateSecondaryUdpTarget ();
   connect (m_secondaryMessageClient, &MessageClient::error, this, [] (QString const& error) {
       qWarning ().noquote () << "Secondary UDP server:" << error;
@@ -7821,6 +7831,7 @@ void MainWindow::handle_transceiver_update (Transceiver::TransceiverState const&
     }
   }    
   m_rigState = s;
+  m_webState->observe_rig (s.online (), s.frequency (), s.tx_frequency (), s.ptt ());
   auto old_freqNominal = m_freqNominal;
   m_freqNominal = s.frequency ();
   // initializing
@@ -7895,6 +7906,7 @@ void MainWindow::handle_transceiver_update (Transceiver::TransceiverState const&
 
 void MainWindow::handle_transceiver_failure (QString const& reason)
 {
+  m_webState->observe_rig (false, 0, 0, false);
   bool const recoverySupported = m_autoseq && !m_houndMode
     && !m_mode.startsWith ("WSPR");
   bool const preserveAutoSeqIntent = recoverySupported && !m_hisCall.isEmpty ()
@@ -8707,6 +8719,7 @@ void MainWindow::toggle_skipTx1 ()
 void MainWindow::statusUpdate () const
 {
   if (!ui) return;
+  m_webState->observe_band (m_config.bands ()->find (m_freqNominal));
   QChar submode {0};
   m_messageClient->status_update (m_freqNominal, m_mode, m_hisCall,
                                   QString::number (ui->rptSpinBox->value ()),

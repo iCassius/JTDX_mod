@@ -574,6 +574,9 @@ void MessageClient::status_update (Frequency f, QString const& mode, QString con
                                    , bool watchdog_timeout, QString const& sub_mode
                                    , bool fast_mode, bool tx_first, bool force)
 {
+  Q_EMIT status_observed (f, mode, dx_call, report, tx_mode, tx_enabled, transmitting, decoding,
+                          rx_df, tx_df, de_call, de_grid, dx_grid, watchdog_timeout, sub_mode,
+                          fast_mode, tx_first, force);
   if (m_->server_port_ && !m_->server_string_.isEmpty ())
     {
       QByteArray message;
@@ -597,6 +600,8 @@ void MessageClient::decode (bool is_new, QTime time, qint32 snr, float delta_tim
                             , QString const& mode, QString const& message_text, bool low_confidence
                             , bool off_air)
 {
+   Q_EMIT decode_observed (is_new, time, snr, delta_time, delta_frequency, mode, message_text,
+                           low_confidence, off_air);
    if (m_->server_port_ && !m_->server_string_.isEmpty ())
     {
       QByteArray message;
@@ -616,6 +621,8 @@ void MessageClient::WSPR_decode (bool is_new, QTime time, qint32 snr, float delt
                                  , qint32 drift, QString const& callsign, QString const& grid, qint32 power
                                  , bool off_air)
 {
+   Q_EMIT WSPR_decode_observed (is_new, time, snr, delta_time, frequency, drift, callsign, grid,
+                                power, off_air);
    if (m_->server_port_ && !m_->server_string_.isEmpty ())
     {
       QByteArray message;
@@ -633,6 +640,7 @@ void MessageClient::WSPR_decode (bool is_new, QTime time, qint32 snr, float delt
 
 void MessageClient::clear_decodes ()
 {
+   Q_EMIT decodes_cleared ();
    if (m_->server_port_ && !m_->server_string_.isEmpty ())
     {
       QByteArray message;

@@ -130,6 +130,20 @@ public:
 
   Q_SIGNAL void duplicate_destination_suppressed (QString const&) const;
 
+  // 主客户端的本地只读观察流；信号在可选 UDP 发送前发出，set_mirror() 不会镜像这些信号。
+  Q_SIGNAL void status_observed (Frequency, QString const& mode, QString const& dx_call, QString const& report
+                                  , QString const& tx_mode, bool tx_enabled, bool transmitting, bool decoding
+                                  , qint32 rx_df, qint32 tx_df, QString const& de_call, QString const& de_grid
+                                  , QString const& dx_grid, bool watchdog_timeout, QString const& sub_mode
+                                  , bool fast_mode, bool tx_first, bool force);
+  Q_SIGNAL void decode_observed (bool is_new, QTime time, qint32 snr, float delta_time, quint32 delta_frequency
+                                 , QString const& mode, QString const& message, bool low_confidence
+                                 , bool off_air);
+  Q_SIGNAL void WSPR_decode_observed (bool is_new, QTime time, qint32 snr, float delta_time, Frequency
+                                      , qint32 drift, QString const& callsign, QString const& grid, qint32 power
+                                      , bool off_air);
+  Q_SIGNAL void decodes_cleared ();
+
 private:
   class impl;
   pimpl<impl> m_;
