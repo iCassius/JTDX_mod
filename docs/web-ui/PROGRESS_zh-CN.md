@@ -4,13 +4,37 @@
 
 ## 当前恢复点
 
-- 当前阶段：`P1 状态模型`。
-- 本批状态：已完成（源码结果提交 `0420a21`，文档结果提交 `b788d0e`）；已确认上一批代码提交为 `083b708`，上一轮阻塞记录为 `1f5b71f`。本批补齐 P1 边界测试、只读状态接入并恢复匹配 Hamlib 开发头/导入库。
-- 基线分支/提交：`main` / `1f5b71fe6b65e039cc8df6c4ebbd2477ec4f73e1`（2026-09-08 批次开始实际读数）。
+- 当前阶段：`P2 只读服务器`（已完成）。
+- 本批状态：已完成；P1 已完成（源码结果提交 `0420a21`，文档结果提交 `b788d0e`，收尾提交 `e27c9bb`）。本批从干净 `e27c9bb` 开始，完成 P2 只读 TCP/HTTP/SSE、loopback 合同测试、独立构建和全量 CTest。
+- 基线分支/提交：`main` / `e27c9bb`（2026-09-08 P2 批次开始实际读数）。
 - P0 初始结果提交：`02153b0`（提交后修订不 amend，使用 `git log --oneline -- docs/web-ui` 追踪后续文档提交）；提交后必须用 `git show --stat --oneline HEAD` 和 `git status --short --branch` 复核。
 - 工作树预期：本批结束前列出并精确提交本批修改；不得覆盖其他工作。
 - 模型策略：按用户要求使用 `gpt-5.6-luna`、`high`；不自行升级模型或推理档位。
 - 配额策略：本批开始账户共享快照为 5 小时剩余 93%、周剩余 80%；本批收尾快照（2026-09-08）为 5 小时剩余 26%、周剩余 70%。这些是账户共享读数，不是本任务独占额度；当前仍高于新批阈值 20%，但本批不再扩展范围，只收尾并写恢复记录。本任务不创建定时任务或自动化监控。
+
+## P2 本批记录（进行中 checkpoint）
+
+### 2026-09-08 P2 批次开始检查点
+
+- 开始额度：账户共享 5 小时/周窗口均剩余 `100%`；本批额度低于 `20%` 时不再开启新批，只收尾并记录恢复点。
+- 基线：`main` / `e27c9bb`，工作树开始时干净；代码根目录 `C:\JTDX64\jtdx_sourcecode`。
+- 本批目标：在主 Qt5 事件循环内增加惰性、默认不监听的 `JtdxWebServer`，仅提供只读首页、`GET /healthz`、`GET /api/v1/state`、`GET /api/v1/decodes` 和 SSE `GET /api/v1/events`；严格限制 GET/HTTP/1.1、Host/Origin、Bearer 鉴权、连接/头/事件/队列、端口生命周期和 epoch/revision 重同步。
+- 明确边界：不自动启动、不启动 JTDX、不连接 CAT/PTT/TX/HIL、不新增线程/进程/UDP、不改现有 UDP/CAT/解码逻辑；P3 设置/菜单/正式前端与 P4 控制均不在本批。
+- 文件计划（先冻结后改动）：`JtdxWebServer.hpp`、`JtdxWebServer.cpp`、`CMakeLists.txt` 最小源文件接入；`tests/jtdx_web_server_test.cpp` 真实 loopback TCP 夹具；本文件及 `03_阶段验收矩阵_zh-CN.md`/`WEB_UI_START_HERE_zh-CN.md`/必要设计文档按事实同步。必要时只在 `mainwindow.*` 增加惰性持有/测试注入接口，默认不监听。
+- SSE 尺寸检查：在测试中实测 500 条完整 decode JSON；采用实测依据选择单事件与单客户端待发送上限，确保合法满 500 快照首次 HTTP/SSE 成功，并验证慢客户端在有界背压下断开；无 revision 变化时通过周期性 snapshot/新鲜度投影保持可见状态更新。`server_epoch`/`web_server_state` 由服务投影，不篡改业务新鲜度。
+- 验收计划：真实 loopback TCP 覆盖自动/手动/占用/UDP 数字排除/停止重启/重复启停、JSON/API、鉴权/Host/Origin、malformed/slow、SSE reconnect+epoch/背压/多客户端；再跑原 14 项 CTest。未运行 `jtdx.exe`、真实 CAT/PTT/TX/HIL/部署。
+
+### 2026-09-08 P2 批次结果（已完成）
+
+- 已实现：`JtdxWebServer.hpp/.cpp` 使用 Qt5 `QTcpServer`/`QTcpSocket`，只运行在创建线程的 Qt 事件循环；默认惰性、不自动监听；加入 `wsjt_qt`，但未在 `MainWindow` 自动创建或启动。`QPointer` 状态生命周期保护，State 销毁停服。
+- HTTP 合同：仅 `GET`/HTTP/1.1；严格 CRLF、Host/Origin、无 query/body/TE/重复头；头上限 16KiB、头时限 5 秒、读取缓冲有界；首页仅无敏感引导；`/healthz`、state、decodes、SSE 均要求 bearer；所有控制 POST 路径不执行并返回 404/405；响应 drain 有界，异常只关闭当前连接。
+- 端口和安全：默认绑定 `127.0.0.1`；自动端口仅 49152..49251，排除传入 UDP 数字且不执行 UDP bind；手动端口 1024..65535；LAN 仅允许显式具体地址、强令牌和匹配的 HTTP Origin；令牌不进入 URL/响应/日志。
+- SSE：snapshot 的 `server_epoch`/`web_server_state` 是服务层投影，业务 revision/freshness 不被伪造；每 2 秒周期 snapshot 使无 revision 变化的新鲜度仍可观察，另有 heartbeat；`Last-Event-ID` 超限拒绝，历史不保留时发送 `resync_required` 和完整 snapshot；事件上限 1MiB、单客户端待发送上限 1MiB，慢连接服务端回收。500 条长文本 decode 的实测完整 snapshot 约 `278 KiB`（`/api/v1/decodes` 双字段 HTTP body 约 `554 KiB`），因此事件上限未误设为 512KiB。
+- 测试文件：`tests/jtdx_web_server_test.cpp` 真实 loopback TCP 覆盖自动/手动/占用/UDP 数字排除、停止/重启/epoch、重复启动、首页/health/state/decodes、满 500 JSON 读回、令牌/Host/Origin/query/body/POST、CRLF/部分头超时、SSE 完整初次/重同步、连接上限及恢复、慢 SSE 背压回收、State 销毁停服和 timer/socket 生命周期。
+- 最终构建命令：`C:\msys64\mingw64\bin\cmake.exe --build C:\JTDX64\build-webui-dev-msys2 --parallel 2`，主目标 `jtdx.exe` 与 `jtdx_web_server_test.exe` 均链接完成；退出码 `0`，日志：`C:\JTDX64\deps-webui\build-webui-p2-final.log`。
+- 最终测试命令：`C:\msys64\mingw64\bin\ctest.exe --test-dir C:\JTDX64\build-webui-dev-msys2 --output-on-failure`；最终 `100% tests passed out of 15`，退出码 `0`，日志：`C:\JTDX64\deps-webui\ctest-webui-p2-final.log`。此前一次全量运行因慢连接测试等待窗口不足报告 `14/15`；最终夹具观察窗口已延长，慢 SSE 服务端回收和其余 15 项均通过。
+- 未运行：`jtdx.exe`、真实 CAT/PTT/TX/HIL、浏览器、部署；P3 设置/菜单/正式前端与 P4/P5 控制仍未开始。
+- 收尾额度：账户共享窗口约 5 小时剩余 `29%`、周剩余 `89%`；本批不再开启新阶段，等待用户检查 P2 提交。
 
 ## P1 本批记录
 

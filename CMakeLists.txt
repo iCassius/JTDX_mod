@@ -202,6 +202,7 @@ set (wsjt_qt_CXXSRCS
   NetworkMessage.cpp
   MessageClient.cpp
   JtdxWebState.cpp
+  JtdxWebServer.cpp
   LettersSpinBox.cpp
   HelpTextWindow.cpp
   SampleDownloader.cpp
@@ -1620,6 +1621,13 @@ if (JTDX_BUILD_LOCAL_TESTS)
   target_include_directories (jtdx_web_state_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   target_link_libraries (jtdx_web_state_test Qt5::Core)
   add_test (NAME jtdx_web_state_test COMMAND jtdx_web_state_test)
+  add_executable (jtdx_web_server_test
+    tests/jtdx_web_server_test.cpp
+    JtdxWebServer.cpp
+    JtdxWebState.cpp)
+  target_include_directories (jtdx_web_server_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_link_libraries (jtdx_web_server_test Qt5::Core Qt5::Network)
+  add_test (NAME jtdx_web_server_test COMMAND jtdx_web_server_test)
   if (WIN32)
     add_test (NAME omnirig_build_option_test
       COMMAND ${CMAKE_COMMAND}

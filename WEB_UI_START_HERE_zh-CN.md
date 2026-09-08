@@ -4,11 +4,11 @@
 
 ## 当前状态
 
-- 阶段：`P1 状态模型`，本批代码和独立构建/CTest 验收已完成；P0 文档与事实基线已完成。P2 及后续仍未开始。
-- 基线：分支 `main`，本批开始 HEAD `1f5b71fe6b65e039cc8df6c4ebbd2477ec4f73e1`，源码结果已提交 `0420a21`，中文文档随本次收尾提交；本批开始工作树干净。
+- 阶段：`P2 只读服务器`，本批代码和独立构建/CTest 验收已完成；P0/P1 已完成。P3 及后续仍未开始。
+- 基线：分支 `main`，P2 批次开始 HEAD `e27c9bb`，P1 源码结果已提交 `0420a21`，P2 中文文档和源码随本批提交；P2 批次开始工作树干净。
 - 代码根目录：`C:\JTDX64\jtdx_sourcecode`。用户需求中的 `jtdx\_sourcecode` 按当前实际仓库路径解释。
-- 本轮范围：实现 P1 状态快照、有限解码和既有 MessageClient/MainWindow 的最小只读接入；不新增 TCP/UDP、线程、进程、控制、设置或菜单；没有启动 JTDX，没有连接 CAT/PTT/真实电台，没有部署。
-- 已确认：主程序已有 Qt5 Network、`MessageClient`、`MessageServer` 和 `JTDX_BUILD_LOCAL_TESTS`；P1 状态模型已提交，P2 及后续 Web 服务器/UI 仍未实现。
+- 本轮范围：实现 P2 `JtdxWebServer` 的惰性 Qt5 TCP/HTTP/SSE 只读服务和 loopback 合同夹具；不自动监听、不新增 UDP/线程/进程、控制、设置或菜单；没有启动 JTDX，没有连接 CAT/PTT/真实电台，没有部署。
+- 已确认：主程序已有 Qt5 Network、`MessageClient`、`MessageServer` 和 `JTDX_BUILD_LOCAL_TESTS`；P1 状态模型与 P2 只读服务已提交，P3 及后续 Web UI/控制仍未实现。
 - 进程边界：Web 功能必须零新增进程、零新增常驻线程，优先使用 JTDX 主 Qt 事件循环。当前程序已有 `proc_jtdxjt9` 解码子进程，Web 任务不得把它误写成 Web 新增进程，也不得为了 Web 重构或删除它。
 
 ## 继续工作的最短路径
@@ -25,7 +25,7 @@
 | --- | --- | --- | --- |
 | P0 | 文档与事实基线 | 需求、网络/进程安全边界、API 草案、验收矩阵、恢复入口 | 已完成 |
 | P1 | 状态模型 | `JtdxWebState`、状态新鲜度、解码上限、事件循环安全读接口；只读数据接入 | 已通过（独立构建/14 项 CTest；未启动 JTDX/HIL） |
-| P2 | 只读服务器 | `JtdxWebServer`、TCP 端口生命周期、`/`、`/healthz`、`/api/v1/state`、`/api/v1/decodes`、SSE | 未开始 |
+| P2 | 只读服务器 | `JtdxWebServer`、TCP 端口生命周期、`/`、`/healthz`、`/api/v1/state`、`/api/v1/decodes`、SSE | 已通过（loopback/API/CTest；未启动 JTDX/HIL） |
 | P3 | 设置/菜单/前端骨架 | Web UI 设置 Tab、端口/绑定策略、菜单入口、内置资源、响应式只读页面 | 未开始 |
 | P4 | 普通控制 | `JtdxWebControl`、频率切换、过期解码 ID、DX 选择、状态回读 | 未开始 |
 | P5 | 高风险控制 | CQ/AutoSeq 启动、停止流程、二次确认、幂等/超时/冲突和状态回读 | 未开始 |
