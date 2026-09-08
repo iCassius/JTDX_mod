@@ -275,6 +275,15 @@ public:
   bool enable_udp1_adif_sending () const;
   bool enable_udp2_broadcast () const;
   bool enable_tcp_connection () const;
+  bool web_ui_enabled () const;
+  bool web_ui_automatic_port () const;
+  port_type web_ui_port () const;
+  QString web_ui_bind_address () const;
+  bool web_ui_allow_lan () const;
+  QString web_ui_token_sha256 () const;
+  QString web_ui_allowed_origin () const;
+  void set_web_ui_status (QString const& state, QString const& detail);
+  void set_web_ui_url (QString const& url);
   bool write_decoded () const;
   bool write_decoded_debug () const;
   bool udpWindowToFront () const;
@@ -423,6 +432,8 @@ public:
   //
   Q_SIGNAL void udp_server_changed (QString const& udp_server);
   Q_SIGNAL void udp_server_port_changed (port_type server_port);
+  Q_SIGNAL void web_ui_open_requested ();
+  Q_SIGNAL void web_ui_restart_requested ();
   Q_SIGNAL void udp2_server_changed (QString const& udp_server);
   Q_SIGNAL void udp2_server_port_changed (port_type server_port);
   Q_SIGNAL void udp2_enabled_changed (bool enabled);

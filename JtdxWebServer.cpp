@@ -1,6 +1,8 @@
 #include "JtdxWebServer.hpp"
 
 #include <QDateTime>
+#include <QCryptographicHash>
+#include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QPointer>
@@ -17,6 +19,15 @@ constexpr int publish_interval_ms = 1000;
 constexpr qint64 snapshot_interval_ms = 2000;
 constexpr qint64 heartbeat_interval_ms = 10000;
 constexpr int response_drain_timeout_ms = 2000;
+
+bool valid_digest (QString const& digest)
+{
+  if (digest.size () != 64) return false;
+  for (QChar const ch : digest)
+    if (!ch.isDigit () && !(ch >= QChar {'a'} && ch <= QChar {'f'})
+        && !(ch >= QChar {'A'} && ch <= QChar {'F'})) return false;
+  return true;
+}
 
 QByteArray status_reason (int status)
 {
@@ -35,14 +46,6 @@ QByteArray status_reason (int status)
     case 503: return QByteArrayLiteral ("Service Unavailable");
     default: return QByteArrayLiteral ("Error");
     }
-}
-
-QString new_token ()
-{
-  // Two independent UUIDs provide a high-entropy default without introducing
-  // a dependency on a platform-specific secret store in P2.
-  return QUuid::createUuid ().toString (QUuid::WithoutBraces)
-       + QUuid::createUuid ().toString (QUuid::WithoutBraces);
 }
 
 QString new_epoch ()
@@ -117,10 +120,19 @@ bool JtdxWebServer::validate_configuration (Configuration const& configuration,
       if (error) *error = QStringLiteral ("web port is reserved by UDP configuration");
       return false;
     }
-  if (configuration.allow_lan && !configuration.bearer_token.isEmpty()
+  QString digest = configuration.bearer_token_sha256.trimmed ();
+  if (digest.isEmpty () && !configuration.bearer_token.isEmpty ())
+    digest = bearer_token_digest (configuration.bearer_token);
+  if (!configuration.bearer_token.isEmpty () && configuration.allow_lan
       && configuration.bearer_token.toUtf8 ().size () < 32)
     {
       if (error) *error = QStringLiteral ("LAN bearer token is too short");
+      return false;
+    }
+  QByteArray const digest_bytes = QByteArray::fromHex (digest.toLatin1 ());
+  if (!valid_digest (digest) || digest_bytes.size () != 32)
+    {
+      if (error) *error = QStringLiteral ("a valid SHA-256 bearer token digest is required");
       return false;
     }
   if (configuration.allow_lan && configuration.allowed_origin.isEmpty())
@@ -189,10 +201,13 @@ bool JtdxWebServer::start (Configuration configuration)
       web_server_state_ = QStringLiteral ("error");
       return false;
     }
-  bearer_token_ = configuration.bearer_token.isEmpty () ? new_token () : configuration.bearer_token;
-  if (configuration.allow_lan && bearer_token_.toUtf8 ().size () < 32)
+  if (configuration.bearer_token_sha256.isEmpty () && !configuration.bearer_token.isEmpty ())
+    configuration.bearer_token_sha256 = bearer_token_digest (configuration.bearer_token);
+  configuration.bearer_token.clear ();
+  bearer_token_digest_ = QByteArray::fromHex (configuration.bearer_token_sha256.trimmed ().toLatin1 ());
+  if (bearer_token_digest_.size () != 32)
     {
-      last_error_ = QStringLiteral ("LAN bearer token is too short");
+      last_error_ = QStringLiteral ("a valid SHA-256 bearer token digest is required");
       web_server_state_ = QStringLiteral ("error");
       return false;
     }
@@ -264,9 +279,9 @@ int JtdxWebServer::active_connection_count () const
   return clients_.size ();
 }
 
-QString JtdxWebServer::bearer_token_for_testing () const
+QString JtdxWebServer::bearer_token_digest (QString const& bearer_token)
 {
-  return bearer_token_;
+  return QString::fromLatin1 (QCryptographicHash::hash (bearer_token.toUtf8 (), QCryptographicHash::Sha256).toHex ());
 }
 
 void JtdxWebServer::accept_connections ()
@@ -484,8 +499,14 @@ bool JtdxWebServer::origin_allowed (QByteArray const& origin) const
 bool JtdxWebServer::authorized (QHash<QByteArray, QByteArray> const& headers) const
 {
   QByteArray const value = headers.value (QByteArrayLiteral ("authorization"));
-  QByteArray const expected = QByteArrayLiteral ("Bearer ") + bearer_token_.toUtf8 ();
-  return !value.isEmpty () && value == expected;
+  QByteArray const prefix = QByteArrayLiteral ("Bearer ");
+  if (!value.startsWith (prefix)) return false;
+  QByteArray const supplied = QCryptographicHash::hash (value.mid (prefix.size ()), QCryptographicHash::Sha256);
+  if (supplied.size () != bearer_token_digest_.size ()) return false;
+  unsigned char diff {0};
+  for (int i = 0; i < supplied.size (); ++i)
+    diff = static_cast<unsigned char> (diff | static_cast<unsigned char> (supplied.at (i) ^ bearer_token_digest_.at (i)));
+  return diff == 0;
 }
 
 QByteArray JtdxWebServer::event_id () const
@@ -515,9 +536,28 @@ QByteArray JtdxWebServer::http_response (int status, QByteArray const& reason,
       + QByteArrayLiteral (" ") + reason + QByteArrayLiteral ("\r\nContent-Type: ")
       + content_type + QByteArrayLiteral ("\r\nContent-Length: ")
       + QByteArray::number (body.size ()) + QByteArrayLiteral ("\r\nCache-Control: no-store\r\n")
+      + QByteArrayLiteral ("X-Content-Type-Options: nosniff\r\nContent-Security-Policy: default-src 'self'; frame-ancestors 'none'\r\nReferrer-Policy: no-referrer\r\n")
       + (close ? QByteArrayLiteral ("Connection: close\r\n") : QByteArrayLiteral ("Connection: keep-alive\r\n"))
       + QByteArrayLiteral ("\r\n") + body;
   return response;
+}
+
+QByteArray web_resource (QByteArray const& path, QByteArray * content_type)
+{
+  QString resource;
+  if (path == QByteArrayLiteral ("/")) resource = QStringLiteral (":/web-ui/index.html");
+  else if (path == QByteArrayLiteral ("/style.css")) resource = QStringLiteral (":/web-ui/style.css");
+  else if (path == QByteArrayLiteral ("/app.js")) resource = QStringLiteral (":/web-ui/app.js");
+  else return {};
+  QFile file {resource};
+  if (!file.open (QIODevice::ReadOnly)) return {};
+  if (content_type)
+    *content_type = path.endsWith (QByteArrayLiteral (".css"))
+      ? QByteArrayLiteral ("text/css; charset=utf-8")
+      : path.endsWith (QByteArrayLiteral (".js"))
+        ? QByteArrayLiteral ("text/javascript; charset=utf-8")
+        : QByteArrayLiteral ("text/html; charset=utf-8");
+  return file.readAll ();
 }
 
 void JtdxWebServer::send_http (QTcpSocket * socket, int status, QByteArray const& reason,
@@ -682,8 +722,26 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
   QByteArray const path = target;
   if (path == QByteArrayLiteral ("/"))
     {
-      QByteArray const body = QByteArrayLiteral ("<!doctype html><meta charset=\"utf-8\"><title>JTDX Web UI</title><p>Read-only service is available. Authenticate API requests with a bearer token.</p>\n");
-      send_http (socket, 200, QByteArrayLiteral ("OK"), QByteArrayLiteral ("text/html; charset=utf-8"), body);
+      QByteArray content_type;
+      QByteArray const body = web_resource (path, &content_type);
+      if (body.isEmpty ())
+        {
+          reject_connection (socket, 500, QByteArrayLiteral ("web resource unavailable"));
+          return;
+        }
+      send_http (socket, 200, QByteArrayLiteral ("OK"), content_type, body);
+      return;
+    }
+  if (path == QByteArrayLiteral ("/style.css") || path == QByteArrayLiteral ("/app.js"))
+    {
+      QByteArray content_type;
+      QByteArray const body = web_resource (path, &content_type);
+      if (body.isEmpty ())
+        {
+          reject_connection (socket, 500, QByteArrayLiteral ("web resource unavailable"));
+          return;
+        }
+      send_http (socket, 200, QByteArrayLiteral ("OK"), content_type, body);
       return;
     }
   if (!authorized (headers))

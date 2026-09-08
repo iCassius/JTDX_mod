@@ -29,7 +29,8 @@ public:
     bool automatic_port {true};
     bool allow_lan {false};           // 非 loopback 绑定必须显式开启
     QSet<quint16> udp_ports;          // 仅排除数字，不执行 UDP bind
-    QString bearer_token;             // 空值时生成高熵令牌
+    QString bearer_token;             // P2 测试兼容：启动时立即转换为摘要
+    QString bearer_token_sha256;      // 生产配置只保存 64 位十六进制摘要
     QString allowed_origin;            // LAN 时必须精确匹配；空值拒绝 Origin
   };
 
@@ -56,8 +57,8 @@ public:
   QString server_epoch () const;
   QString web_server_state () const;
   int active_connection_count () const;
-  // 仅供同进程测试夹具读取；令牌永不通过 HTTP、URL 或日志回显。
-  QString bearer_token_for_testing () const;
+  // 将用户输入的原始令牌转换为持久化摘要；原文不得写入配置、URL、日志或 HTML。
+  static QString bearer_token_digest (QString const& bearer_token);
 
 private:
   struct Client;
@@ -100,7 +101,7 @@ private:
   Configuration configuration_;
   QHostAddress actual_address_;
   quint16 actual_port_ {0};
-  QString bearer_token_;
+  QByteArray bearer_token_digest_;
   QString server_epoch_;
   QString last_error_;
   QString web_server_state_ {QStringLiteral ("stopped")};

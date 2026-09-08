@@ -1,0 +1,18 @@
+# P3 设置、菜单与只读前端验收
+
+本批基线为 `ed04be6`，范围限于 P3。`JtdxWebServer` 在 JTDX 主 Qt 事件循环内运行；默认配置关闭，不新增进程、常驻线程或 UDP listener，不提供控制 API。
+
+配置 Tab 使用 `WebUi*` 专用持久键。自动 TCP 端口候选为 P2 既定范围并排除两个已有 UDP 端口；手动端口在设置确认前只读校验，不执行 UDP bind。绑定默认 `127.0.0.1`，LAN 必须填写具体地址。令牌原文只在设置对话框临时编辑控件和浏览器内存出现，QSettings 只保存 `WebUiTokenSha256`，服务用 SHA-256 摘要恒定时间比较。取消设置会丢弃令牌草稿；只有点击确定后才保存并重启 Web 服务。
+
+`/`、`/style.css`、`/app.js` 由 Qt Resource 提供。页面使用原生 HTML/CSS/JavaScript，SSE 通过 `fetch` 读取并携带 `Authorization`，解析 `snapshot` 事件，保留 `Last-Event-ID`，断线退避并显示未知/未连接状态。所有动态文本使用 `textContent`。
+
+## 已执行验证
+
+- 独立增量构建：`cmake --build C:\JTDX64\build-webui-dev-msys2 --parallel 2`，`jtdx.exe`、`jtdx_web_server_test.exe` 链接成功；权威日志：`C:\JTDX64\deps-webui\build-webui-p3-final.log`。
+- 全量 CTest：`ctest --test-dir C:\JTDX64\build-webui-dev-msys2 --output-on-failure`，`100% tests passed out of 15`；权威日志：`C:\JTDX64\deps-webui\ctest-webui-p3-final.log`。
+- 浏览器夹具：`jtdx_web_server_test.exe --serve-browser`，loopback 临时服务，演示状态数据，临时令牌仅用于本地浏览器验证；夹具设置有界 120 秒自动退出。父任务最终复验确认 6 条解码按最新优先显示，`<script>` 仅按文字显示，SNR/DF/mode/call/grid/fresh/is_new、AutoSeq/TX 文本、空实际频率和中文陈旧状态可见；390px 宽度无横向溢出，重复连接仅保留一个 TCP 流。断线后的旧快照/陈旧标识由只读代码检查和错误令牌断线观察支持；未在 120 秒自动退出瞬间观察页面，父任务已确认夹具进程不存在。该夹具不启动 JTDX，不连接 CAT/PTT/TX，不代表生产部署。
+
+- 浏览器复验入口：`http://127.0.0.1:49152/#fixture`，令牌由夹具进程输出；fragment 只在浏览器本地显示演示标识，不会进入 HTTP 请求。已用 PowerShell 直接确认 `/` 与 `/app.js` 返回 200，页面脚本通过 `node --check`。
+- 配置保存/取消/重载、重复打开设置和菜单重复点击未做动态 QWidget 自动化点击验收；源码路径、CMake 编译及服务器单测不能替代该动态 UI 证据。
+
+尚未执行真实 JTDX 隔离启动、CAT/PTT/TX、HIL、部署和长时间浏览器耐久性验证。P4/P5 控制功能不属于本批。浏览器页面的夹具人工复验已由父任务完成；配置/菜单动态验收留待下一 P3 批次。

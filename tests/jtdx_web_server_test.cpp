@@ -1,6 +1,7 @@
 #include "JtdxWebServer.hpp"
 
 #include <QCoreApplication>
+#include <QCryptographicHash>
 #include <QEventLoop>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -146,17 +147,36 @@ int main (int argc, char ** argv)
                         QStringLiteral ("AA00"), QStringLiteral ("FN31"), false, {}, false, false);
   JtdxWebServer server {&state};
   JtdxWebServer::Configuration config;
+  QByteArray const token = QByteArrayLiteral ("p3-test-token-0123456789-abcdefghijklmnopqrstuvwxyz");
+  config.bearer_token_sha256 = QString::fromLatin1 (QCryptographicHash::hash (token, QCryptographicHash::Sha256).toHex ());
+  if (app.arguments ().contains (QStringLiteral ("--serve-browser")))
+    {
+      state.set_clock_for_test (0);
+      state.observe_business_state (true, QStringLiteral ("calling"), QStringLiteral ("armed"), QStringLiteral ("CQ N0CALL FN31"));
+      for (int i = 0; i < 6; ++i)
+        state.observe_decode (true, QTime {12, 34, i}, -10 + i, 0.1F, static_cast<quint32> (100 + i),
+                              QStringLiteral ("FT8"), QStringLiteral ("K1ABC FN31 <script>"), false, false,
+                              QStringLiteral ("K1ABC"), QStringLiteral ("FN31"));
+      config.automatic_port = true;
+      if (!server.start (config)) return 2;
+      QByteArray fixture_url = server.url ().toUtf8 () + QByteArrayLiteral ("/#fixture");
+      std::fprintf (stdout, "WEB_UI_FIXTURE_URL=%s\nWEB_UI_FIXTURE_TOKEN=%s\n",
+                    fixture_url.constData (), token.constData ());
+      std::fflush (stdout);
+      QTimer::singleShot (7000, &state, [&state] { state.advance_clock_for_test (7000); });
+      QTimer::singleShot (120000, &app, &QCoreApplication::quit);
+      return app.exec ();
+    }
   check (!server.is_listening (), "server must be lazy and stopped by default");
   check (server.start (config), "automatic loopback server should start");
   check (server.is_listening () && server.actual_port () >= JtdxWebServer::automatic_port_first
              && server.actual_port () <= JtdxWebServer::automatic_port_last,
          "automatic port must be bounded");
   quint16 const port = server.actual_port ();
-  QByteArray const token = server.bearer_token_for_testing ().toUtf8 ();
-  check (token.size () >= 32, "default token must have high entropy length");
-
   QByteArray response = request (port, QByteArrayLiteral ("/"));
-  check (status (response) == 200 && response.contains (QByteArrayLiteral ("Read-only service")), "root must be safe guidance");
+  check (status (response) == 200 && response.contains (QByteArrayLiteral ("JTDX Web UI")), "root must serve the read-only page");
+  check (status (request (port, QByteArrayLiteral ("/style.css"))) == 200, "stylesheet resource must be available without API token");
+  check (status (request (port, QByteArrayLiteral ("/app.js"))) == 200, "javascript resource must be available without API token");
   check (status (request (port, QByteArrayLiteral ("/healthz"))) == 401, "health must require bearer token");
   response = request (port, QByteArrayLiteral ("/healthz"), token);
   check (status (response) == 200 && !response.contains (QByteArrayLiteral ("online")), "health must describe service only");
@@ -272,6 +292,7 @@ int main (int argc, char ** argv)
   manual_probe.close ();
   JtdxWebServer manual_server {&state};
   JtdxWebServer::Configuration manual_ok;
+  manual_ok.bearer_token_sha256 = config.bearer_token_sha256;
   manual_ok.automatic_port = false;
   manual_ok.port = manual_port;
   check (manual_server.start (manual_ok) && manual_server.actual_port () == manual_port,
@@ -283,6 +304,7 @@ int main (int argc, char ** argv)
     {
       JtdxWebServer auto_server {&state};
       JtdxWebServer::Configuration auto_skip;
+      auto_skip.bearer_token_sha256 = config.bearer_token_sha256;
       auto_skip.udp_ports.insert (JtdxWebServer::automatic_port_first + 1);
       check (auto_server.start (auto_skip), "automatic server should find a bounded free port");
       check (auto_server.actual_port () != JtdxWebServer::automatic_port_first
@@ -304,6 +326,7 @@ int main (int argc, char ** argv)
   check (occupied.listen (QHostAddress::LocalHost, 0), "test occupied TCP port should bind");
   JtdxWebServer conflict {&state};
   JtdxWebServer::Configuration manual;
+  manual.bearer_token_sha256 = config.bearer_token_sha256;
   manual.automatic_port = false;
   manual.port = occupied.serverPort ();
   check (!conflict.start (manual) && conflict.web_server_state () == QStringLiteral ("error"), "occupied manual port must fail");

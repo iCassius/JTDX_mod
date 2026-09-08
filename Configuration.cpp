@@ -162,6 +162,8 @@
 #include <QSerialPortInfo>
 #include <QScopedPointer>
 #include <QDebug>
+#include <QCryptographicHash>
+#include <QUuid>
 #include <QtGui>
 #include "qt_helpers.hpp"
 #include "MetaDataRegistry.hpp"
@@ -545,6 +547,9 @@ private:
   Q_SLOT void on_bandComboBox_3_currentTextChanged (QString const&);
   Q_SLOT void on_bandComboBox_4_currentTextChanged (QString const&);
   Q_SLOT void on_bandComboBox_5_currentTextChanged (QString const&);
+  Q_SLOT void on_web_ui_generate_token_push_button_clicked ();
+  Q_SLOT void on_web_ui_open_push_button_clicked ();
+  Q_SLOT void on_web_ui_restart_push_button_clicked ();
 
   // typenames used as arguments must match registered type names :(
   Q_SIGNAL void start_transceiver (unsigned seqeunce_number,JTDXDateTime * jtdxtime) const;
@@ -894,6 +899,13 @@ private:
   bool accept_udp_requests_;
   bool enable_udp1_adif_sending_;
   bool enable_tcp_connection_;
+  bool web_ui_enabled_;
+  bool web_ui_automatic_port_;
+  port_type web_ui_port_;
+  QString web_ui_bind_address_;
+  bool web_ui_allow_lan_;
+  QString web_ui_token_sha256_;
+  QString web_ui_allowed_origin_;
   bool enable_udp2_broadcast_;
   bool write_decoded_;
   bool write_decoded_debug_;
@@ -934,6 +946,27 @@ QDir Configuration::temp_dir () const {return m_->temp_dir_;}
 
 int Configuration::exec () {return m_->exec ();}
 bool Configuration::is_active () const {return m_->isVisible ();}
+
+bool Configuration::web_ui_enabled () const {return m_->web_ui_enabled_;}
+bool Configuration::web_ui_automatic_port () const {return m_->web_ui_automatic_port_;}
+Configuration::port_type Configuration::web_ui_port () const {return m_->web_ui_port_;}
+QString Configuration::web_ui_bind_address () const {return m_->web_ui_bind_address_;}
+bool Configuration::web_ui_allow_lan () const {return m_->web_ui_allow_lan_;}
+QString Configuration::web_ui_token_sha256 () const {return m_->web_ui_token_sha256_;}
+QString Configuration::web_ui_allowed_origin () const {return m_->web_ui_allowed_origin_;}
+void Configuration::set_web_ui_status (QString const& state, QString const& detail)
+{
+  if (m_->ui_)
+    {
+      m_->ui_->web_ui_status_label->setText (detail.isEmpty () ? state : state + QStringLiteral ("：") + detail);
+    }
+}
+void Configuration::set_web_ui_url (QString const& url)
+{
+  if (m_->ui_)
+    m_->ui_->web_ui_url_label->setText (url.isEmpty () ? QStringLiteral ("实际 URL：—")
+                                                        : QStringLiteral ("实际 URL：") + url);
+}
 
 QAudioDeviceInfo const& Configuration::audio_input_device () const {return m_->audio_input_device_;}
 AudioDevice::Channel Configuration::audio_input_channel () const {return m_->audio_input_channel_;}
@@ -1542,6 +1575,8 @@ Configuration::impl::impl (Configuration * self, QSettings * settings, QWidget *
   ui_->tcp_server_port_spin_box->setMaximum (std::numeric_limits<port_type>::max ());
   ui_->udp2_server_port_spin_box->setMinimum (1);
   ui_->udp2_server_port_spin_box->setMaximum (std::numeric_limits<port_type>::max ());
+  ui_->web_ui_port_spin_box->setMinimum (1024);
+  ui_->web_ui_port_spin_box->setMaximum (std::numeric_limits<port_type>::max ());
 
   // Dependent checkboxes 
   ui_->countryPrefix_check_box->setChecked(countryName_ && countryPrefix_);
@@ -2247,6 +2282,13 @@ Radio::convert_dark("#fafbfe",useDarkStyle_),Radio::convert_dark("#dcdef1",useDa
   ui_->tcp_server_line_edit->setText (tcp_server_name_);
   ui_->tcp_server_port_spin_box->setValue (tcp_server_port_);
   ui_->TCP_checkBox->setChecked (enable_tcp_connection_);
+  ui_->web_ui_enabled_check_box->setChecked (web_ui_enabled_);
+  ui_->web_ui_bind_combo_box->setCurrentIndex (web_ui_allow_lan_ ? 1 : 0);
+  ui_->web_ui_bind_address_line_edit->setText (web_ui_bind_address_);
+  ui_->web_ui_automatic_port_check_box->setChecked (web_ui_automatic_port_);
+  ui_->web_ui_port_spin_box->setValue (web_ui_port_ ? web_ui_port_ : 49200);
+  ui_->web_ui_token_line_edit->clear ();
+  ui_->web_ui_token_line_edit->setEchoMode (QLineEdit::Password);
   ui_->write_decoded_check_box->setChecked (write_decoded_);
   ui_->write_decoded_debug_check_box->setChecked (write_decoded_debug_);
 
@@ -2731,6 +2773,14 @@ void Configuration::impl::read_settings ()
   if(settings_->value ("EnableTCPConnection").toString()=="false" || settings_->value ("EnableTCPConnection").toString()=="true")
     enable_tcp_connection_ = settings_->value("EnableTCPConnection").toBool ();
   else enable_tcp_connection_ = false;
+  web_ui_enabled_ = settings_->value ("WebUiEnabled", false).toBool ();
+  web_ui_automatic_port_ = settings_->value ("WebUiAutomaticPort", true).toBool ();
+  web_ui_port_ = settings_->value ("WebUiPort", 49200).toUInt ();
+  if (web_ui_port_ < 1024) web_ui_port_ = 49200;
+  web_ui_bind_address_ = settings_->value ("WebUiBindAddress", "127.0.0.1").toString ();
+  web_ui_allow_lan_ = settings_->value ("WebUiAllowLan", false).toBool ();
+  web_ui_token_sha256_ = settings_->value ("WebUiTokenSha256").toString ().trimmed ();
+  web_ui_allowed_origin_ = settings_->value ("WebUiAllowedOrigin").toString ().trimmed ();
 
   write_decoded_ = settings_->value ("WriteDecodedALLTXT", true).toBool ();
   write_decoded_debug_ = settings_->value ("WriteDecodedDebugALLTXT", false).toBool ();
@@ -3023,6 +3073,13 @@ void Configuration::impl::write_settings ()
   settings_->setValue ("EnableUDP1adifSending", enable_udp1_adif_sending_);
   settings_->setValue ("EnableUDP2adifBroadcast", enable_udp2_broadcast_);
   settings_->setValue ("EnableTCPConnection", enable_tcp_connection_);
+  settings_->setValue ("WebUiEnabled", web_ui_enabled_);
+  settings_->setValue ("WebUiAutomaticPort", web_ui_automatic_port_);
+  settings_->setValue ("WebUiPort", web_ui_port_);
+  settings_->setValue ("WebUiBindAddress", web_ui_bind_address_);
+  settings_->setValue ("WebUiAllowLan", web_ui_allow_lan_);
+  settings_->setValue ("WebUiTokenSha256", web_ui_token_sha256_);
+  settings_->setValue ("WebUiAllowedOrigin", web_ui_allowed_origin_);
   settings_->setValue ("WriteDecodedALLTXT", write_decoded_);
   settings_->setValue ("WriteDecodedDebugALLTXT", write_decoded_debug_);
   settings_->setValue ("udpWindowToFront", udpWindowToFront_);
@@ -3197,6 +3254,40 @@ void Configuration::impl::set_rig_invariants ()
 
 bool Configuration::impl::validate ()
 {
+  if (ui_->web_ui_enabled_check_box->isChecked ())
+    {
+      bool const allow_lan = ui_->web_ui_bind_combo_box->currentIndex () == 1;
+      QString const bind = allow_lan ? ui_->web_ui_bind_address_line_edit->text ().trimmed ()
+                                     : QStringLiteral ("127.0.0.1");
+      QHostAddress address;
+      if (!address.setAddress (bind) || (!address.isLoopback () && !allow_lan)
+          || address.isNull () || address == QHostAddress::Any || address == QHostAddress::AnyIPv4
+          || address == QHostAddress::AnyIPv6)
+        {
+          message_box_critical (tr ("Web UI 绑定地址无效；LAN 必须使用具体本机地址。"));
+          return false;
+        }
+      QString digest = web_ui_token_sha256_;
+      QString const entered = ui_->web_ui_token_line_edit->text ();
+      if (!entered.isEmpty () && entered.toUtf8 ().size () < 32)
+        {
+          message_box_critical (tr ("Web UI 访问令牌至少需要 32 个 UTF-8 字节。"));
+          return false;
+        }
+      if (!entered.isEmpty ()) digest = QString::fromLatin1 (QCryptographicHash::hash (entered.toUtf8 (), QCryptographicHash::Sha256).toHex ());
+      if (digest.size () != 64 || !QRegExp {QStringLiteral ("^[0-9A-Fa-f]{64}$")}.exactMatch (digest))
+        {
+          message_box_critical (tr ("Web UI 需要访问令牌；请生成令牌并保存设置。"));
+          return false;
+        }
+      if (!ui_->web_ui_automatic_port_check_box->isChecked ()
+          && (ui_->web_ui_port_spin_box->value () == ui_->udp_server_port_spin_box->value ()
+              || ui_->web_ui_port_spin_box->value () == ui_->udp2_server_port_spin_box->value ()))
+        {
+          message_box_critical (tr ("Web UI TCP 端口不能与已有 UDP 端口相同。"));
+          return false;
+        }
+    }
   if (ui_->sound_input_combo_box->currentIndex () < 0
       && !QAudioDeviceInfo::availableDevices (QAudio::AudioInput).empty ())
     {
@@ -3690,6 +3781,21 @@ void Configuration::impl::accept ()
 
   accept_udp_requests_ = ui_->accept_udp_requests_check_box->isChecked ();
   enable_tcp_connection_ = ui_->TCP_checkBox->isChecked ();
+  web_ui_enabled_ = ui_->web_ui_enabled_check_box->isChecked ();
+  web_ui_automatic_port_ = ui_->web_ui_automatic_port_check_box->isChecked ();
+  web_ui_port_ = static_cast<port_type> (ui_->web_ui_port_spin_box->value ());
+  web_ui_allow_lan_ = ui_->web_ui_bind_combo_box->currentIndex () == 1;
+  web_ui_bind_address_ = web_ui_allow_lan_ ? ui_->web_ui_bind_address_line_edit->text ().trimmed ()
+                                           : QStringLiteral ("127.0.0.1");
+  QString const entered_web_token = ui_->web_ui_token_line_edit->text ();
+  if (!entered_web_token.isEmpty ())
+    web_ui_token_sha256_ = QString::fromLatin1 (QCryptographicHash::hash (entered_web_token.toUtf8 (), QCryptographicHash::Sha256).toHex ());
+  QString origin_host = web_ui_bind_address_;
+  QHostAddress origin_address;
+  if (origin_address.setAddress (origin_host)
+      && origin_address.protocol () == QAbstractSocket::IPv6Protocol)
+    origin_host = QStringLiteral ("[") + origin_host + QStringLiteral ("]");
+  web_ui_allowed_origin_ = QStringLiteral ("http://") + origin_host;
   write_decoded_ = ui_->write_decoded_check_box->isChecked ();
   write_decoded_debug_ = ui_->write_decoded_debug_check_box->isChecked ();
   udpWindowToFront_ = ui_->udpWindowToFront->isChecked ();
@@ -3715,6 +3821,8 @@ void Configuration::impl::accept ()
     }
  
   write_settings ();		// make visible to all
+  ui_->web_ui_token_line_edit->clear ();
+  ui_->web_ui_token_line_edit->setEchoMode (QLineEdit::Password);
 }
 
 void Configuration::impl::reject ()
@@ -5888,6 +5996,26 @@ bool Configuration::impl::have_rig ()
   // user has not been given a visible window or a route to Settings yet.
   open_rig ();
   return rig_active_;
+}
+
+void Configuration::impl::on_web_ui_generate_token_push_button_clicked ()
+{
+  QString const token = QUuid::createUuid ().toString (QUuid::WithoutBraces)
+      + QUuid::createUuid ().toString (QUuid::WithoutBraces);
+  ui_->web_ui_token_line_edit->setEchoMode (QLineEdit::Normal);
+  ui_->web_ui_token_line_edit->setText (token);
+  ui_->web_ui_token_line_edit->selectAll ();
+  ui_->web_ui_help_label->setText (tr ("已生成新令牌，请复制保存；点击确定后只保存 SHA-256 摘要，原文不会再次显示。"));
+}
+
+void Configuration::impl::on_web_ui_open_push_button_clicked ()
+{
+  Q_EMIT self_->web_ui_open_requested ();
+}
+
+void Configuration::impl::on_web_ui_restart_push_button_clicked ()
+{
+  Q_EMIT self_->web_ui_restart_requested ();
 }
 
 bool Configuration::impl::open_rig (bool force)

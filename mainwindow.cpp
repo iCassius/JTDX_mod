@@ -498,6 +498,15 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
            m_webState, &JtdxWebState::observe_wspr_decode);
   connect (m_messageClient, &MessageClient::decodes_cleared,
            m_webState, &JtdxWebState::clear_decodes);
+  m_webServer = new JtdxWebServer {m_webState, this};
+  connect (&m_config, &Configuration::web_ui_open_requested,
+           this, &MainWindow::on_actionOpenWebUi_triggered);
+  connect (&m_config, &Configuration::web_ui_restart_requested, this, [this] {
+      if (m_webServer) m_webServer->stop ();
+      m_webConfigurationSignature.clear ();
+      applyWebUiConfiguration ();
+    });
+  applyWebUiConfiguration ();
   updateSecondaryUdpTarget ();
   connect (m_secondaryMessageClient, &MessageClient::error, this, [] (QString const& error) {
       qWarning ().noquote () << "Secondary UDP server:" << error;
@@ -2197,6 +2206,64 @@ void MainWindow::showSoundOutError(const QString& errorMsg)
 }
 void MainWindow::showStatusMessage(const QString& statusMsg) { statusBar()->showMessage(statusMsg); }
 
+void MainWindow::applyWebUiConfiguration ()
+{
+  if (!m_webServer) return;
+  if (!m_config.web_ui_enabled ())
+    {
+      m_webServer->stop ();
+      m_config.set_web_ui_status (QStringLiteral ("已停止"), {});
+      m_config.set_web_ui_url ({});
+      m_webConfigurationSignature.clear ();
+      ui->actionOpenWebUi->setEnabled (true);
+      return;
+    }
+  JtdxWebServer::Configuration configuration;
+  configuration.automatic_port = m_config.web_ui_automatic_port ();
+  configuration.port = configuration.automatic_port ? 0 : m_config.web_ui_port ();
+  configuration.allow_lan = m_config.web_ui_allow_lan ();
+  configuration.bind_address = QHostAddress {m_config.web_ui_bind_address ()};
+  configuration.bearer_token_sha256 = m_config.web_ui_token_sha256 ();
+  configuration.allowed_origin = m_config.web_ui_allowed_origin ();
+  configuration.udp_ports.insert (m_config.udp_server_port ());
+  configuration.udp_ports.insert (m_config.udp2_server_port ());
+  QString const signature = QStringList {
+    QString::number (configuration.automatic_port), QString::number (configuration.port),
+    configuration.bind_address.toString (), QString::number (configuration.allow_lan),
+    configuration.bearer_token_sha256, configuration.allowed_origin,
+    QString::number (m_config.udp_server_port ()), QString::number (m_config.udp2_server_port ())}.join (QChar {'|'});
+  if (m_webServer->is_listening () && signature == m_webConfigurationSignature) return;
+  m_webServer->stop ();
+  if (m_webServer->start (configuration))
+    {
+      m_config.set_web_ui_status (QStringLiteral ("运行中"), m_webServer->url ());
+      m_config.set_web_ui_url (m_webServer->url ());
+      m_webConfigurationSignature = signature;
+      ui->actionOpenWebUi->setEnabled (true);
+      ui->actionOpenWebUi->setToolTip (m_webServer->url ());
+    }
+  else
+    {
+      m_config.set_web_ui_status (QStringLiteral ("错误"), m_webServer->last_error ());
+      m_config.set_web_ui_url ({});
+      m_webConfigurationSignature = signature;
+      ui->actionOpenWebUi->setEnabled (true);
+    }
+}
+
+void MainWindow::on_actionOpenWebUi_triggered ()
+{
+  if (m_config.web_ui_enabled () && (!m_webServer || !m_webServer->is_listening ()))
+    applyWebUiConfiguration ();
+  if (!m_webServer || !m_webServer->is_listening ())
+    {
+      statusBar ()->showMessage (tr ("Web UI 未运行；请在设置的 Web UI 选项卡启用并点击确定。"), 8000);
+      return;
+    }
+  if (!QDesktopServices::openUrl (QUrl {m_webServer->url ()}))
+    statusBar ()->showMessage (tr ("无法打开 Web UI URL：%1").arg (m_webServer->url ()), 8000);
+}
+
 void MainWindow::on_actionSettings_triggered()               //Setup Dialog
 {
   // A manual reconfiguration supersedes any pending automatic reconnect.
@@ -2323,6 +2390,7 @@ void MainWindow::on_actionSettings_triggered()               //Setup Dialog
       if(!m_config.do_pwr()) {ui->PWRlabel->setText(tr("Pwr")); ui->SWRlabel->setText("");}
       on_spotLineEdit_textChanged(ui->spotLineEdit->text());
       ui->bandComboBox->setCurrentText (m_config.bands ()->find (m_freqNominal));
+      applyWebUiConfiguration ();
   }
 }
 
@@ -2965,6 +3033,7 @@ void MainWindow::subProcessError (QProcess * process, QProcess::ProcessError)
 void MainWindow::closeEvent(QCloseEvent * e)
 {
   m_valid = false;              // suppresses subprocess errors
+  if (m_webServer) m_webServer->stop ();
   if(m_config.clear_DX_exit())
     {
       clearDX ("");

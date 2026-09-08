@@ -5004,8 +5004,9 @@ list. The list can be maintained in Settings (F2).</string>
     <property name="title">
      <string>View</string>
     </property>
-    <addaction name="actionWide_Waterfall"/>
-    <addaction name="actionMessage_averaging"/>
+   <addaction name="actionWide_Waterfall"/>
+   <addaction name="actionMessage_averaging"/>
+   <addaction name="actionOpenWebUi"/>
    </widget>
    <widget class="QMenu" name="menuDecode">
     <property name="title">
@@ -5265,6 +5266,10 @@ list. The list can be maintained in Settings (F2).</string>
    <addaction name="menuHelp"/>
   </widget>
   <widget class="QStatusBar" name="statusBar"/>
+  <action name="actionOpenWebUi">
+   <property name="text"><string>打开 Web UI（只读）</string></property>
+   <property name="toolTip"><string>打开已启用的只读 Web UI；不会执行电台控制。</string></property>
+  </action>
   <action name="actionExit">
    <property name="text">
     <string>Exit</string>

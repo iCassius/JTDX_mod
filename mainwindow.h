@@ -42,6 +42,7 @@
 #include "recovery_policy.hpp"
 #include "autoseq_recovery_policy.hpp"
 #include "JtdxWebState.hpp"
+#include "JtdxWebServer.hpp"
 
 
 //--------------------------------------------------------------- MainWindow
@@ -137,6 +138,7 @@ private slots:
   void on_spotLineEdit_textChanged(const QString &text);
   void on_propLineEdit_textChanged(const QString &text);
   void on_actionSettings_triggered();
+  void on_actionOpenWebUi_triggered();
   void on_monitorButton_clicked (bool);
   void on_swlButton_clicked (bool);
   void on_filterButton_clicked (bool);
@@ -406,6 +408,7 @@ private:
 
 private:
   void hideMenus (bool b);
+  void applyWebUiConfiguration ();
 
   JTDXDateTime * m_jtdxtime;
   QProcessEnvironment const& m_env;
@@ -755,6 +758,8 @@ private:
   MessageClient * m_messageClient;
   MessageClient * m_secondaryMessageClient;
   JtdxWebState * m_webState;
+  JtdxWebServer * m_webServer;
+  QString m_webConfigurationSignature;
   PSK_Reporter *psk_Reporter;
   DisplayManual m_manual;
   QHash<QString, QVariant> m_pwrBandTxMemory; // Remembers power level by band

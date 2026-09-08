@@ -1,0 +1,1 @@
+<!DOCTYPE RCC><RCC version="1.0"><qresource prefix="/web-ui"><file alias="index.html">../resources/web-ui/index.html</file><file alias="style.css">../resources/web-ui/style.css</file><file alias="app.js">../resources/web-ui/app.js</file></qresource></RCC>

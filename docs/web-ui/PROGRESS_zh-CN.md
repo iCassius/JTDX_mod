@@ -1,12 +1,35 @@
 # JTDX 内置 Web UI：进度与中断恢复日志
 
+## P3 批次记录（2026-09-09）
+
+- 基线：`main`、`ed04be6`；工作树在本批开始时干净。执行模型为 Luna high；本批开局额度记录为 5 小时、周额度 86%。
+- 本批目标：完成 P3 配置 Tab、MainWindow 唯一服务生命周期、Qt Resource 原生只读页面、菜单入口及对应夹具/回归测试；不进入 P4/P5 控制。
+- 已冻结文件清单：`Configuration.hpp/.cpp/.ui`、`mainwindow.h/.cpp/.ui`、`JtdxWebServer.hpp/.cpp`、`CMakeLists.txt`、`tests/jtdx_web_server_test.cpp`、`tests/ui_contract_test.cpp`、`resources/web-ui/index.html`、`style.css`、`app.js`、`docs/web-ui/WEB_UI_P3_验收_zh-CN.md`、本日志及入口文档。
+- 已完成：确认 P2 `JtdxWebServer`/`JtdxWebState` 接口；冻结 Web 专用持久键、自动端口排除 UDP 数字、仅本机/明确 LAN 地址、SHA-256 令牌摘要和零新线程/进程/UDP 边界；开始把服务鉴权改为摘要恒定时间比较。
+- 已完成：配置 Tab 与 MainWindow 接入、正式资源路由和前端 SSE、P3 服务/资源回归、独立构建/CTest、浏览器夹具复验、日志留档和事实文档；动态 Configuration QWidget 保存/取消/重载/重复打开及菜单重复点击留待后续 P3 验收。
+- 安全边界：令牌原文只在设置对话框的临时编辑控件和用户浏览器内存中出现；不得进入 QSettings、URL、HTTP HTML、日志或服务成员。应用/HIL/真实 CAT/PTT/TX 尚未启动，浏览器验证需先使用隔离夹具。
+
+### P3 实施进展 checkpoint（2026-09-09，历史检查点；最终结果见下节）
+
+- 已完成：配置 Tab/专用持久键、摘要令牌、MainWindow 唯一生命周期、菜单/打开/重启按钮、Qt Resource 页面、fetch-SSE 令牌输入/断线/epoch ID/未知值处理、浏览器夹具 `--serve-browser`。
+- 已验证：`C:\JTDX64\build-webui-dev-msys2` 全量构建成功，权威日志为 `C:\JTDX64\deps-webui\build-webui-p3-final.log`；`ctest --test-dir C:\JTDX64\build-webui-dev-msys2 --output-on-failure` 实际结果 `100% tests passed out of 15`，权威日志为 `C:\JTDX64\deps-webui\ctest-webui-p3-final.log`。
+- 已收尾：浏览器夹具带演示解码和陈旧状态复验、`git diff --check`、中文事实文档和精确本地提交均已完成。未做动态 Configuration 对话框保存/取消/重载/重复打开、菜单重复点击、真实 JTDX 隔离启动、CAT/PTT/TX/HIL、部署。
+
 本文件是阶段交接记录。每次继续工作先更新“本次批次”表，再开始代码或测试；每次暂停前必须补齐命令和证据。不要把未来计划写成已完成事实。
+
+### P3 最终收尾检查点（2026-09-09）
+
+- 最终二进制已重建：`cmake --build C:\JTDX64\build-webui-dev-msys2 --parallel 2`，退出码 `0`；日志 `C:\JTDX64\deps-webui\build-webui-p3-final.log`。
+- 最终二进制全量回归：`ctest --test-dir C:\JTDX64\build-webui-dev-msys2 --output-on-failure`，`100% tests passed out of 15`，退出码 `0`；日志 `C:\JTDX64\deps-webui\ctest-webui-p3-final.log`。
+- 浏览器夹具已用最终二进制启动：`http://127.0.0.1:49152/#fixture`；令牌仍只由进程标准输出一次提供。夹具包含 6 条带 DF、网格、fresh/is_new 和 `<script>` 文本的演示解码，7 秒后推进单调时钟越过 5 秒新鲜度阈值，并设置有界 120 秒退出。父任务复验确认桌面/390px 移动布局、最新优先解码、陈旧中文提示、空实际频率、AutoSeq/TX 文本和重复连接单 TCP 流；断线后的旧快照/陈旧标识由只读代码检查和错误令牌断线观察支持。未在 120 秒自动退出瞬间观察页面；父任务已确认夹具进程不存在。
+- 前端最终修订：显示业务状态更新时间、解码年龄、实际频率 `rig_fresh` 状态、AutoSeq、DF、每条解码新鲜度/新旧标识；使用 `textContent`；fragment 演示标识不进入 HTTP；连接循环有 runId、局部 AbortController、每次读取看门狗和旧快照陈旧标识。
+- 尚未验证：真实隔离 `jtdx.exe`、Configuration QWidget 动态保存/取消/重载/重复打开及菜单重复点击、CAT/PTT/TX/HIL、部署和长期浏览器耐久性。P3 代码、资源、测试和文档完成后即停，不进入 P4。
 
 ## 当前恢复点
 
-- 当前阶段：`P2 只读服务器`（已完成）。
-- 本批状态：已完成；P1 已完成（源码结果提交 `0420a21`，文档结果提交 `b788d0e`，收尾提交 `e27c9bb`）。本批从干净 `e27c9bb` 开始，完成 P2 只读 TCP/HTTP/SSE、loopback 合同测试、独立构建和全量 CTest。
-- 基线分支/提交：`main` / `e27c9bb`（2026-09-08 P2 批次开始实际读数）。
+- 当前阶段：`P3 设置/菜单/只读前端`（代码、资源、构建、CTest 和夹具浏览器复验已完成；动态 QWidget 设置/菜单交互待后续 P3 验收）。
+- P2 历史状态：已完成；P1 已完成（源码结果提交 `0420a21`，文档结果提交 `b788d0e`，收尾提交 `e27c9bb`）。P3 工作树起始基线为 `ed04be6`；本批结果以单一本地中文提交记录。
+- 基线分支/提交：`main` / `ed04be6`（P3 批次开始实际读数）。
 - P0 初始结果提交：`02153b0`（提交后修订不 amend，使用 `git log --oneline -- docs/web-ui` 追踪后续文档提交）；提交后必须用 `git show --stat --oneline HEAD` 和 `git status --short --branch` 复核。
 - 工作树预期：本批结束前列出并精确提交本批修改；不得覆盖其他工作。
 - 模型策略：按用户要求使用 `gpt-5.6-luna`、`high`；不自行升级模型或推理档位。

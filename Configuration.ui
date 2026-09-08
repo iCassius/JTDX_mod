@@ -7575,6 +7575,38 @@ AA1AAA,BB1BB,CC1CC&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
         </layout>
        </item>
       </layout>
+      </widget>
+     <widget class="QWidget" name="web_ui_tab">
+      <attribute name="title">
+       <string>Web UI</string>
+      </attribute>
+      <attribute name="toolTip">
+       <string>只读 Web 状态页面；不提供电台控制。</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="web_ui_layout">
+       <item>
+        <widget class="QGroupBox" name="web_ui_group_box">
+         <property name="title"><string>内置 Web UI（只读）</string></property>
+         <layout class="QGridLayout" name="web_ui_grid">
+          <item row="0" column="0"><widget class="QCheckBox" name="web_ui_enabled_check_box"><property name="text"><string>启用 Web UI</string></property><property name="toolTip"><string>默认关闭；只在点击设置对话框的确定后启动或重启服务。</string></property></widget></item>
+          <item row="0" column="1" colspan="3"><widget class="QLabel" name="web_ui_status_label"><property name="text"><string>已停止</string></property></widget></item>
+          <item row="1" column="0"><widget class="QLabel" name="web_ui_bind_label"><property name="text"><string>绑定：</string></property></widget></item>
+          <item row="1" column="1"><widget class="QComboBox" name="web_ui_bind_combo_box"><item><property name="text"><string>仅本机（127.0.0.1）</string></property></item><item><property name="text"><string>LAN（指定地址）</string></property></item></widget></item>
+          <item row="1" column="2"><widget class="QLineEdit" name="web_ui_bind_address_line_edit"><property name="placeholderText"><string>例如 192.168.1.20</string></property><property name="toolTip"><string>LAN 必须填写具体本机地址，禁止 Any/0.0.0.0。</string></property></widget></item>
+          <item row="2" column="0"><widget class="QCheckBox" name="web_ui_automatic_port_check_box"><property name="text"><string>自动 TCP 端口</string></property></widget></item>
+          <item row="2" column="1"><widget class="QSpinBox" name="web_ui_port_spin_box"><property name="minimum"><number>1024</number></property><property name="maximum"><number>65535</number></property><property name="value"><number>49200</number></property></widget></item>
+          <item row="2" column="2" colspan="2"><widget class="QLabel" name="web_ui_url_label"><property name="text"><string>实际 URL：—</string></property><property name="textInteractionFlags"><set>Qt::TextSelectableByMouse</set></property></widget></item>
+          <item row="2" column="4"><widget class="QPushButton" name="web_ui_open_push_button"><property name="text"><string>打开 URL</string></property></widget></item>
+          <item row="2" column="5"><widget class="QPushButton" name="web_ui_restart_push_button"><property name="text"><string>重启服务</string></property></widget></item>
+          <item row="3" column="0"><widget class="QLabel" name="web_ui_token_label"><property name="text"><string>访问令牌：</string></property></widget></item>
+          <item row="3" column="1" colspan="2"><widget class="QLineEdit" name="web_ui_token_line_edit"><property name="echoMode"><enum>QLineEdit::Password</enum></property><property name="placeholderText"><string>仅临时显示；配置只保存 SHA-256 摘要</string></property></widget></item>
+          <item row="3" column="3"><widget class="QPushButton" name="web_ui_generate_token_push_button"><property name="text"><string>生成令牌</string></property></widget></item>
+          <item row="4" column="0" colspan="4"><widget class="QLabel" name="web_ui_help_label"><property name="wordWrap"><bool>true</bool></property><property name="text"><string>令牌原文只在此处和浏览器内存中出现，不写入 URL、日志或 HTML。LAN 绑定必须使用具体地址、令牌和精确 Origin。</string></property></widget></item>
+         </layout>
+        </widget>
+       </item>
+       <item><spacer name="web_ui_vertical_spacer"><property name="orientation"><enum>Qt::Vertical</enum></property><property name="sizeHint" stdset="0"><size><width>20</width><height>40</height></size></property></spacer></item>
+      </layout>
      </widget>
     </widget>
    </item>

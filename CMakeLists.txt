@@ -1020,6 +1020,10 @@ endfunction (add_resources resources path)
 add_resources (wsjtx_RESOURCES "" ${TOP_LEVEL_RESOURCES})
 add_resources (wsjtx_RESOURCES /Palettes ${PALETTE_FILES})
 add_resources (wsjtx_RESOURCES /Translations ${QM_FILES})
+add_resources (wsjtx_RESOURCES /web-ui
+  resources/web-ui/index.html
+  resources/web-ui/style.css
+  resources/web-ui/app.js)
 
 configure_file (jtdx.qrc.in jtdx.qrc @ONLY)
 
@@ -1621,10 +1625,12 @@ if (JTDX_BUILD_LOCAL_TESTS)
   target_include_directories (jtdx_web_state_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   target_link_libraries (jtdx_web_state_test Qt5::Core)
   add_test (NAME jtdx_web_state_test COMMAND jtdx_web_state_test)
+  qt5_add_resources (jtdx_web_server_test_resources tests/web_ui_test.qrc)
   add_executable (jtdx_web_server_test
     tests/jtdx_web_server_test.cpp
     JtdxWebServer.cpp
-    JtdxWebState.cpp)
+    JtdxWebState.cpp
+    ${jtdx_web_server_test_resources})
   target_include_directories (jtdx_web_server_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   target_link_libraries (jtdx_web_server_test Qt5::Core Qt5::Network)
   add_test (NAME jtdx_web_server_test COMMAND jtdx_web_server_test)
