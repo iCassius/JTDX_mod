@@ -1,5 +1,31 @@
 # JTDX 内置 Web UI：进度与中断恢复日志
 
+### P3 动态 Configuration 恢复批次检查点（2026-09-09）
+
+- 基线：`main` / `6b500ef1890fbe666529c16ce0c95dc75aeea9f1`；当前工作树保留上一 Luna 同任务修改：`CMakeLists.txt`、`Configuration.cpp`、`docs/web-ui/PROGRESS_zh-CN.md`、`tests/configuration_web_ui_test.cpp`，不得覆盖。
+- 本批目标：完成真实 `Configuration` QWidget 的隔离动态验收及最小缺陷修复；先不展开 MainWindow 菜单新切片，不进入 P4。
+- 开局额度：五小时窗口剩余 `100%`，周窗口剩余 `49%`。新收尾门槛：五小时窗口剩余低于 `40%` 时立即停止新实现，只完成文档、验证、精确提交和交接；此前 `20%` 门槛废止。
+- 安全边界：仅使用隔离 `QSettings`、临时数据目录、`Rig=None`、空 CAT/PTT/网络和关闭 TX/QuickCall/AutoSequence 的测试夹具；不启动完整 JTDX，不附着或操作现用 `jtdx.exe`，不进行 CAT/PTT/TX/HIL/部署，不新增生产 UDP/线程/process/控制。
+- 已有状态：测试可执行文件曾编译成功但运行尚未确认；`deps-webui/configuration-test-build.log`、`stderr`、`entry.log`（仅进入 `main` 两次）不是 pass 证据。当前优先定位 `QApplication` 构造前后退出及 Qt 平台插件路径，再核对 Configuration 测试。
+- 当前恢复动作：保留所有现有 diff，先做 Qt 路径/插件诊断和最小探针；确认后再修 `QSettings` 分组、`settings_snapshot`、5 秒 timer 生命周期、磁盘重载和非法端口持久值等本批明确问题。每次暂停前补齐命令、退出码和日志路径。
+
+### P3 动态 Configuration 收尾结果（2026-09-09）
+
+- 五小时额度收尾读数：剩余 `29%`，已触发本批规定的 `<40%` 门槛；不再开启菜单新切片。
+- 已完成：真实 `Configuration` QWidget 隔离夹具的默认值、取消、确定、重复打开、磁盘重载、令牌摘要持久化、Rig=None/CAT 离线和非法持久端口 `77881` 拒绝并关闭 Web UI；补齐测试夹具所需的 `JTDXDateTime`，未改 CAT 生产逻辑。
+- 已修复：测试 deadline 改为绑定 `Configuration` 的栈 `QTimer`，在 `exec()` 返回前停止，避免旧 singleShot 引用跨对话生命周期；取消断言排除 `Configuration::done()` 已有的窗口几何键写入，只比较临时业务设置。
+- 最终构建：`cmake --build C:\JTDX64\build-webui-dev-msys2 --target jtdx --parallel 2`，退出码 `0`；日志 `C:\JTDX64\deps-webui\configuration-final-jtdx-build.log`。测试目标构建日志为 `C:\JTDX64\deps-webui\configuration-final-build.log`。
+- 最终回归：`ctest --test-dir C:\JTDX64\build-webui-dev-msys2 --output-on-failure`，`100% tests passed out of 16`，总耗时约 `54.04s`；日志 `C:\JTDX64\deps-webui\ctest-webui-p3-configuration-final.log`。CTest 使用 `QT_QPA_PLATFORM=offscreen`，运行环境以 mingw Qt 优先、159/bin 仅补 Hamlib 依赖。
+- 尚未验证：MainWindow 菜单动态重复点击、真实隔离 `jtdx.exe`、CAT/PTT/TX/HIL、部署和长期浏览器耐久性；非法持久端口已验证失败关闭，但本批未新增专门的界面错误提示。
+
+### P3 动态验收批次开始检查点（2026-09-09）
+
+- 基线：`main`、`6b500ef`；工作树开始时干净。执行档位按用户要求为 `gpt-5.6-luna`、`high`；本批不升级依赖。
+- 本批目标：在隔离 `QSettings`/临时数据目录、`Rig=None`、CAT/网络/PTT 为空且 TX/QuickCall/AutoSequence 关闭的条件下，使用真实 `Configuration` QWidget 验收保存、取消、重载、重复打开和 Web UI 端口/令牌持久化；在可安全构造的范围内验收 MainWindow 菜单重复点击、服务 epoch/端口保持及异常隔离。
+- 安全路线：先运行 Qt Widgets 动态夹具；不附着、停止或修改现用 JTDX（现用实例由父任务核实），不启动真实 CAT/PTT/TX，不使用用户配置、日志或部署路径，不新增生产线程/process/UDP/调度。
+- 计划验证：默认关闭/loopback、自动与手动端口及冲突、取消不写入、确定后重载一致、令牌只保存摘要、重复打开不泄漏服务/端口、Web 异常不影响应用、退出清理。只修本批动态验收发现的 P3 缺陷。
+- 当前状态：已完成文档/源码路线复核；动态夹具、测试命令、缺陷修复和结果尚未执行。
+
 ## P3 批次记录（2026-09-09）
 
 - 基线：`main`、`ed04be6`；工作树在本批开始时干净。执行模型为 Luna high；本批开局额度记录为 5 小时、周额度 86%。

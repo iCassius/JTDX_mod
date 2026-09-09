@@ -2775,8 +2775,21 @@ void Configuration::impl::read_settings ()
   else enable_tcp_connection_ = false;
   web_ui_enabled_ = settings_->value ("WebUiEnabled", false).toBool ();
   web_ui_automatic_port_ = settings_->value ("WebUiAutomaticPort", true).toBool ();
-  web_ui_port_ = settings_->value ("WebUiPort", 49200).toUInt ();
-  if (web_ui_port_ < 1024) web_ui_port_ = 49200;
+  bool web_ui_port_ok {false};
+  auto const configured_web_ui_port = settings_->value ("WebUiPort", 49200).toUInt (&web_ui_port_ok);
+  if (web_ui_port_ok
+      && configured_web_ui_port >= 1024
+      && configured_web_ui_port <= std::numeric_limits<port_type>::max ())
+    {
+      web_ui_port_ = static_cast<port_type> (configured_web_ui_port);
+    }
+  else
+    {
+      // 在缩窄为 quint16 前先校验；范围外的 INI 值不得回绕成另一个看似有效的端口。
+      // 同时关闭 Web UI，避免已启用的实例意外启动。
+      web_ui_port_ = 49200;
+      web_ui_enabled_ = false;
+    }
   web_ui_bind_address_ = settings_->value ("WebUiBindAddress", "127.0.0.1").toString ();
   web_ui_allow_lan_ = settings_->value ("WebUiAllowLan", false).toBool ();
   web_ui_token_sha256_ = settings_->value ("WebUiTokenSha256").toString ().trimmed ();

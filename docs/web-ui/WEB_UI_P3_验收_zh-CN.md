@@ -13,6 +13,7 @@
 - 浏览器夹具：`jtdx_web_server_test.exe --serve-browser`，loopback 临时服务，演示状态数据，临时令牌仅用于本地浏览器验证；夹具设置有界 120 秒自动退出。父任务最终复验确认 6 条解码按最新优先显示，`<script>` 仅按文字显示，SNR/DF/mode/call/grid/fresh/is_new、AutoSeq/TX 文本、空实际频率和中文陈旧状态可见；390px 宽度无横向溢出，重复连接仅保留一个 TCP 流。断线后的旧快照/陈旧标识由只读代码检查和错误令牌断线观察支持；未在 120 秒自动退出瞬间观察页面，父任务已确认夹具进程不存在。该夹具不启动 JTDX，不连接 CAT/PTT/TX，不代表生产部署。
 
 - 浏览器复验入口：`http://127.0.0.1:49152/#fixture`，令牌由夹具进程输出；fragment 只在浏览器本地显示演示标识，不会进入 HTTP 请求。已用 PowerShell 直接确认 `/` 与 `/app.js` 返回 200，页面脚本通过 `node --check`。
-- 配置保存/取消/重载、重复打开设置和菜单重复点击未做动态 QWidget 自动化点击验收；源码路径、CMake 编译及服务器单测不能替代该动态 UI 证据。
+- 动态 `Configuration` QWidget 夹具已完成隔离验收：覆盖默认关闭/loopback、取消不发布临时业务设置、确定后手动端口和令牌摘要持久化、重复打开取消、独立 `QSettings` 磁盘回读、`Rig=None`/CAT 离线以及 `77881` 非法持久端口拒绝并关闭 Web UI。取消时额外出现的 `Configuration/window/geometry` 是既有 `done()` 窗口几何保存行为，已从业务设置比较中单独剥离。测试 deadline 使用有界且可停止的 `QTimer`，未保留固定本机日志路径。
+- MainWindow 菜单动态重复点击尚未执行；该项与真实 JTDX、CAT/PTT/TX、HIL、部署和长时间浏览器耐久性继续保持未验证。
 
 尚未执行真实 JTDX 隔离启动、CAT/PTT/TX、HIL、部署和长时间浏览器耐久性验证。P4/P5 控制功能不属于本批。浏览器页面的夹具人工复验已由父任务完成；配置/菜单动态验收留待下一 P3 批次。

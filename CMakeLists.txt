@@ -1625,6 +1625,30 @@ if (JTDX_BUILD_LOCAL_TESTS)
   target_include_directories (jtdx_web_state_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   target_link_libraries (jtdx_web_state_test Qt5::Core)
   add_test (NAME jtdx_web_state_test COMMAND jtdx_web_state_test)
+  add_executable (configuration_web_ui_test
+    tests/configuration_web_ui_test.cpp
+    Configuration.cpp
+    JTDXMessageBox.cpp
+    JTDXDateTime.cpp
+    getfile.cpp)
+  target_include_directories (configuration_web_ui_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR})
+  set_target_properties (configuration_web_ui_test PROPERTIES
+    AUTOMOC_COMPILER_PREDEFINES OFF)
+  target_link_libraries (configuration_web_ui_test
+    wsjt_qt wsjt_qtmm wsjt_cxx
+    Qt5::Widgets Qt5::Multimedia Qt5::SerialPort Qt5::Network)
+  if (APPLE)
+    target_link_libraries (configuration_web_ui_test wsjt_fort)
+  elseif (OPENMP_FOUND)
+    target_link_libraries (configuration_web_ui_test wsjt_fort_omp)
+  else ()
+    target_link_libraries (configuration_web_ui_test wsjt_fort)
+  endif ()
+  add_test (NAME configuration_web_ui_test COMMAND configuration_web_ui_test)
+  set_tests_properties (configuration_web_ui_test PROPERTIES
+    TIMEOUT 60
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
   qt5_add_resources (jtdx_web_server_test_resources tests/web_ui_test.qrc)
   add_executable (jtdx_web_server_test
     tests/jtdx_web_server_test.cpp
