@@ -1,6 +1,15 @@
 # JTDX 内置 Web UI：进度与中断恢复日志
 
-### P3 MainWindow 菜单动态验收恢复点（2026-09-10，当前权威规则）
+### P4-a 普通控制实施契约准备（2026-09-10，当前权威）
+
+- 基线：`main` / `1ef3804`；开始检查时工作树干净。P3 生产 `JtdxWebService`、真实 `QAction` 菜单入口和 17 项自动测试已完成；完整 `MainWindow` 窗口构造/人工验收未完成，留到 P6。
+- 本批范围：只核对 DX 选择/Call 校验的现有入口、副作用、安全状态门、业务回读完成条件，冻结 DX/Call 子契约、文件清单、测试计划和恢复检查点；frequency 完整请求结构、文件清单和测试契约留下一批。不改生产代码/测试，不开放 HTTP control，不启动 JTDX，不连接 CAT/PTT/TX/电台，不做浏览器/HIL。
+- 关键事实：当前没有 `CallsignValidator`；`QRegularExpressionValidator` 只提供字符集门。`Radio::is_callsign()`（`Radio.cpp:86-94`）在长度检查前访问 `at(1)`，Web 适配必须先挡空值/短输入。`doubleClickOnCall/processMessage`（`mainwindow.cpp:5604-5973`）会改周期、QSO/Tx 消息并在 AutoTx 下点击 Enable Tx，绝不能作为只选择 DX 的 Web 入口。
+- 回读门：`JtdxWebState` 当前是全局 revision；status/rig/decode 观测都会递增，不能凭 revision 增长证明 DX 应用完成。P4 实现前必须增加 DX 专属 generation/source event，或使用等价可审计业务回读标识；相同目标须标识 `already_selected`，不能伪装新 CAT/DX 事件。
+- 文档：详细契约见 [`P4-A_普通控制实施契约_zh-CN.md`](P4-A_普通控制实施契约_zh-CN.md)。P4 仍未实现，本文不构成控制完成或 HIL 证据。
+- 额度：本批中途快照五小时剩余 `36%`、周剩余 `25%`；末次收尾快照五小时剩余 `30%`、周剩余 `24%`。已进入 30% 收尾阈值，后续只做有界文档/静态检查/精确提交/交接。
+
+### P3 MainWindow 菜单动态验收恢复点（2026-09-10，历史批次）
 
 - 基线：`main` / `30eeb24`；工作树恢复时干净。当前只收尾 P3 MainWindow 菜单入口动态验收，Configuration QWidget 隔离动态验收已完成 `16/16`；不进入 P4。
 - 额度规则：本阶段开局账户共享五小时剩余 `98%`、周窗口剩余 `35%`；`30%` 是本阶段收尾阈值。此前文档中的 `40%` 和 `20%` 门槛均废止；低于 `30%` 后只允许有界文档、静态验证、精确提交和交接，不开启新的实现面或长时间动态运行。
@@ -63,7 +72,7 @@
 - 前端最终修订：显示业务状态更新时间、解码年龄、实际频率 `rig_fresh` 状态、AutoSeq、DF、每条解码新鲜度/新旧标识；使用 `textContent`；fragment 演示标识不进入 HTTP；连接循环有 runId、局部 AbortController、每次读取看门狗和旧快照陈旧标识。
 - 尚未验证：真实隔离 `jtdx.exe`、Configuration QWidget 动态保存/取消/重载/重复打开及菜单重复点击、CAT/PTT/TX/HIL、部署和长期浏览器耐久性。P3 代码、资源、测试和文档完成后即停，不进入 P4。
 
-## 当前恢复点
+## P3 历史恢复点（不覆盖当前 P4-a）
 
 - 当前阶段：`P3 设置/菜单/只读前端`（代码、资源、构建、CTest 和夹具浏览器复验已完成；动态 QWidget 设置/菜单交互待后续 P3 验收）。
 - P2 历史状态：已完成；P1 已完成（源码结果提交 `0420a21`，文档结果提交 `b788d0e`，收尾提交 `e27c9bb`）。P3 工作树起始基线为 `ed04be6`；本批结果以单一本地中文提交记录。

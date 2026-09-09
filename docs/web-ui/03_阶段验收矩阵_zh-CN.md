@@ -7,8 +7,8 @@
 | P0 | 需求 R01-R15、边界、改进项、恢复入口、源码/构建事实；`git show`/`git status`；不运行 JTDX | 已通过 |
 | P1 | 状态快照、有限解码、更新时间/新鲜度、事件循环安全读接口；Qt/MinGW/CMake 独立探针；单元和无 UDP 新监听静态检查 | 已通过（本批独立 Ninja 构建 `[1218/1218]`、CTest `14/14`；未启动 JTDX/HIL） |
 | P2 | TCP 启停、自动/手动端口、占用/UDP 分离、`/`、`healthz`、state、decodes、SSE 重连/背压 | 已通过（loopback/API/CTest；未启动 JTDX/HIL） |
-| P3 | 设置保存/重载、LAN 开关和鉴权、菜单重复点击、资源、桌面/移动只读页面；浏览器手测 | 进行中（Configuration QWidget 隔离动态验收与原有代码/资源/CTest/浏览器夹具已完成；MainWindow 菜单动态重复点击待后续 P3 验收） |
-| P4 | 频率校验/切换/实际回读、过期 decode、DX 校验/选择/应用；API 合同和单元 | 未开始 |
+| P3 | 设置保存/重载、LAN 开关和鉴权、菜单重复点击、资源、桌面/移动只读页面；浏览器手测 | 生产 `JtdxWebService`/真实 `QAction` 与 17 项自动测试已完成；完整 MainWindow 窗口人工验收留到 P6 |
+| P4 | 频率校验/切换/实际回读、过期 decode、DX 校验/选择/应用；API 合同和单元 | 进行中（仅 P4-a DX/Call 实施契约；控制未实现） |
 | P5 | CQ/AutoSeq 安全门、二次确认、启停状态机、超时/重复/退出/冲突；原有 AutoSeq/CAT 回归 | 未开始 |
 | P6 | 全 API、异常隔离、UDP/CAT/解码/自动呼叫回归、浏览器结果、交付报告 | 未开始 |
 | HIL | CAT/PTT/TX、设备回读、长时运行和无线电行为；需独立授权 | 未授权 |
