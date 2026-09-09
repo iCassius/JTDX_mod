@@ -31,6 +31,8 @@ public:
   int decode_limit () const { return decode_limit_; }
   void set_decode_limit (int limit);
   quint64 revision () const { return revision_; }
+  // 仅由真实 rig 观测事件递增；不能由通用 status 或 nominal 目标推导。
+  quint64 rig_generation () const { return rig_generation_; }
 
   void observe_status (Frequency target_frequency, QString const& mode,
                       QString const& dx_call, QString const& report,
@@ -133,6 +135,7 @@ private:
   Frequency rig_frequency_ {0};
   Frequency rig_tx_frequency_ {0};
   bool rig_ptt_ {false};
+  quint64 rig_generation_ {0};
   qint64 rig_seen_ms_ {-1};
   qint64 decode_seen_ms_ {-1};
   QDateTime status_wall_;

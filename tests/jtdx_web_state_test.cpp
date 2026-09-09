@@ -29,6 +29,7 @@ int main (int argc, char ** argv)
   state.set_clock_for_test (100);
 
   auto json = state.json_snapshot ();
+  check (json.value (QStringLiteral ("rig_generation")).isNull (), "empty rig generation is null");
   check (json.value (QStringLiteral ("freshness")).toString () == QStringLiteral ("unknown"), "empty state freshness");
   check (json.value (QStringLiteral ("mode")).isNull (), "empty mode is null");
   check (json.value (QStringLiteral ("frequency")).isNull (), "empty CAT frequency is null");
@@ -43,6 +44,7 @@ int main (int argc, char ** argv)
                         QStringLiteral ("FT8"), true, false, false, 1200, 1300,
                         QStringLiteral ("N0CALL"), QStringLiteral ("FN31"), QString {},
                         false, QString {}, false, false);
+  check (state.rig_generation () == 0, "status observation does not create rig generation");
   json = state.json_snapshot ();
   check (json.value (QStringLiteral ("freshness")).toString () == QStringLiteral ("fresh"), "fresh status");
   check (json.value (QStringLiteral ("target_frequency")).toDouble () == 14074000, "target frequency");
@@ -59,16 +61,19 @@ int main (int argc, char ** argv)
   check (state.json_snapshot ().value (QStringLiteral ("freshness")).toString () == QStringLiteral ("stale"), "stale status");
 
   state.observe_rig (true, 14074123u, 14074150u, false);
+  check (state.rig_generation () == 1, "first rig event increments rig generation");
   json = state.json_snapshot ();
   check (json.value (QStringLiteral ("frequency")).toDouble () == 14074123, "CAT reported frequency");
   check (json.value (QStringLiteral ("target_frequency")).toDouble () == 14074000, "CAT and target remain distinct");
   check (state.revision () > revision_after_status, "revision increments");
   state.observe_rig (false, 0, 0, false);
+  check (state.rig_generation () == 2, "offline rig event is still a new rig observation");
   json = state.json_snapshot ();
   check (json.value (QStringLiteral ("rig_online")).toBool (true) == false, "offline CAT invalidation");
   check (json.value (QStringLiteral ("frequency")).isNull (), "offline CAT frequency unknown");
   check (json.value (QStringLiteral ("ptt")).isNull (), "offline CAT PTT unknown");
   state.observe_rig (true, 14074123u, 14074150u, false);
+  auto const rig_generation_after_observations = state.rig_generation ();
 
   state.set_decode_limit (999);
   check (state.decode_limit () == JtdxWebState::hard_decode_limit, "hard decode limit");
@@ -76,6 +81,8 @@ int main (int argc, char ** argv)
     state.observe_decode (true, QTime {0, 0, 1}, -10, 0.1f, static_cast<quint32> (i),
                           QStringLiteral ("FT8"), QStringLiteral ("CQ TEST"), false, false,
                           QStringLiteral ("N0CALL"), QStringLiteral ("FN31"));
+  check (state.rig_generation () == rig_generation_after_observations,
+         "decode observations do not create rig generation");
   json = state.json_snapshot ();
   auto decodes = json.value (QStringLiteral ("recent_decodes")).toArray ();
   check (decodes.size () == JtdxWebState::hard_decode_limit, "decode hard cap");

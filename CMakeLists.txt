@@ -201,6 +201,7 @@ set (wsjt_qt_CXXSRCS
   DXLabSuiteCommanderTransceiver.cpp
   NetworkMessage.cpp
   MessageClient.cpp
+  JtdxWebControl.cpp
   JtdxWebState.cpp
   JtdxWebServer.cpp
   JtdxWebService.cpp
@@ -1626,6 +1627,12 @@ if (JTDX_BUILD_LOCAL_TESTS)
   target_include_directories (jtdx_web_state_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   target_link_libraries (jtdx_web_state_test Qt5::Core)
   add_test (NAME jtdx_web_state_test COMMAND jtdx_web_state_test)
+  add_executable (jtdx_web_control_test
+    tests/jtdx_web_control_test.cpp
+    JtdxWebControl.cpp)
+  target_include_directories (jtdx_web_control_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_link_libraries (jtdx_web_control_test Qt5::Core)
+  add_test (NAME jtdx_web_control_test COMMAND jtdx_web_control_test)
   add_executable (configuration_web_ui_test
     tests/configuration_web_ui_test.cpp
     Configuration.cpp

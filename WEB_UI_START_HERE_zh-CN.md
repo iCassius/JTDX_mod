@@ -1,11 +1,11 @@
 # JTDX 内置 Web UI：阶段入口与恢复说明
 
-本目录记录 JTDX 内置轻量 Web UI 的需求、边界、设计和阶段证据。当前 P3 生产 service/QAction 与 17 项自动测试已完成；完整 MainWindow 窗口人工验收留到 P6，仍不代表已经启动 JTDX、连接电台或完成 HIL/部署验证。P4-a 当前只完成 DX 选择/Call 校验实施契约，P4 控制未实现。
+本目录记录 JTDX 内置轻量 Web UI 的需求、边界、设计和阶段证据。当前 P3 生产 service/QAction 与 17 项自动测试已完成；完整 MainWindow 窗口人工验收留到 P6，仍不代表已经启动 JTDX、连接电台或完成 HIL/部署验证。P4-b 已完成不激活的控制协调器基础批次；HTTP 控制接入、现有 Calls/DX 业务入口和 frequency 生产 CAT 适配仍未完成。
 
 ## 当前状态
 
-- 阶段：`P4-a 普通控制实施契约准备`，P0/P1/P2 已完成；P3 生产 service/QAction 与 17 项自动测试已完成，完整 MainWindow 窗口人工验收留到 P6；P4 控制尚未实现。
-- 基线：当前批次为分支 `main`、HEAD `1ef3804`，开始时工作树干净；P4-a 契约见 [`docs/web-ui/P4-A_普通控制实施契约_zh-CN.md`](docs/web-ui/P4-A_普通控制实施契约_zh-CN.md)。
+- 阶段：`P4-b 控制协调器基础批次`，P0/P1/P2 已完成；P3 生产 service/QAction 与 17 项自动测试已完成，完整 MainWindow 窗口人工验收留到 P6；HTTP 控制接入和生产业务适配仍未完成。
+- 基线：当前批次为分支 `main`、HEAD `5611fcc`，开始时工作树干净；P4-a 契约见 [`docs/web-ui/P4-A_普通控制实施契约_zh-CN.md`](docs/web-ui/P4-A_普通控制实施契约_zh-CN.md)，P4-b 结果见进度日志。
 - 代码根目录：`C:\JTDX64\jtdx_sourcecode`。用户需求中的 `jtdx\_sourcecode` 按当前实际仓库路径解释。
 - P3 历史范围：增加 Web UI 配置 Tab、持久化摘要令牌、MainWindow 唯一服务生命周期、菜单入口和 Qt Resource 原生深色响应式只读页；服务仍为单进程主 Qt 事件循环，不新增 UDP/线程/进程或控制 API。
 - 已确认：主程序已有 Qt5 Network、`MessageClient`、`MessageServer` 和 `JTDX_BUILD_LOCAL_TESTS`；P1 状态模型、P2 只读服务和 P3 代码/资源/测试/文档均已有本地提交，P4 及后续控制仍未实现。
@@ -26,8 +26,8 @@
 | P0 | 文档与事实基线 | 需求、网络/进程安全边界、API 草案、验收矩阵、恢复入口 | 已完成 |
 | P1 | 状态模型 | `JtdxWebState`、状态新鲜度、解码上限、事件循环安全读接口；只读数据接入 | 已通过（独立构建/14 项 CTest；未启动 JTDX/HIL） |
 | P2 | 只读服务器 | `JtdxWebServer`、TCP 端口生命周期、`/`、`/healthz`、`/api/v1/state`、`/api/v1/decodes`、SSE | 已通过（loopback/API/CTest；未启动 JTDX/HIL） |
-| P3 | 设置/菜单/前端骨架 | Web UI 设置 Tab、端口/绑定策略、菜单入口、内置资源、响应式只读页面 | 代码/资源/CTest/浏览器夹具复验已完成；动态 QWidget 设置/菜单交互待后续 P3 验收 |
-| P4 | 普通控制 | `JtdxWebControl`、频率切换、过期解码 ID、DX 选择、状态回读 | 进行中（仅 P4-a DX/Call 子契约；frequency 完整契约与控制实现留后续批次） |
+| P3 | 设置/菜单/前端骨架 | Web UI 设置 Tab、端口/绑定策略、菜单入口、内置资源、响应式只读页面 | 代码/资源/CTest/浏览器夹具复验已完成；完整 MainWindow 窗口人工验收留到 P6 |
+| P4 | 普通控制 | `JtdxWebControl`、频率切换、过期解码 ID、DX 选择、状态回读 | P4-b 协调器基础已完成；HTTP 路由、生产入口、frequency CAT 反馈及 DX 业务回读留后续批次 |
 | P5 | 高风险控制 | CQ/AutoSeq 启动、停止流程、二次确认、幂等/超时/冲突和状态回读 | 未开始 |
 | P6 | 整体验证 | 自动化合同、浏览器手测、异常隔离、回归和交付报告 | 未开始 |
 | HIL | 独立授权 | 真实 CAT/PTT/发射、设备反馈、长时间运行和无线电行为 | 未授权/未开始 |

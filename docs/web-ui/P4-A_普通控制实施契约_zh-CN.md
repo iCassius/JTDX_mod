@@ -1,11 +1,11 @@
 # JTDX 内置 Web UI：P4-a 普通控制实施契约（DX 选择与 Call 校验）
 
 任务编号：`JTDX-WEBUI-P4-A-CONTRACT-20260910`
-文档性质：源码事实、实施边界、文件清单、测试计划与恢复检查点；本批不实现控制。
+文档性质：源码事实、实施边界、文件清单、测试计划与恢复检查点；本契约批次不实现控制，后续 P4-b 仅落地基础协调器，不改变本契约的生产入口边界。
 
 ## 当前结论与基线
 
-- 当前仓库：`C:\JTDX64\jtdx_sourcecode`，分支 `main`，基线 `1ef3804`，开始检查时工作树干净。
+- 当前仓库：`C:\JTDX64\jtdx_sourcecode`，分支 `main`，本契约批次基线 `1ef3804`，开始检查时工作树干净；后续 P4-b 从 `5611fcc` 开始，结果以进度日志为准。
 - P3 已完成生产 `JtdxWebService` 生命周期、真实 `QAction` 菜单入口及 17 项自动测试；完整 `MainWindow` 窗口构造/人工菜单验收仍未完成，保留到 P6。不能把 P3 的 service/QAction 夹具结果写成完整 MainWindow 验收。
 - 本批只完成 P4-a 的普通控制契约准备与源码证据整理：不改生产代码、不改测试、不开放 HTTP control、不启动 JTDX、不连接 CAT/PTT/TX/电台、不做浏览器或 HIL。
 - P4 控制仍未实现。`JtdxWebControl`、`POST /api/v1/control/*` 及真实 DX 应用回读证据均不存在；本文件中的文件名和测试名是冻结后的实施计划。

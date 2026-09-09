@@ -36,4 +36,6 @@
 
 ## 真实入口待验证
 
-P2/P4/P5 必须以当前源码复核 `MessageClient` 状态/解码信号、`MainWindow::statusUpdate()`、`MessageClient::status_update()`、`handle_transceiver_update`、`band_changed`/`setRig`、DX 选择、CQ/AutoSeq 和停止入口。P1 已完成状态模型和只读接入；当前仍没有 HTTP 合同、TCP 服务器或真实设备证据。已知 UI 路径存在副作用，不能直接把 UI click、双击解码或 `processMessage` 作为 Web 业务 API。若需抽取共用入口，应保持原 UI 语义并增加回归测试。
+P2/P4/P5 必须以当前源码复核 `MessageClient` 状态/解码信号、`MainWindow::statusUpdate()`、`MessageClient::status_update()`、`handle_transceiver_update`、`band_changed`/`setRig`、DX 选择、CQ/AutoSeq 和停止入口。P1/P2/P3 已完成状态模型、只读 TCP 服务和菜单生命周期；P4-b 仅增加未激活的内存控制协调器，仍没有 HTTP 控制路由、生产业务入口或真实设备证据。已知 UI 路径存在副作用，不能直接把 UI click、双击解码或 `processMessage` 作为 Web 业务 API。若需抽取共用入口，应保持原 UI 语义并增加回归测试。
+
+P4-b 协调器只接收已规范化的整数 Hz 与 Call/Grid 目标。frequency 的上一层契约必须使用十进制整 Hz 字符串，拒绝负数、NaN、指数、小数 Hz 和越界值后再转换；桌面 MHz/k/band 语义保持不变。frequency 完成必须关联请求 ID/epoch、对应 CAT generation、实际频率和动作后的 state revision；DX 完成使用独立的 DX feedback generation。全局 revision、目标预写或 HTTP 成功不能替代专属回读。协调器默认不实例化、不连接 MainWindow、不直接 CAT/PTT/TX。

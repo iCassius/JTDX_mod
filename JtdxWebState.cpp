@@ -78,6 +78,7 @@ void JtdxWebState::observe_rig (bool online, Frequency reported_frequency,
 {
   Q_ASSERT (QThread::currentThread () == thread ());
   ++revision_;
+  ++rig_generation_;
   has_rig_ = true;
   rig_online_ = online;
   rig_frequency_ = reported_frequency;
@@ -263,6 +264,8 @@ QJsonObject JtdxWebState::json_snapshot () const
   object.insert (QStringLiteral ("frequency"), nullable_frequency (rig_frequency_, has_rig_ && rig_online_));
   object.insert (QStringLiteral ("rig_reported_frequency"), nullable_frequency (rig_frequency_, has_rig_ && rig_online_));
   object.insert (QStringLiteral ("rig_reported_tx_frequency"), nullable_frequency (rig_tx_frequency_, has_rig_ && rig_online_));
+  object.insert (QStringLiteral ("rig_generation"), has_rig_ ? QJsonValue {static_cast<qint64> (rig_generation_)}
+                                                               : QJsonValue {QJsonValue::Null});
   object.insert (QStringLiteral ("rig_age_ms"), has_rig_ ? QJsonValue {qMax<qint64> (0, now - rig_seen_ms_)}
                                                            : QJsonValue {QJsonValue::Null});
   object.insert (QStringLiteral ("rig_fresh"), nullable_bool (rig_online_ && has_rig_

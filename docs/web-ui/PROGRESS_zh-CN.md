@@ -1,6 +1,18 @@
 # JTDX 内置 Web UI：进度与中断恢复日志
 
-### P4-a 普通控制实施契约准备（2026-09-10，当前权威）
+### P4-b 控制协调器基础批次开始检查点（2026-09-10，当前批次）
+
+- 任务编号：`JTDX-WEBUI-P4-B-COORDINATOR-20260910`；执行档位：用户明确指定 `gpt-5.6-luna` / `high`。额度开局记录：五小时剩余 `92%`、周剩余 `21%`；低于五小时 `30%` 后只做收尾、静态检查、精确提交和交接。
+- 基线：仓库 `C:\JTDX64\jtdx_sourcecode`，分支 `main`，`5611fcc`；开局 `git status --short --branch` 干净。现用 `jtdx.exe`/`jtdxjt9.exe` 不属于本批目标，不触碰、不启动真实 JTDX、不连接 CAT/PTT/TX/HIL。
+- 本批目标：新增不激活的 `JtdxWebControl` 主 Qt 事件循环协调器与隔离单元测试；支持已规范化的 frequency/select-dx 两类登记、有限状态、幂等/409、epoch/shutdown、单调超时、有界记录和显式业务 dispatch/feedback 接口。协调器不拥有 QWidget、不连接 MainWindow、不直接 CAT/PTT、不新增 UDP/线程/进程/依赖。
+- 完成门：frequency 只能以对应来源的新 CAT generation 与目标实际频率回读完成；select-dx 只能以协调器独立的 DX feedback generation 与目标 Call/Grid 完成。全局 `state_revision`、HTTP 200、预写目标字段或旧快照均不能完成。当前不声称已有 Calls/DX 业务入口或生产控制接入。
+- 受控设计（先供根代理审查）：单一在途操作；不同 request 在途时 `rejected/busy`，不自动排队；同 ID 同规范 payload 返回首次记录，不重做；同 ID 不同 payload 返回 `409/request_id_conflict`。epoch 内记录达到 hard limit 后 fail-closed；仅在无 pending 时显式轮换 epoch 并清理旧记录，旧 ID 不得复活。dispatch 前通过安全状态提供器重新读取，未知/过期/ transmitting/PTT/Enable Tx/watchdog/业务状态均拒绝。
+- 文件计划：`JtdxWebControl.hpp/.cpp`、`JtdxWebState.hpp/.cpp`（仅 rig generation）、`tests/jtdx_web_control_test.cpp`、`CMakeLists.txt`，并同步本入口、`docs/web-ui/PROGRESS_zh-CN.md`、`docs/web-ui/02_设计_API_安全_zh-CN.md`、`docs/web-ui/03_阶段验收矩阵_zh-CN.md`。不改 `JtdxWebServer`、`MainWindow`、UDP/CAT/桌面入口。
+- 测试计划：纯协调器安全门、同步 feedback 竞态、generation/target 匹配、旧 generation/全局 revision 误完成防护、幂等冲突、busy、超时/迟到 feedback、epoch/shutdown、hard limit；随后按既定环境以 `mingw64/bin` 优先、`159/bin` 仅补 Hamlib、`QT_QPA_PLATFORM=offscreen` 构建 jtdx、目标测试并执行一次全量 CTest。日志写入 `C:\JTDX64\deps-webui`。
+- 恢复点：若额度低于收尾阈值或测试受阻，保留本检查点与当前 diff，记录命令/退出码/日志，不覆盖既有修改；完成后先给根代理只读 review，再形成精确中文本地 commit，不 push/amend/reset。
+- 当前结果：`jtdx_web_control_test` 与 `jtdx_web_state_test` 隔离运行通过；随后新增 provider epoch 重入、feedback 后 rotate/throw 重入测试并通过。初轮全量 CTest 在补测前为 `18/18`（55.15 秒），日志 `C:\JTDX64\deps-webui\p4b-final-ctest.log`；补测后仅重建 `jtdx` 与单跑控制测试，分别使用 `C:\JTDX64\deps-webui\p4b-final-jtdx-build.log` 及控制测试目标。未重复全量 CTest，补测新增路径需以后续全量回归再确认。
+
+### P4-a 普通控制实施契约准备（2026-09-10，历史契约；当前实现状态见 P4-b）
 
 - 基线：`main` / `1ef3804`；开始检查时工作树干净。P3 生产 `JtdxWebService`、真实 `QAction` 菜单入口和 17 项自动测试已完成；完整 `MainWindow` 窗口构造/人工验收未完成，留到 P6。
 - 本批范围：只核对 DX 选择/Call 校验的现有入口、副作用、安全状态门、业务回读完成条件，冻结 DX/Call 子契约、文件清单、测试计划和恢复检查点；frequency 完整请求结构、文件清单和测试契约留下一批。不改生产代码/测试，不开放 HTTP control，不启动 JTDX，不连接 CAT/PTT/TX/电台，不做浏览器/HIL。
