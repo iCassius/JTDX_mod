@@ -1,6 +1,6 @@
 # JTDX 内置 Web UI：P4-a 普通控制实施契约（DX 选择与 Call 校验）
 
-任务编号：`JTDX-WEBUI-P4-A-CONTRACT-20260910`  
+任务编号：`JTDX-WEBUI-P4-A-CONTRACT-20260910`
 文档性质：源码事实、实施边界、文件清单、测试计划与恢复检查点；本批不实现控制。
 
 ## 当前结论与基线
