@@ -42,7 +42,7 @@
 #include "recovery_policy.hpp"
 #include "autoseq_recovery_policy.hpp"
 #include "JtdxWebState.hpp"
-#include "JtdxWebServer.hpp"
+#include "JtdxWebService.hpp"
 
 
 //--------------------------------------------------------------- MainWindow
@@ -758,8 +758,7 @@ private:
   MessageClient * m_messageClient;
   MessageClient * m_secondaryMessageClient;
   JtdxWebState * m_webState;
-  JtdxWebServer * m_webServer;
-  QString m_webConfigurationSignature;
+  JtdxWebService * m_webService;
   PSK_Reporter *psk_Reporter;
   DisplayManual m_manual;
   QHash<QString, QVariant> m_pwrBandTxMemory; // Remembers power level by band

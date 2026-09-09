@@ -1,5 +1,17 @@
 # JTDX 内置 Web UI：进度与中断恢复日志
 
+### P3 MainWindow 菜单动态验收恢复点（2026-09-10，当前权威规则）
+
+- 基线：`main` / `30eeb24`；工作树恢复时干净。当前只收尾 P3 MainWindow 菜单入口动态验收，Configuration QWidget 隔离动态验收已完成 `16/16`；不进入 P4。
+- 额度规则：本阶段开局账户共享五小时剩余低于 `30%`、周窗口剩余 `35%`。此前文档中的 `40%` 和 `20%` 门槛均废止；低于 `30%` 后只允许有界文档、静态验证、精确提交和交接，不开启新的实现面或长时间动态运行。
+- 用户进程边界：现用 `jtdx.exe` PID `9260`、`jtdxjt9.exe` PID `24568` 位于 `C:\JTDX64\159\bin`；不得操作窗口、关闭进程、修改其配置或连接设备。
+- MainWindow 事实：构造会创建既有音频/解码/CAT 相关对象，启动 `m_guiTimer`，并无条件启动 `jtdxjt9`；随后还会排队 `rigOpen()`。因此完整 MainWindow 构造不是本批安全动态证据，不能用假 fixture 复制 Web 方法替代。
+- 已实施的最小路线：提取只承载生产 Web 生命周期（应用配置、重复启动/停止、失败恢复、epoch/端口状态、退出清理）和 URL opener 的 `JtdxWebService`，由生产 `MainWindow` 持有、转换 Configuration 快照并由真实 `QAction` 连接调用；测试只实例化该生产对象与真实 QAction 入口，使用 `QDesktopServices::setUrlHandler` 捕获默认 URL。未复制 CAT、PTT、TX、AutoSeq、音频、解码或 UDP 逻辑，未新增生产线程、进程、UDP listener 或控制 API。
+- 已执行：`jtdx_web_service_test` 在 `QT_QPA_PLATFORM=offscreen` 下通过；覆盖默认关闭、QAction→生产 `open()`、默认 URL handler 捕获、失败 opener、重复打开同 URL/epoch/port、不重复启动、停止后新 epoch、占用端口失败及释放后恢复、错误清除、排队 open 在 shutdown 后拒绝、shutdown 后 apply 拒绝和析构释放 TCP 端口。该证据覆盖 Web 菜单业务路径，不等同于完整 MainWindow 构造或人工点击。
+- 交付验证：`cmake --build C:\JTDX64\build-webui-dev-msys2 --target jtdx --parallel 2` 退出码 `0`，日志 `C:\JTDX64\deps-webui\web-service-jtdx-final-build.log`；`ctest --test-dir C:\JTDX64\build-webui-dev-msys2 --output-on-failure` 为 `100% tests passed out of 17`，总耗时约 `54.69s`，日志 `C:\JTDX64\deps-webui\ctest-webui-p3-menu-service.log`；新测试单独 CTest 为 `1/1`，日志 `C:\JTDX64\deps-webui\ctest-web-service.log`。
+- 本批修改文件：`JtdxWebService.hpp/.cpp`、`mainwindow.h/.cpp`、`CMakeLists.txt`、`tests/jtdx_web_service_test.cpp`、本进度日志和 `WEB_UI_P3_验收_zh-CN.md`；准备一个本地中文 Git 提交，不 push、不 amend。
+- 当前未执行：真实 JTDX、CAT/PTT/TX/HIL、部署、message_aggregator 和长时间浏览器耐久性；Configuration 重载/失败恢复已在前一切片完成。构建继续使用 `build-webui-dev-msys2`/`deps-webui` 现有 Hamlib，运行时 `mingw64/bin` 优先、`159/bin` 仅补 Hamlib，`QT_QPA_PLATFORM=offscreen`。
+
 ### P3 动态 Configuration 恢复批次检查点（2026-09-09）
 
 - 基线：`main` / `6b500ef1890fbe666529c16ce0c95dc75aeea9f1`；当前工作树保留上一 Luna 同任务修改：`CMakeLists.txt`、`Configuration.cpp`、`docs/web-ui/PROGRESS_zh-CN.md`、`tests/configuration_web_ui_test.cpp`，不得覆盖。

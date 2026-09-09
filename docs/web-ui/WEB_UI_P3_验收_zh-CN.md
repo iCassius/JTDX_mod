@@ -14,6 +14,7 @@
 
 - 浏览器复验入口：`http://127.0.0.1:49152/#fixture`，令牌由夹具进程输出；fragment 只在浏览器本地显示演示标识，不会进入 HTTP 请求。已用 PowerShell 直接确认 `/` 与 `/app.js` 返回 200，页面脚本通过 `node --check`。
 - 动态 `Configuration` QWidget 夹具已完成隔离验收：覆盖默认关闭/loopback、取消不发布临时业务设置、确定后手动端口和令牌摘要持久化、重复打开取消、独立 `QSettings` 磁盘回读、`Rig=None`/CAT 离线以及 `77881` 非法持久端口拒绝并关闭 Web UI。取消时额外出现的 `Configuration/window/geometry` 是既有 `done()` 窗口几何保存行为，已从业务设置比较中单独剥离。测试 deadline 使用有界且可停止的 `QTimer`，未保留固定本机日志路径。
-- MainWindow 菜单动态重复点击尚未执行；该项与真实 JTDX、CAT/PTT/TX、HIL、部署和长时间浏览器耐久性继续保持未验证。
+- MainWindow 完整构造仍未动态启动：其构造会启动既有解码子进程、GUI 定时器并排队 CAT 打开，因此不把完整窗口夹具当作安全证据。已将菜单所需的生产 Web 生命周期提取为 `JtdxWebService`，由 `MainWindow` 真实持有、转换 Configuration 快照并由真实 QAction 入口调用；`tests/jtdx_web_service_test.cpp` 在 `QT_QPA_PLATFORM=offscreen` 下通过 Qt-only 动态验收：默认关闭、QAction→生产 `open()`、默认 `QDesktopServices` URL handler 捕获、失败 opener、重复打开保持 URL/epoch/port、不重复启动、停止后新 epoch、占用端口失败及释放后恢复、错误清除、排队 open 在 shutdown 后拒绝、shutdown 后 apply 拒绝和析构释放 TCP 端口。该证据覆盖 Web 菜单业务路径，不等同于完整 MainWindow 人工点击或真实 JTDX 启动。
+- 真实 JTDX、CAT/PTT/TX、HIL、部署和长时间浏览器耐久性继续保持未验证。
 
-尚未执行真实 JTDX 隔离启动、CAT/PTT/TX、HIL、部署和长时间浏览器耐久性验证。P4/P5 控制功能不属于本批。浏览器页面的夹具人工复验已由父任务完成；配置/菜单动态验收留待下一 P3 批次。
+尚未执行真实 JTDX 隔离启动、CAT/PTT/TX、HIL、部署和长时间浏览器耐久性验证。P4/P5 控制功能不属于本批。浏览器页面的夹具人工复验已由父任务完成；Configuration 动态验收和 Web 菜单业务路径动态验收已完成，完整 MainWindow 窗口人工点击仍未执行。

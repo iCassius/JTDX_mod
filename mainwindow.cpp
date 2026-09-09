@@ -498,12 +498,11 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
            m_webState, &JtdxWebState::observe_wspr_decode);
   connect (m_messageClient, &MessageClient::decodes_cleared,
            m_webState, &JtdxWebState::clear_decodes);
-  m_webServer = new JtdxWebServer {m_webState, this};
+  m_webService = new JtdxWebService {m_webState, this};
   connect (&m_config, &Configuration::web_ui_open_requested,
            this, &MainWindow::on_actionOpenWebUi_triggered);
   connect (&m_config, &Configuration::web_ui_restart_requested, this, [this] {
-      if (m_webServer) m_webServer->stop ();
-      m_webConfigurationSignature.clear ();
+      if (m_webService) m_webService->stop ();
       applyWebUiConfiguration ();
     });
   applyWebUiConfiguration ();
@@ -2208,16 +2207,7 @@ void MainWindow::showStatusMessage(const QString& statusMsg) { statusBar()->show
 
 void MainWindow::applyWebUiConfiguration ()
 {
-  if (!m_webServer) return;
-  if (!m_config.web_ui_enabled ())
-    {
-      m_webServer->stop ();
-      m_config.set_web_ui_status (QStringLiteral ("已停止"), {});
-      m_config.set_web_ui_url ({});
-      m_webConfigurationSignature.clear ();
-      ui->actionOpenWebUi->setEnabled (true);
-      return;
-    }
+  if (!m_webService) return;
   JtdxWebServer::Configuration configuration;
   configuration.automatic_port = m_config.web_ui_automatic_port ();
   configuration.port = configuration.automatic_port ? 0 : m_config.web_ui_port ();
@@ -2227,41 +2217,43 @@ void MainWindow::applyWebUiConfiguration ()
   configuration.allowed_origin = m_config.web_ui_allowed_origin ();
   configuration.udp_ports.insert (m_config.udp_server_port ());
   configuration.udp_ports.insert (m_config.udp2_server_port ());
-  QString const signature = QStringList {
-    QString::number (configuration.automatic_port), QString::number (configuration.port),
-    configuration.bind_address.toString (), QString::number (configuration.allow_lan),
-    configuration.bearer_token_sha256, configuration.allowed_origin,
-    QString::number (m_config.udp_server_port ()), QString::number (m_config.udp2_server_port ())}.join (QChar {'|'});
-  if (m_webServer->is_listening () && signature == m_webConfigurationSignature) return;
-  m_webServer->stop ();
-  if (m_webServer->start (configuration))
+  bool const applied = m_webService->apply (m_config.web_ui_enabled (), configuration);
+  if (m_config.web_ui_enabled () && applied && m_webService->is_listening ())
     {
-      m_config.set_web_ui_status (QStringLiteral ("运行中"), m_webServer->url ());
-      m_config.set_web_ui_url (m_webServer->url ());
-      m_webConfigurationSignature = signature;
+      m_config.set_web_ui_status (QStringLiteral ("运行中"), m_webService->url ());
+      m_config.set_web_ui_url (m_webService->url ());
       ui->actionOpenWebUi->setEnabled (true);
-      ui->actionOpenWebUi->setToolTip (m_webServer->url ());
+      ui->actionOpenWebUi->setToolTip (m_webService->url ());
+    }
+  else if (!m_config.web_ui_enabled ())
+    {
+      m_config.set_web_ui_status (QStringLiteral ("已停止"), {});
+      m_config.set_web_ui_url ({});
+      ui->actionOpenWebUi->setEnabled (true);
     }
   else
     {
-      m_config.set_web_ui_status (QStringLiteral ("错误"), m_webServer->last_error ());
+      m_config.set_web_ui_status (QStringLiteral ("错误"), m_webService->last_error ());
       m_config.set_web_ui_url ({});
-      m_webConfigurationSignature = signature;
       ui->actionOpenWebUi->setEnabled (true);
     }
 }
 
 void MainWindow::on_actionOpenWebUi_triggered ()
 {
-  if (m_config.web_ui_enabled () && (!m_webServer || !m_webServer->is_listening ()))
+  if (m_config.web_ui_enabled () && (!m_webService || !m_webService->is_listening ()))
     applyWebUiConfiguration ();
-  if (!m_webServer || !m_webServer->is_listening ())
+  if (!m_webService || !m_webService->is_listening ())
     {
-      statusBar ()->showMessage (tr ("Web UI 未运行；请在设置的 Web UI 选项卡启用并点击确定。"), 8000);
+      if (!m_config.web_ui_enabled ())
+        statusBar ()->showMessage (tr ("Web UI 未运行；请在设置的 Web UI 选项卡启用并点击确定。"), 8000);
+      else
+        statusBar ()->showMessage (tr ("Web UI 未运行：%1").arg (m_webService ? m_webService->last_error ()
+                                                                       : tr ("服务对象不可用")), 8000);
       return;
     }
-  if (!QDesktopServices::openUrl (QUrl {m_webServer->url ()}))
-    statusBar ()->showMessage (tr ("无法打开 Web UI URL：%1").arg (m_webServer->url ()), 8000);
+  if (!m_webService->open ())
+    statusBar ()->showMessage (m_webService->last_error (), 8000);
 }
 
 void MainWindow::on_actionSettings_triggered()               //Setup Dialog
@@ -3033,7 +3025,7 @@ void MainWindow::subProcessError (QProcess * process, QProcess::ProcessError)
 void MainWindow::closeEvent(QCloseEvent * e)
 {
   m_valid = false;              // suppresses subprocess errors
-  if (m_webServer) m_webServer->stop ();
+  if (m_webService) m_webService->shutdown ();
   if(m_config.clear_DX_exit())
     {
       clearDX ("");

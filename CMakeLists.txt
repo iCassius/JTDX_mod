@@ -203,6 +203,7 @@ set (wsjt_qt_CXXSRCS
   MessageClient.cpp
   JtdxWebState.cpp
   JtdxWebServer.cpp
+  JtdxWebService.cpp
   LettersSpinBox.cpp
   HelpTextWindow.cpp
   SampleDownloader.cpp
@@ -1658,6 +1659,18 @@ if (JTDX_BUILD_LOCAL_TESTS)
   target_include_directories (jtdx_web_server_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   target_link_libraries (jtdx_web_server_test Qt5::Core Qt5::Network)
   add_test (NAME jtdx_web_server_test COMMAND jtdx_web_server_test)
+  add_executable (jtdx_web_service_test
+    tests/jtdx_web_service_test.cpp
+    JtdxWebService.cpp
+    JtdxWebServer.cpp
+    JtdxWebState.cpp
+    ${jtdx_web_server_test_resources})
+  target_include_directories (jtdx_web_service_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_link_libraries (jtdx_web_service_test Qt5::Core Qt5::Gui Qt5::Widgets Qt5::Network)
+  add_test (NAME jtdx_web_service_test COMMAND jtdx_web_service_test)
+  set_tests_properties (jtdx_web_service_test PROPERTIES
+    TIMEOUT 30
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
   if (WIN32)
     add_test (NAME omnirig_build_option_test
       COMMAND ${CMAKE_COMMAND}
