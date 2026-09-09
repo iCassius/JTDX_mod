@@ -3,7 +3,7 @@
 ### P3 MainWindow 菜单动态验收恢复点（2026-09-10，当前权威规则）
 
 - 基线：`main` / `30eeb24`；工作树恢复时干净。当前只收尾 P3 MainWindow 菜单入口动态验收，Configuration QWidget 隔离动态验收已完成 `16/16`；不进入 P4。
-- 额度规则：本阶段开局账户共享五小时剩余低于 `30%`、周窗口剩余 `35%`。此前文档中的 `40%` 和 `20%` 门槛均废止；低于 `30%` 后只允许有界文档、静态验证、精确提交和交接，不开启新的实现面或长时间动态运行。
+- 额度规则：本阶段开局账户共享五小时剩余 `98%`、周窗口剩余 `35%`；`30%` 是本阶段收尾阈值。此前文档中的 `40%` 和 `20%` 门槛均废止；低于 `30%` 后只允许有界文档、静态验证、精确提交和交接，不开启新的实现面或长时间动态运行。
 - 用户进程边界：现用 `jtdx.exe` PID `9260`、`jtdxjt9.exe` PID `24568` 位于 `C:\JTDX64\159\bin`；不得操作窗口、关闭进程、修改其配置或连接设备。
 - MainWindow 事实：构造会创建既有音频/解码/CAT 相关对象，启动 `m_guiTimer`，并无条件启动 `jtdxjt9`；随后还会排队 `rigOpen()`。因此完整 MainWindow 构造不是本批安全动态证据，不能用假 fixture 复制 Web 方法替代。
 - 已实施的最小路线：提取只承载生产 Web 生命周期（应用配置、重复启动/停止、失败恢复、epoch/端口状态、退出清理）和 URL opener 的 `JtdxWebService`，由生产 `MainWindow` 持有、转换 Configuration 快照并由真实 `QAction` 连接调用；测试只实例化该生产对象与真实 QAction 入口，使用 `QDesktopServices::setUrlHandler` 捕获默认 URL。未复制 CAT、PTT、TX、AutoSeq、音频、解码或 UDP 逻辑，未新增生产线程、进程、UDP listener 或控制 API。
