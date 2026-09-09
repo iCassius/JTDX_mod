@@ -235,7 +235,7 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
   catch (...)
     {
       auto failed = records_.find (request.request_id);
-      if (failed != records_.end () && failed.value ().result.server_epoch == request_epoch
+      if (epoch_ == request_epoch && failed != records_.end () && failed.value ().result.server_epoch == request_epoch
           && failed.value ().result.status == Status::Received)
         finish (failed.value (), Status::Rejected,
                                               QStringLiteral ("observation_unavailable"));
@@ -307,12 +307,16 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
       else
         handler (dispatch);
     }
-  catch (...)
+    catch (...)
     {
       auto failed = records_.find (request.request_id);
-      if (failed != records_.end () && failed.value ().result.status == Status::Pending)
+      if (epoch_ == request_epoch && failed != records_.end ()
+          && failed.value ().result.server_epoch == request_epoch
+          && failed.value ().result.status == Status::Pending)
         finish (failed.value (), Status::Failed, QStringLiteral ("dispatch_exception"));
     }
+  if (epoch_ != request_epoch)
+    return reject (request, QStringLiteral ("epoch_changed"), 409);
   auto completed = records_.constFind (request.request_id);
   return completed == records_.constEnd () ? reject (request, QStringLiteral ("record_lost"))
                                              : completed.value ().result;

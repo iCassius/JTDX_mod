@@ -181,12 +181,14 @@ int main ()
            "reentrant handler feedback completes");
     check (reentrant.rotate_epoch (), "completed handler may rotate epoch");
     reentrant.set_frequency_dispatcher ([] (Control::Dispatch const&) {});
+    check (reentrant.submit (frequency_request (reentrant, dispatch.request_id, 14075000)).status
+           == Control::Status::Pending, "new epoch same id remains pending during old callback");
     throw 1;
   });
   auto reentrant_result = reentrant.submit (frequency_request (reentrant, QStringLiteral ("reentrant"), 14074000));
   check (reentrant_result.status == Control::Status::Rejected, "post-feedback reentry is fail-closed");
-  check (reentrant.submit (frequency_request (reentrant, QStringLiteral ("reentrant"), 14075000)).status
-         == Control::Status::Pending, "new epoch accepts same id as a fresh record");
+  check (reentrant.result (QStringLiteral ("reentrant")).status == Control::Status::Pending,
+         "old callback cannot overwrite the new epoch record");
 
   Control bounded {100};
   bounded.set_clock_for_test (0);

@@ -10,7 +10,7 @@
 - 文件计划：`JtdxWebControl.hpp/.cpp`、`JtdxWebState.hpp/.cpp`（仅 rig generation）、`tests/jtdx_web_control_test.cpp`、`CMakeLists.txt`，并同步本入口、`docs/web-ui/PROGRESS_zh-CN.md`、`docs/web-ui/02_设计_API_安全_zh-CN.md`、`docs/web-ui/03_阶段验收矩阵_zh-CN.md`。不改 `JtdxWebServer`、`MainWindow`、UDP/CAT/桌面入口。
 - 测试计划：纯协调器安全门、同步 feedback 竞态、generation/target 匹配、旧 generation/全局 revision 误完成防护、幂等冲突、busy、超时/迟到 feedback、epoch/shutdown、hard limit；随后按既定环境以 `mingw64/bin` 优先、`159/bin` 仅补 Hamlib、`QT_QPA_PLATFORM=offscreen` 构建 jtdx、目标测试并执行一次全量 CTest。日志写入 `C:\JTDX64\deps-webui`。
 - 恢复点：若额度低于收尾阈值或测试受阻，保留本检查点与当前 diff，记录命令/退出码/日志，不覆盖既有修改；完成后先给根代理只读 review，再形成精确中文本地 commit，不 push/amend/reset。
-- 当前结果：`jtdx_web_control_test` 与 `jtdx_web_state_test` 隔离运行通过；随后新增 provider epoch 重入、feedback 后 rotate/throw 重入测试并通过。初轮全量 CTest 在补测前为 `18/18`（55.15 秒），日志 `C:\JTDX64\deps-webui\p4b-final-ctest.log`；补测后仅重建 `jtdx` 与单跑控制测试，分别使用 `C:\JTDX64\deps-webui\p4b-final-jtdx-build.log` 及控制测试目标。未重复全量 CTest，补测新增路径需以后续全量回归再确认。
+- 当前结果：`jtdx_web_control_test` 与 `jtdx_web_state_test` 隔离运行通过；随后新增 provider epoch 重入、feedback 后 rotate/throw 且同 ID 新 epoch pending 保持测试并通过。初轮全量 CTest 在补测前为 `18/18`（55.15 秒），日志 `C:\JTDX64\deps-webui\p4b-final-ctest.log`；补测后重建 `jtdx` 与单跑控制测试，日志 `C:\JTDX64\deps-webui\p4b-final-reentrant-build.log`。未重复全量 CTest，补测新增路径需以后续全量回归再确认。
 
 ### P4-a 普通控制实施契约准备（2026-09-10，历史契约；当前实现状态见 P4-b）
 

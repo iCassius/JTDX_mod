@@ -8,7 +8,7 @@
 - 当前仓库：`C:\JTDX64\jtdx_sourcecode`，分支 `main`，本契约批次基线 `1ef3804`，开始检查时工作树干净；后续 P4-b 从 `5611fcc` 开始，结果以进度日志为准。
 - P3 已完成生产 `JtdxWebService` 生命周期、真实 `QAction` 菜单入口及 17 项自动测试；完整 `MainWindow` 窗口构造/人工菜单验收仍未完成，保留到 P6。不能把 P3 的 service/QAction 夹具结果写成完整 MainWindow 验收。
 - 本批只完成 P4-a 的普通控制契约准备与源码证据整理：不改生产代码、不改测试、不开放 HTTP control、不启动 JTDX、不连接 CAT/PTT/TX/电台、不做浏览器或 HIL。
-- P4 控制仍未实现。`JtdxWebControl`、`POST /api/v1/control/*` 及真实 DX 应用回读证据均不存在；本文件中的文件名和测试名是冻结后的实施计划。
+- P4-b 已新增未激活的 `JtdxWebControl` 基础协调器及隔离测试；`POST /api/v1/control/*`、真实 DX 应用入口、frequency CAT 适配和真实设备回读证据仍不存在。本文件中的生产入口和完整控制文件清单仍是后续实施约束。
 - 配额记录：本批中途快照为五小时剩余 36%、周剩余 25%；末次收尾快照为五小时剩余 30%、周剩余 24%。低于 30% 后只做有界文档、静态检查、精确提交和交接，不开启实现批次或长时间运行。
 
 ## 已核对的 DX/Call 事实
@@ -66,7 +66,7 @@
 
 | 文件 | 计划变更 | 本批状态 |
 | --- | --- | --- |
-| `JtdxWebControl.hpp/.cpp` | 新增主线程控制协调器、有限 request 记录、epoch/revision/generation、超时与幂等；不拥有 QWidget，不直接 CAT/PTT。 | 不存在；未实现 |
+| `JtdxWebControl.hpp/.cpp` | 新增主线程控制协调器、有限 request 记录、epoch/revision/generation、超时与幂等；不拥有 QWidget，不直接 CAT/PTT。 | P4-b 已实现基础；HTTP、生产入口和完整业务回读未接入 |
 | `JtdxWebServer.hpp/.cpp` | 下一实现批次仅新增 `POST /api/v1/control/select-dx` 路由、认证/CSRF/字段上限和控制结果序列化；frequency 完整请求结构、路由和测试契约留下一批；既有 read/SSE/UDP 边界不改。 | 只读服务已存在；本批未改 |
 | `mainwindow.h/.cpp` | 抽取最小无副作用 DX 选择/回读入口；保留桌面双击原语义，Web 调用明确禁止 AutoTx/AutoSeq/QSO/TX 副作用。 | 本批未改 |
 | `decodedtext.*`、`Radio.*` 或独立纯策略头 | 复用 `deCallAndGrid`/`base_callsign`，补足长度、协议字段、复合呼号和 Grid 边界；不得复制整行解析。 | 仅源码复核；本批未改 |
