@@ -12,6 +12,7 @@
 - 当前结果：新增 `JtdxWebFrequency` 纯策略，严格拒绝空值、符号、空白、小数、指数、非 ASCII 数字、溢出、零值和 OOB，已复用 `Bands::find`；`JtdxWebControl` 增加 provider 重入保护、reject 时间/缓存快照、二次 provider epoch 错误隔离、超时未确认门和显式 `fail`。
 - MainWindow 适配：构造时注册 control observation provider 和 queued frequency dispatcher；执行时再次检查 epoch/pending、状态新鲜、Rig 在线、monitor、`m_start2`/tune/QuickCall/TX/IPTT，设置 `m_bandEdited` 后复用 `band_changed` 并更新 WideGraph；`handle_transceiver_update` 仅在在线、PTT 关闭且安全状态新鲜时用真实 `rig_generation`/revision 回读。未接 HTTP，WebServer epoch 尚未统一。
 - 自动验证：`jtdx_web_frequency_test`、`jtdx_web_control_test` 均通过（2/2）；`cmake --build C:\JTDX64\build-webui-dev-msys2 --target jtdx` 通过。未运行真实 JTDX，未连接 CAT/PTT/TX/HIL；MainWindow 适配未做完整窗口构造或设备回读验证，不能据此宣称频率控制已生产可用。
+- 根代理最终全量 CTest：`19/19` 通过，耗时 `55.97s`，退出码 `0`；收尾额度为五小时剩余 `8%`、周剩余 `70%`，已按低于 `20%` 规则暂停新实现。
 - 结果提交：源码实现结果提交为 `790c86c`；最终全量 CTest 的权威结果以 `C:\JTDX64\build-webui-dev-msys2\Testing\Temporary\LastTest.log` 为准。实际构建命令为 `cmake --build C:\JTDX64\build-webui-dev-msys2 --target jtdx jtdx_web_control_test jtdx_web_frequency_test --parallel 2`；测试命令为 `ctest --test-dir C:\JTDX64\build-webui-dev-msys2 --output-on-failure`，运行环境为 `C:\msys64\mingw64\bin` 优先、`C:\JTDX64\159\bin` 仅补 Hamlib、`QT_QPA_PLATFORM=offscreen`。
 - 待根代理只读验收：`unconfirmed_feedback` 锁目前只由 `rotate_epoch` 清除，不能由后续 Server epoch 统一或重启自动绕过未确认硬件状态；超时后同 request ID 会先被 latch 拒绝而不会返回原记录；异步 dispatcher 的 baseline generation 仍是登记时值。HTTP 接入前必须针对这些契约补齐并测试。
 - 下一步：根代理只读审查后，再决定是否将 HTTP frequency 请求接入统一 server/control epoch；接入前不得开放控制路由。
