@@ -8,7 +8,7 @@
 | P1 | 状态快照、有限解码、更新时间/新鲜度、事件循环安全读接口；Qt/MinGW/CMake 独立探针；单元和无 UDP 新监听静态检查 | 已通过（本批独立 Ninja 构建 `[1218/1218]`、CTest `14/14`；未启动 JTDX/HIL） |
 | P2 | TCP 启停、自动/手动端口、占用/UDP 分离、`/`、`healthz`、state、decodes、SSE 重连/背压 | 已通过（loopback/API/CTest；未启动 JTDX/HIL） |
 | P3 | 设置保存/重载、LAN 开关和鉴权、菜单重复点击、资源、桌面/移动只读页面；浏览器手测 | 生产 `JtdxWebService`/真实 `QAction` 与 17 项自动测试已完成；完整 MainWindow 窗口人工验收留到 P6 |
-| P4 | 频率校验/切换/实际回读、过期 decode、DX 校验/选择/应用；API 合同和单元 | P4-b 协调器基础与隔离单测已完成；HTTP 路由、生产入口、frequency CAT 适配和 DX 业务回读待后续批次 |
+| P4 | 频率校验/切换/实际回读、过期 decode、DX 校验/选择/应用；API 合同和单元 | 严格频率纯策略、协调器安全补强和 MainWindow frequency adapter 已落地并通过隔离测试；HTTP 路由、统一 epoch、完整窗口/CAT 回读、DX 业务回读待后续批次 |
 | P5 | CQ/AutoSeq 安全门、二次确认、启停状态机、超时/重复/退出/冲突；原有 AutoSeq/CAT 回归 | 未开始 |
 | P6 | 全 API、异常隔离、UDP/CAT/解码/自动呼叫回归、浏览器结果、交付报告 | 未开始 |
 | HIL | CAT/PTT/TX、设备回读、长时运行和无线电行为；需独立授权 | 未授权 |

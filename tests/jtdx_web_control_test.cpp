@@ -1,5 +1,8 @@
 #include "JtdxWebControl.hpp"
 
+#include <QCoreApplication>
+#include <QTimer>
+
 #include <cstdlib>
 #include <iostream>
 
@@ -53,6 +56,8 @@ int main ()
   auto rejected = control.submit (frequency_request (control, QStringLiteral ("unknown"), 14074000));
   check (rejected.status == Control::Status::Rejected && rejected.reason == QStringLiteral ("safety_unknown_or_stale"),
          "unknown safety fails closed");
+  check (rejected.received_ms == 1000 && rejected.snapshot.state_revision == 1,
+         "rejected result preserves bounded timestamp and cached observation");
   control.set_observed_state (safe_state (1));
 
   int dispatch_count = 0;
@@ -137,7 +142,11 @@ int main ()
   check (!timeout.feedback_frequency (QStringLiteral ("timeout"), timeout.server_epoch (), 6, 14074000, 3),
          "late feedback cannot revive timed-out operation");
   check (timeout.result (QStringLiteral ("timeout")).reason.contains (QStringLiteral ("late_feedback_unknown")),
-         "late feedback is explicitly marked unknown");
+          "late feedback is explicitly marked unknown");
+  check (timeout.submit (frequency_request (timeout, QStringLiteral ("after-timeout"), 14074000)).reason
+         == QStringLiteral ("unconfirmed_feedback"),
+         "timeout holds an unconfirmed latch against a new request");
+  check (timeout.rotate_epoch (), "epoch rotation is the explicit timeout recovery");
 
   Control provider {100};
   provider.set_clock_for_test (0);
@@ -153,7 +162,30 @@ int main ()
   auto provider_result = provider.submit (frequency_request (provider, QStringLiteral ("reread"), 14074000));
   check (provider_result.status == Control::Status::Rejected
          && provider_result.reason == QStringLiteral ("ptt_active") && provider_dispatches == 0,
-         "dispatch re-reads safety and fails closed");
+          "dispatch re-reads safety and fails closed");
+
+  Control provider_reentrant {100};
+  provider_reentrant.set_clock_for_test (10);
+  provider_reentrant.set_observed_state (safe_state (1));
+  bool provider_reentry_checked = false;
+  provider_reentrant.set_observation_provider ([&] {
+    if (!provider_reentry_checked)
+      {
+        provider_reentry_checked = true;
+        auto nested = provider_reentrant.submit (frequency_request (provider_reentrant,
+                                                                      QStringLiteral ("nested"),
+                                                                      14074000));
+        check (nested.status == Control::Status::Rejected
+               && nested.reason == QStringLiteral ("reentrant"),
+               "observation provider reentry fails closed");
+      }
+    return safe_state (1);
+  });
+  provider_reentrant.set_frequency_dispatcher ([] (Control::Dispatch const&) {});
+  auto provider_reentrant_result = provider_reentrant.submit (
+      frequency_request (provider_reentrant, QStringLiteral ("outer"), 14074000));
+  check (provider_reentrant_result.status == Control::Status::Pending,
+         "outer request remains pending after rejected provider reentry");
 
   Control rotated_by_provider {100};
   rotated_by_provider.set_clock_for_test (0);
@@ -203,6 +235,21 @@ int main ()
   QString const old_epoch = bounded.server_epoch ();
   check (bounded.rotate_epoch () && bounded.server_epoch () != old_epoch, "explicit epoch rotation clears old records");
   check (bounded.record_count () == 0, "epoch rotation drops prior dedupe window");
+
+  int argc = 1;
+  char app_name[] = "jtdx_web_control_test";
+  char * argv[] = {app_name, nullptr};
+  QCoreApplication app {argc, argv};
+  Control event_loop_timeout {20};
+  event_loop_timeout.set_observed_state (safe_state (1));
+  event_loop_timeout.set_frequency_dispatcher ([] (Control::Dispatch const&) {});
+  check (event_loop_timeout.submit (frequency_request (event_loop_timeout, QStringLiteral ("timer"),
+                                                        14074000)).status == Control::Status::Pending,
+         "production clock request enters pending");
+  QTimer::singleShot (60, &app, &QCoreApplication::quit);
+  app.exec ();
+  check (event_loop_timeout.result (QStringLiteral ("timer")).status == Control::Status::Timeout,
+         "event-loop timer expires production request");
 
   std::cout << "Web control coordinator checks passed\n";
   return 0;

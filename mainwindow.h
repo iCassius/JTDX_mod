@@ -42,6 +42,8 @@
 #include "recovery_policy.hpp"
 #include "autoseq_recovery_policy.hpp"
 #include "JtdxWebState.hpp"
+#include "JtdxWebControl.hpp"
+#include "JtdxWebFrequency.hpp"
 #include "JtdxWebService.hpp"
 
 
@@ -409,6 +411,8 @@ private:
 private:
   void hideMenus (bool b);
   void applyWebUiConfiguration ();
+  JtdxWebControl::ObservedState webControlObservation () const;
+  void dispatchWebFrequency (JtdxWebControl::Dispatch);
 
   JTDXDateTime * m_jtdxtime;
   QProcessEnvironment const& m_env;
@@ -758,7 +762,10 @@ private:
   MessageClient * m_messageClient;
   MessageClient * m_secondaryMessageClient;
   JtdxWebState * m_webState;
+  JtdxWebControl * m_webControl;
   JtdxWebService * m_webService;
+  JtdxWebControl::Dispatch m_webFrequencyDispatch;
+  bool m_webFrequencyPending {false};
   PSK_Reporter *psk_Reporter;
   DisplayManual m_manual;
   QHash<QString, QVariant> m_pwrBandTxMemory; // Remembers power level by band

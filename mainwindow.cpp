@@ -484,7 +484,8 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
                               m_config.udp2_server_name (), m_config.udp2_server_port (),
                               this, m_config.enable_udp2_broadcast ()}},
   m_webState {new JtdxWebState {QApplication::applicationName (), QCoreApplication::applicationVersion (),
-                                QString {}, this}},
+                                 QString {}, this}},
+  m_webControl {new JtdxWebControl {3000, {}, this}},
   psk_Reporter {new PSK_Reporter {m_messageClient, this}},
   m_manual {network_manager}
 {
@@ -499,6 +500,11 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
   connect (m_messageClient, &MessageClient::decodes_cleared,
            m_webState, &JtdxWebState::clear_decodes);
   m_webService = new JtdxWebService {m_webState, this};
+  m_webControl->set_observation_provider ([this] { return webControlObservation (); });
+  m_webControl->set_frequency_dispatcher ([this] (JtdxWebControl::Dispatch const& dispatch) {
+      QMetaObject::invokeMethod (this, [this, dispatch] { dispatchWebFrequency (dispatch); },
+                                  Qt::QueuedConnection);
+    });
   connect (&m_config, &Configuration::web_ui_open_requested,
            this, &MainWindow::on_actionOpenWebUi_triggered);
   connect (&m_config, &Configuration::web_ui_restart_requested, this, [this] {
@@ -1275,6 +1281,7 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
 //--------------------------------------------------- MainWindow destructor
 MainWindow::~MainWindow()
 {
+  if (m_webControl) m_webControl->shutdown ();
   m_rigRecoveryTimer.stop ();
   QString fname {QDir::toNativeSeparators(m_dataDir.absoluteFilePath ("wsjtx_wisdom.dat"))};
   QByteArray cfname=fname.toLocal8Bit();
@@ -2239,6 +2246,97 @@ void MainWindow::applyWebUiConfiguration ()
     }
 }
 
+JtdxWebControl::ObservedState MainWindow::webControlObservation () const
+{
+  JtdxWebControl::ObservedState result;
+  if (!m_webState) return result;
+  QJsonObject const snapshot = m_webState->json_snapshot ();
+  auto const bool_value = [&snapshot] (char const * key, bool * known) {
+    QJsonValue const value = snapshot.value (QString::fromLatin1 (key));
+    *known = value.isBool ();
+    return *known && value.toBool ();
+  };
+  result.state_revision = snapshot.value (QStringLiteral ("state_revision")).toVariant ().toULongLong ();
+  result.frequency_known = snapshot.value (QStringLiteral ("frequency")).isDouble ();
+  if (result.frequency_known)
+    result.actual_frequency_hz = snapshot.value (QStringLiteral ("frequency")).toVariant ().toLongLong ();
+  result.frequency_generation = snapshot.value (QStringLiteral ("rig_generation")).toVariant ().toULongLong ();
+  result.safety.known = snapshot.value (QStringLiteral ("online")).isBool ()
+      && snapshot.value (QStringLiteral ("rig_online")).isBool ();
+  result.safety.fresh = snapshot.value (QStringLiteral ("freshness")).toString () == QStringLiteral ("fresh")
+      && snapshot.value (QStringLiteral ("rig_fresh")).toBool ();
+  bool known = false;
+  result.safety.transmitting = bool_value ("transmitting", &known);
+  result.safety.known = result.safety.known && known;
+  result.safety.ptt = bool_value ("ptt", &known);
+  result.safety.known = result.safety.known && known;
+  result.safety.tx_enabled = bool_value ("tx_enabled", &known);
+  result.safety.known = result.safety.known && known;
+  result.safety.watchdog_timeout = bool_value ("watchdog_timeout", &known);
+  result.safety.known = result.safety.known && known;
+  result.safety.business_state_known = !snapshot.value (QStringLiteral ("auto_sequence_state")).isNull ();
+  result.dx_call = snapshot.value (QStringLiteral ("dx_call")).toString ();
+  result.dx_grid = snapshot.value (QStringLiteral ("dx_grid")).toString ();
+  // 本批只注册 frequency；不得把全局 revision 冒充 DX 业务 generation。
+  result.dx_known = false;
+  result.dx_generation = 0;
+  return result;
+}
+
+void MainWindow::dispatchWebFrequency (JtdxWebControl::Dispatch dispatch)
+{
+  if (!m_webControl || m_webControl->is_shutdown ()) return;
+  if (m_webFrequencyPending) return;
+  m_webControl->expire ();
+  auto const queued_result = m_webControl->result (dispatch.request_id);
+  if (queued_result.status != JtdxWebControl::Status::Pending
+      || queued_result.server_epoch != dispatch.server_epoch
+      || !m_webControl->has_pending ())
+    return;
+  auto const current = webControlObservation ();
+  QString gate_reason;
+  if (!current.safety.known || !current.safety.fresh)
+    gate_reason = QStringLiteral ("safety_unknown_or_stale");
+  else if (current.safety.transmitting)
+    gate_reason = QStringLiteral ("transmitting");
+  else if (current.safety.ptt)
+    gate_reason = QStringLiteral ("ptt_active");
+  else if (current.safety.tx_enabled)
+    gate_reason = QStringLiteral ("tx_enabled");
+  else if (current.safety.watchdog_timeout)
+    gate_reason = QStringLiteral ("watchdog_timeout");
+  else if (!m_rigOk || !m_config.is_transceiver_online ())
+    gate_reason = QStringLiteral ("rig_offline");
+  else if (!m_monitoring)
+    gate_reason = QStringLiteral ("monitor_not_active");
+  else if (m_start2 || m_tune || m_autoTx || m_transmitting || g_iptt != 0)
+    gate_reason = QStringLiteral ("tx_path_active");
+  if (!gate_reason.isEmpty ())
+    {
+      m_webControl->fail (dispatch.request_id, dispatch.server_epoch, gate_reason);
+      return;
+    }
+  if (dispatch.frequency_hz <= 0)
+    {
+      m_webControl->fail (dispatch.request_id, dispatch.server_epoch,
+                          QStringLiteral ("invalid_frequency"));
+      return;
+    }
+  auto const validation = JtdxWebFrequency::validate_hz (
+      static_cast<JtdxWebFrequency::Frequency> (dispatch.frequency_hz), *m_config.bands ());
+  if (!validation.valid)
+    {
+      m_webControl->fail (dispatch.request_id, dispatch.server_epoch, validation.reason);
+      return;
+    }
+  m_webFrequencyDispatch = dispatch;
+  m_webFrequencyPending = true;
+  // Preserve band_changed's desktop side effects and its wide-graph update.
+  m_bandEdited = true;
+  band_changed (validation.frequency_hz);
+  if (m_wideGraph) m_wideGraph->setRxBand (m_config.bands ()->find (validation.frequency_hz));
+}
+
 void MainWindow::on_actionOpenWebUi_triggered ()
 {
   if (m_config.web_ui_enabled () && (!m_webService || !m_webService->is_listening ()))
@@ -3025,6 +3123,7 @@ void MainWindow::subProcessError (QProcess * process, QProcess::ProcessError)
 void MainWindow::closeEvent(QCloseEvent * e)
 {
   m_valid = false;              // suppresses subprocess errors
+  if (m_webControl) m_webControl->shutdown ();
   if (m_webService) m_webService->shutdown ();
   if(m_config.clear_DX_exit())
     {
@@ -7893,6 +7992,21 @@ void MainWindow::handle_transceiver_update (Transceiver::TransceiverState const&
   }    
   m_rigState = s;
   m_webState->observe_rig (s.online (), s.frequency (), s.tx_frequency (), s.ptt ());
+  if (m_webFrequencyPending && m_webControl)
+    {
+      auto const current = webControlObservation ();
+      bool const completed = s.online () && !s.ptt () && current.safety.known && current.safety.fresh
+          && m_webControl->feedback_frequency (
+              m_webFrequencyDispatch.request_id, m_webFrequencyDispatch.server_epoch,
+              m_webState->rig_generation (), static_cast<qint64> (s.frequency ()),
+              m_webState->revision ());
+      if (completed)
+        m_webFrequencyPending = false;
+      else if (!m_webControl->has_pending ()
+               && m_webControl->result (m_webFrequencyDispatch.request_id).status
+                    != JtdxWebControl::Status::Timeout)
+        m_webFrequencyPending = false;
+    }
   auto old_freqNominal = m_freqNominal;
   m_freqNominal = s.frequency ();
   // initializing

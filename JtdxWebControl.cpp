@@ -132,6 +132,9 @@ JtdxWebControl::Result JtdxWebControl::reject (Request const& request, QString r
   result.reason = std::move (reason);
   result.server_epoch = epoch_;
   result.http_status = http_status;
+  result.received_ms = now ();
+  result.snapshot = observed_;
+  result.initial_state_revision = observed_.state_revision;
   return result;
 }
 
@@ -160,6 +163,7 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
   request.request_id = normalize_request_id (request.request_id);
   if (request.request_id.isEmpty ()) return reject (request, QStringLiteral ("invalid_request_id"), 400);
   if (request.server_epoch != epoch_) return reject (request, QStringLiteral ("epoch_conflict"), 409);
+  if (unconfirmed_latch_) return reject (request, QStringLiteral ("unconfirmed_feedback"), 409);
   if (request.operation == Operation::Frequency)
     {
       if (request.frequency_hz <= 0) return reject (request, QStringLiteral ("invalid_frequency"), 400);
@@ -191,15 +195,27 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
   if (!pending_request_id_.isEmpty ())
     return reject (request, QStringLiteral ("busy"), 409);
 
+  if (submit_in_progress_)
+    return reject (request, QStringLiteral ("reentrant"), 409);
+
   ObservedState current;
-  try
+  {
+    struct SubmitGuard
     {
-      current = observation ();
-    }
-  catch (...)
-    {
-      return reject (request, QStringLiteral ("observation_unavailable"), 503);
-    }
+      bool& active;
+      ~SubmitGuard () { active = false; }
+    };
+    submit_in_progress_ = true;
+    SubmitGuard const submit_guard {submit_in_progress_};
+    try
+      {
+        current = observation ();
+      }
+    catch (...)
+      {
+        return reject (request, QStringLiteral ("observation_unavailable"), 503);
+      }
+  }
   if (shutdown_ || epoch_ != request_epoch)
     return reject (request, QStringLiteral ("epoch_changed"), 409);
   if (current.state_revision != request.state_revision)
@@ -228,21 +244,32 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
   inserted.value ().result.status_history.append (Status::Received);
 
   // 再读一次安全状态，防止 accepted 快照在 dispatch 前已失效。
-  try
+  {
+    struct SubmitGuard
     {
-      current = observation ();
-    }
-  catch (...)
-    {
-      auto failed = records_.find (request.request_id);
-      if (epoch_ == request_epoch && failed != records_.end () && failed.value ().result.server_epoch == request_epoch
-          && failed.value ().result.status == Status::Received)
-        finish (failed.value (), Status::Rejected,
-                                              QStringLiteral ("observation_unavailable"));
-      auto result_after_failure = records_.constFind (request.request_id);
-      return result_after_failure == records_.constEnd () ? reject (request, QStringLiteral ("epoch_changed"), 409)
-                                                            : result_after_failure.value ().result;
-    }
+      bool& active;
+      ~SubmitGuard () { active = false; }
+    };
+    submit_in_progress_ = true;
+    SubmitGuard const submit_guard {submit_in_progress_};
+    try
+      {
+        current = observation ();
+      }
+    catch (...)
+      {
+        auto failed = records_.find (request.request_id);
+        if (epoch_ == request_epoch && failed != records_.end () && failed.value ().result.server_epoch == request_epoch
+            && failed.value ().result.status == Status::Received)
+          finish (failed.value (), Status::Rejected,
+                                                QStringLiteral ("observation_unavailable"));
+        if (shutdown_ || epoch_ != request_epoch)
+          return reject (request, QStringLiteral ("epoch_changed"), 409);
+        auto result_after_failure = records_.constFind (request.request_id);
+        return result_after_failure == records_.constEnd () ? reject (request, QStringLiteral ("record_lost"))
+                                                              : result_after_failure.value ().result;
+      }
+  }
   auto stored_it = records_.find (request.request_id);
   if (shutdown_ || epoch_ != request_epoch || stored_it == records_.end ())
     {
@@ -344,6 +371,7 @@ bool JtdxWebControl::feedback_frequency (QString const& request_id, QString cons
     {
       finish (record, Status::Timeout, QStringLiteral ("feedback_timeout"));
       record.timed_out = true;
+      unconfirmed_latch_ = true;
       last_timed_out_request_id_ = request_id;
       return false;
     }
@@ -400,6 +428,17 @@ bool JtdxWebControl::feedback_select_dx (QString const& request_id, QString cons
   return true;
 }
 
+bool JtdxWebControl::fail (QString const& request_id, QString const& server_epoch, QString reason)
+{
+  if (pending_request_id_.isEmpty () || request_id != pending_request_id_ || server_epoch != epoch_)
+    return false;
+  auto it = records_.find (request_id);
+  if (it == records_.end () || it.value ().result.server_epoch != epoch_)
+    return false;
+  finish (it.value (), Status::Failed, std::move (reason));
+  return true;
+}
+
 bool JtdxWebControl::expire ()
 {
   if (pending_request_id_.isEmpty ()) return false;
@@ -407,6 +446,7 @@ bool JtdxWebControl::expire ()
   if (it == records_.end () || now () < it.value ().deadline_ms) return false;
   finish (it.value (), Status::Timeout, QStringLiteral ("feedback_timeout"));
   it.value ().timed_out = true;
+  unconfirmed_latch_ = true;
   last_timed_out_request_id_ = it.value ().result.request_id;
   return true;
 }
@@ -426,6 +466,7 @@ bool JtdxWebControl::rotate_epoch ()
 {
   if (shutdown_ || !pending_request_id_.isEmpty ()) return false;
   records_.clear ();
+  unconfirmed_latch_ = false;
   epoch_ = QUuid::createUuid ().toString (QUuid::WithoutBraces);
   return true;
 }

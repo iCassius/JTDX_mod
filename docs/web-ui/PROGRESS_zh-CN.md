@@ -1,5 +1,19 @@
 # JTDX 内置 Web UI：进度与中断恢复日志
 
+### P4 频率纯校验与生产适配批次开始检查点（2026-09-13，当前批次）
+
+- 任务编号：`JTDX-WEBUI-P4-FREQUENCY-20260913`；执行档位：用户指定 `gpt-5.6-luna` / `high`。开局额度：五小时剩余 `89%`、周剩余 `83%`；当前收尾阈值改为五小时剩余低于 `20%`。历史批次中的 `30%` 仅作历史记录，不覆盖本批门槛。
+- 基线：仓库 `C:\JTDX64\jtdx_sourcecode`，分支 `main`，HEAD `8055c58`；开始时工作树干净。现用 `C:\JTDX64\159\bin` 中的 `jtdx.exe`/`jtdxjt9.exe` 仅作外部状态参考，不触碰、不启动真实 JTDX、不连接 CAT/PTT/TX/HIL。
+- 本批目标：实现频率普通控制的严格纯解析/范围校验，并为后续 MainWindow 生产适配保留可审查接口；最终完成条件仍是基于真实 `observe_rig`/`rig_generation` 的 CAT 回读。当前不开放 HTTP 控制、不统一 WebServer/Control epoch、不连接真实 CAT。
+- 安全边界：不得复用 `LiveFrequencyValidator` 控件 Intermediate 语义；不得把 nominal/target、HTTP 200 或全局 revision 当作 CAT 完成；不得直接调用 PTT/TX；不得新增 UDP、线程、进程、依赖；生产适配必须保留 `band_changed` 的既有副作用语义并先经根代理只读审查。
+- 根代理已指出的协调器待补门：provider 可重入需有 `submit_in_progress` 保护；provider 二次异常/epoch 变化不得错误返回新 epoch 记录；reject 结果应带时间/快照；QTimer 真实事件循环超时需补隔离验证。本批若触及协调器，仅做最小必要修复并单独记录。
+- 文件计划：新增/复用纯频率策略文件与隔离单元测试；必要时增加 `JtdxWebControl` 严格频率校验及接口声明；不改 `JtdxWebServer` HTTP 路由、不直接接入 MainWindow，除非形成独立可验证切片。
+- 恢复点：每个小片完成后记录基线/结果提交、修改文件、命令与退出码；只使用 `C:\JTDX64\build-webui-dev-msys2` 及 `C:\JTDX64\deps-webui`，构建环境 `C:\msys64\mingw64\bin` 优先、`159\bin` 仅补 Hamlib、`QT_QPA_PLATFORM=offscreen`。低于 `20%` 后停止新实现并交接。
+- 当前结果：新增 `JtdxWebFrequency` 纯策略，严格拒绝空值、符号、空白、小数、指数、非 ASCII 数字、溢出、零值和 OOB，已复用 `Bands::find`；`JtdxWebControl` 增加 provider 重入保护、reject 时间/缓存快照、二次 provider epoch 错误隔离、超时未确认门和显式 `fail`。
+- MainWindow 适配：构造时注册 control observation provider 和 queued frequency dispatcher；执行时再次检查 epoch/pending、状态新鲜、Rig 在线、monitor、`m_start2`/tune/QuickCall/TX/IPTT，设置 `m_bandEdited` 后复用 `band_changed` 并更新 WideGraph；`handle_transceiver_update` 仅在在线、PTT 关闭且安全状态新鲜时用真实 `rig_generation`/revision 回读。未接 HTTP，WebServer epoch 尚未统一。
+- 自动验证：`jtdx_web_frequency_test`、`jtdx_web_control_test` 均通过（2/2）；`cmake --build C:\JTDX64\build-webui-dev-msys2 --target jtdx` 通过。未运行真实 JTDX，未连接 CAT/PTT/TX/HIL；MainWindow 适配未做完整窗口构造或设备回读验证，不能据此宣称频率控制已生产可用。
+- 下一步：根代理只读审查后，再决定是否将 HTTP frequency 请求接入统一 server/control epoch；接入前不得开放控制路由。
+
 ### P4-b 控制协调器基础批次开始检查点（2026-09-10，当前批次）
 
 - 任务编号：`JTDX-WEBUI-P4-B-COORDINATOR-20260910`；执行档位：用户明确指定 `gpt-5.6-luna` / `high`。额度开局记录：五小时剩余 `92%`、周剩余 `21%`；低于五小时 `30%` 后只做收尾、静态检查、精确提交和交接。
