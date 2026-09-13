@@ -22,6 +22,16 @@
 
 Hamlib 源码和 DLL 均未修改；日志记录 JTDX 层操作名、rc/类别、连续次数、FTX-1 标记和 PTT 安全字段，并复用 `jtdx_recovery.log` 的约 256 KiB 轮转。日志不包含 Hamlib 原始串口帧。
 
+## 后续 CAT 响应错序诊断（JTDX-CAT-SYNC-20260913）
+
+这段记录对应后续源码任务，不改变本 `.7-test` 包的版本标识。基线为 `cde1cb064b37e942f287d32b962fe6c26956ea8d`，代码结果提交为 `328cc7a1df9fcc488d15b512067f5264425f8dd2`。现场日志显示 FTX-1 的 Hamlib `newcat_get_cmd` 在 `FT→FA→MD→SH→SM→TX→VS→FT` 链中收到明确的 wrong reply；内部重试后各查询可能仍返回 `RIG_OK`，旧轮询因此没有进入离线/重连，DX 也不会触发现有 PTT-off 清理恢复。
+
+实现以同步 callback 的 thread-local generation 在每次 `do_poll()` 前后取快照，只消费本轮新增的 `newcat_get_cmd` wrong reply，并用 `operation=protocol_sync` 交给现有 FTX-1 `State`。确认空闲时第 1、2 个受影响轮询软忽略，第 3 个升级；PTT 未知、请求/实际开启或转换期间立即硬失败；完整健康轮询清除总体计数。普通 warning、其他机型、可选 meter 错误、Hamlib DLL 和 PTT/CAT 安全门不变。原始错序行限流，首条保留；本修复不宣称已经消除底层 EPROTO 原因。
+
+第二现场 `202609_ALL(1).TXT` SHA256 为 `CD4E566CC482A9474385D273F3911C30C0D742210A1DE3D8797EA884BF94D78B`，版本为旧的 `JTDX v2.2.159.2.844fd76`；BI4BKX 对 R9OOF 的 70 次 TX（30 次 `PM01`、40 次 `R-26`）属于旧版特殊目标重试漏控复现，不能归因于当前源码修复失效。`wsjtx(1).log` 没有 R9OOF CAT 设置证据，不据此推断远端配置。
+
+后续源码在 `C:\JTDX64\build-webui-dev-msys2` 使用 MinGW64 完成构建，`ftx1_cat_policy_test` 和完整 CTest `19/19` 通过；未启动 JTDX，未连接 CAT/PTT/真实电台，未进行 HIL、安装或发布打包。
+
 ## AutoSeq 回答 CQ 统一收尾
 
 - 任务 `JTDX-AUTOSEQ-CLEANUP-20260830` 将 `RFIN`、`RCQ`、`SCALL` 和跳过 TX1 时的 `SREPORT` 统一交给 `AutoCallPolicy::answerCQRetryAction` 判定；Hound 保持独立路径，阈值仍由回答 CQ 计数开关独立控制。

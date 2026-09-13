@@ -6,12 +6,12 @@ Web UI 工作从阶段 `P0 文档与事实基线` 开始，当前只完成需求
 
 ## 当前基线
 
-- 产品显示版本：JTDX `2.2.159.2.9`。
-- 标题：`JTDX v2.2.159.2.9 自动起呼版 By BI7KGD`。
-- Windows 四段版本资源保持可解析的 `2.2.159.2`；`.9` 是本次产品显示后缀，不改变 PE 资源字段布局。
+- 产品显示版本：JTDX `2.2.159.2.10`。
+- 标题：`JTDX v2.2.159.2.10 自动起呼版 By BI7KGD`。
+- Windows 四段版本资源保持可解析的 `2.2.159.2`；`.10` 是本次产品显示后缀，不改变 PE 资源字段布局。
 - 源码目录：`C:\JTDX64\jtdx_sourcecode`。
 - Hamlib 运行时：`4.7.2`，FTX-1 backend `20251224.0`。
-- `159` 是当前使用目录；本次 `159.2.9-cat-recovery-test` 只提供可覆盖 `159` 的 `bin/`、`plugins/`、`share/` 三个运行时目录。用户应先自行备份并关闭相关程序，再自行覆盖现有 `159`；本任务不替用户覆盖或删除既有目录。
+- `159` 是当前使用目录；本次 `159.2.10-cat-sync-test` 只提供可覆盖 `159` 的 `bin/`、`plugins/`、`share/` 三个运行时目录。用户应先自行备份并关闭相关程序，再自行覆盖现有 `159`；本任务不替用户覆盖或删除既有目录。
 
 ## JTDX-CAT-RECOVERY-20260906
 
@@ -107,6 +107,16 @@ CAT 打开失败或运行中断后按 `2 秒 → 5 秒 → 15 秒` 有限重连�
 恢复事件写入数据目录的 `jtdx_recovery.log`，包含错误原因、RX/TX 频率、PTT、Split、发射和 Enable Tx 状态；日志约 256 KiB 后轮换。
 
 FTX-1（Hamlib model `1051`）的 `do_poll()` 保持 PTT-first：PTT 未知、请求与实际不一致、PTT 切换后的两个保持轮次内，继续暂停 VFO、Split、频率、模式和其他非必要查询。实际 PTT-on 已确认、请求已确认且保持结束后，只进入现有 power/SWR meter-only 读取路径，恢复发射期间表计刷新；不改变其他型号，也不改变 Hamlib 源码或 DLL。纯策略测试覆盖 PTT on/off、过渡保持、meter-only 放行、可选错误和连续瞬态错误边界；真实电台读数和界面刷新仍需 HIL。
+
+## JTDX-CAT-SYNC-20260913
+
+本任务以 Git 基线 `cde1cb064b37e942f287d32b962fe6c26956ea8d` 为依据，结果代码提交为 `328cc7a1df9fcc488d15b512067f5264425f8dd2`。现场 `202609_ALL.TXT` 第 96572 行在 UTC `05:26:30` 解码 `CQ R9OOF NO14` 后 DX 仍残留，至 `16:07` 未再进入发射；同期 `jtdx_recovery.log` 记录 FTX-1 轮询中的 `FT→FA→MD→SH→SM→TX→VS→FT` 错序链，每条约出现三次，但 Hamlib 最终重试仍可能返回 `RIG_OK`，所以原 `check_poll_read()` 看不到失败，既有 PTT-off 清 DX 恢复路径不会启动。
+
+修复仅识别同步 Hamlib debug callback 中明确的 `newcat_get_cmd` `wrong reply`，在 `do_poll()` 前后用 thread-local 单调 generation 快照消费本轮新事件；最终 `RIG_OK` 也会生成一条 `operation=protocol_sync` 轮询决策。确认 PTT 关闭且空闲时前两轮软忽略、第三轮升级到既有 offline/reconnect；PTT 未知、意图开启、实际开启或转换保持期间立即硬失败。完整成功且无新错序的轮询清除总体计数；其他机型、普通 warning、可选 meter 错误和既有 PTT/CAT 安全门保持原语义。原始错序诊断按秒限流并保留首条，轮询日志保留每轮计数与决策；不修改 Hamlib DLL，不新增依赖，不改变 Web 功能。
+
+第二现场文件 `C:\Users\cassi\Downloads\MEM\202609_ALL(1).TXT` 的 SHA256 为 `CD4E566CC482A9474385D273F3911C30C0D742210A1DE3D8797EA884BF94D78B`，日志头为 `JTDX v2.2.159.2.844fd76`。其中 BI4BKX 对 R9OOF 在 UTC `08:38:31–09:11:00` 出现 70 次 TX（30 次 `PM01`、40 次 `R-26`），这是旧版自动特殊目标重试漏控的复现，不能作为当前源码 `cde1cb0` 基线及本次代码提交失效的证据；`wsjtx(1).log` 没有 R9OOF 的 CAT 设置证据，不能据此推断该电台配置。
+
+使用 `C:\JTDX64\build-webui-dev-msys2` 和 MinGW64 工具链完成目标构建、`ftx1_cat_policy_test` 及完整 CTest `19/19` 通过，覆盖空闲 1/2/3 轮、完整成功清零、PTT 不安全立即失败、非 FTX-1 隔离、普通 warning 不触发和 generation 只消费本轮新事件。未启动 JTDX，未连接 CAT/PTT，未进行音频、发射或真实电台 HIL。
 
 ## 其他界面功能
 
