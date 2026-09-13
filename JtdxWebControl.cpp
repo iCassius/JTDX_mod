@@ -126,6 +126,49 @@ void JtdxWebControl::set_select_dx_dispatcher (DispatchHandler handler)
   select_dx_dispatcher_ = std::move (handler);
 }
 
+void JtdxWebControl::bind_server_epoch (QString server_epoch)
+{
+  server_epoch = server_epoch.trimmed ();
+  if (shutdown_ || server_epoch.isEmpty ()) return;
+
+  if (server_epoch_bound_ && epoch_ == server_epoch) return;
+
+  // 成功监听产生新 epoch；任何残留 pending 都属于旧服务，先失效再绑定。
+  if (!pending_request_id_.isEmpty ())
+    invalidate_server_epoch (QStringLiteral ("server_epoch_changed"));
+  if (!server_epoch_bound_ || epoch_ != server_epoch)
+    records_.clear ();
+  epoch_ = std::move (server_epoch);
+  server_epoch_bound_ = true;
+}
+
+void JtdxWebControl::invalidate_server_epoch (QString reason)
+{
+  if (shutdown_) return;
+  if (!pending_request_id_.isEmpty ())
+    {
+      auto it = records_.find (pending_request_id_);
+      if (it != records_.end ())
+        {
+          bool const was_dispatched = it.value ().dispatched;
+          QString const request_id = it.value ().result.request_id;
+          finish (it.value (), Status::Rejected, std::move (reason));
+          if (was_dispatched)
+            {
+              // 已经开始的外部操作可能仍会生效；服务重启不能绕过这个锁。
+              unconfirmed_latch_ = true;
+              last_timed_out_request_id_ = request_id;
+            }
+        }
+      else
+        {
+          pending_request_id_.clear ();
+          expiry_timer_.stop ();
+        }
+    }
+  server_epoch_bound_ = false;
+}
+
 JtdxWebControl::Result JtdxWebControl::reject (Request const& request, QString reason,
                                                int http_status) const
 {
@@ -164,6 +207,7 @@ void JtdxWebControl::finish (Record& record, Status status, QString reason, quin
 JtdxWebControl::Result JtdxWebControl::submit (Request request)
 {
   if (shutdown_) return reject (request, QStringLiteral ("shutdown"), 409);
+  if (!server_epoch_bound_) return reject (request, QStringLiteral ("server_unavailable"), 409);
   request.request_id = normalize_request_id (request.request_id);
   if (request.request_id.isEmpty ()) return reject (request, QStringLiteral ("invalid_request_id"), 400);
   if (request.server_epoch != epoch_) return reject (request, QStringLiteral ("epoch_conflict"), 409);
@@ -220,7 +264,7 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
         return reject (request, QStringLiteral ("observation_unavailable"), 503);
       }
   }
-  if (shutdown_ || epoch_ != request_epoch)
+  if (shutdown_ || !server_epoch_bound_ || epoch_ != request_epoch)
     return reject (request, QStringLiteral ("epoch_changed"), 409);
   if (current.state_revision != request.state_revision)
     return reject (request, QStringLiteral ("state_revision_conflict"), 409);
@@ -248,7 +292,8 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
   inserted.value ().result.status_history.append (Status::Received);
 
   auto stored_it = records_.find (request.request_id);
-  if (shutdown_ || epoch_ != request_epoch || stored_it == records_.end ())
+  if (shutdown_ || !server_epoch_bound_ || epoch_ != request_epoch
+      || stored_it == records_.end ())
     {
       auto gone = records_.constFind (request.request_id);
       return gone == records_.constEnd () ? reject (request, QStringLiteral ("epoch_changed"), 409)
@@ -311,7 +356,7 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
           && failed.value ().result.status == Status::Pending)
         finish (failed.value (), Status::Failed, QStringLiteral ("dispatch_exception"));
     }
-  if (epoch_ != request_epoch)
+  if (!server_epoch_bound_ || epoch_ != request_epoch)
     return reject (request, QStringLiteral ("epoch_changed"), 409);
   auto completed = records_.constFind (request.request_id);
   return completed == records_.constEnd () ? reject (request, QStringLiteral ("record_lost"))
@@ -321,7 +366,8 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
 bool JtdxWebControl::prepare_dispatch (QString const& request_id, QString const& server_epoch,
                                        Dispatch * prepared)
 {
-  if (!prepared || shutdown_ || server_epoch != epoch_ || pending_request_id_ != request_id)
+  if (!prepared || shutdown_ || !server_epoch_bound_ || server_epoch != epoch_
+      || pending_request_id_ != request_id)
     return false;
   expire ();
   auto it = records_.find (request_id);
@@ -360,7 +406,7 @@ bool JtdxWebControl::prepare_dispatch (QString const& request_id, QString const&
 
   // 外部 provider 可能在回调期间 shutdown/rotate；重新按 key 查找，避免悬空 Record&。
   it = records_.find (request_id);
-  if (shutdown_ || epoch_ != server_epoch || pending_request_id_ != request_id
+  if (shutdown_ || !server_epoch_bound_ || epoch_ != server_epoch || pending_request_id_ != request_id
       || it == records_.end () || it.value ().result.server_epoch != server_epoch
       || it.value ().result.status != Status::Pending || it.value ().dispatched)
     return false;
@@ -412,7 +458,8 @@ bool JtdxWebControl::prepare_dispatch (QString const& request_id, QString const&
 
 bool JtdxWebControl::begin_dispatch (Dispatch const& dispatch)
 {
-  if (shutdown_ || dispatch.server_epoch != epoch_ || pending_request_id_ != dispatch.request_id)
+  if (shutdown_ || !server_epoch_bound_ || dispatch.server_epoch != epoch_
+      || pending_request_id_ != dispatch.request_id)
     return false;
   expire ();
   auto it = records_.find (dispatch.request_id);
@@ -445,7 +492,8 @@ bool JtdxWebControl::begin_dispatch (Dispatch const& dispatch)
       }
   }
   it = records_.find (dispatch.request_id);
-  if (shutdown_ || epoch_ != dispatch.server_epoch || pending_request_id_ != dispatch.request_id
+  if (shutdown_ || !server_epoch_bound_ || epoch_ != dispatch.server_epoch
+      || pending_request_id_ != dispatch.request_id
       || it == records_.end () || it.value ().result.status != Status::Pending
       || !it.value ().prepared || it.value ().dispatched)
     return false;
@@ -480,6 +528,7 @@ bool JtdxWebControl::feedback_frequency (QString const& request_id, QString cons
                                          quint64 generation, qint64 actual_frequency_hz,
                                          quint64 state_revision)
 {
+  if (!server_epoch_bound_) return false;
   if (pending_request_id_.isEmpty ())
     {
       if (server_epoch == epoch_ && request_id == last_timed_out_request_id_)
@@ -520,6 +569,7 @@ bool JtdxWebControl::feedback_select_dx (QString const& request_id, QString cons
                                          quint64 generation, QString dx_call, QString dx_grid,
                                          quint64 state_revision)
 {
+  if (!server_epoch_bound_) return false;
   if (pending_request_id_.isEmpty ())
     {
       if (server_epoch == epoch_ && request_id == last_timed_out_request_id_)
@@ -560,7 +610,8 @@ bool JtdxWebControl::feedback_select_dx (QString const& request_id, QString cons
 
 bool JtdxWebControl::fail (QString const& request_id, QString const& server_epoch, QString reason)
 {
-  if (pending_request_id_.isEmpty () || request_id != pending_request_id_ || server_epoch != epoch_)
+  if (!server_epoch_bound_ || pending_request_id_.isEmpty () || request_id != pending_request_id_
+      || server_epoch != epoch_)
     return false;
   auto it = records_.find (request_id);
   if (it == records_.end () || it.value ().result.server_epoch != epoch_)
@@ -606,12 +657,9 @@ bool JtdxWebControl::rotate_epoch ()
 void JtdxWebControl::shutdown ()
 {
   if (shutdown_) return;
+  invalidate_server_epoch (QStringLiteral ("shutdown"));
   shutdown_ = true;
-  if (!pending_request_id_.isEmpty ())
-    {
-      auto it = records_.find (pending_request_id_);
-      if (it != records_.end ()) finish (it.value (), Status::Rejected, QStringLiteral ("shutdown"));
-    }
+  server_epoch_bound_ = false;
   expiry_timer_.stop ();
 }
 

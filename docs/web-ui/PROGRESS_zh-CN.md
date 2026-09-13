@@ -1,5 +1,14 @@
 # JTDX 内置 Web UI：进度与中断恢复日志
 
+### P4 服务/服务器/控制生命周期 epoch 小片开始检查点（2026-09-13）
+
+- 任务编号：`JTDX-WEBUI-P4-LIFECYCLE-20260913`；执行档位：用户指定 `gpt-5.6-luna` / `high`。开局额度：五小时剩余 `97%`、周剩余 `57%`；本批低于五小时剩余 `30%` 时停止新实现，仅做最终验证、精确提交和交接（覆盖先前 `40%` 收尾提示）。
+- 基线：仓库 `C:\JTDX64\jtdx_sourcecode`，分支 `main`，HEAD `95d274c`；开始时工作树干净。真实 `jtdx.exe`、CAT/PTT/TX/HIL 均不启动或连接。
+- 本批目标：统一 `JtdxWebService`、`JtdxWebServer`、`JtdxWebControl` 的服务 epoch；使 state/SSE 的 `server_epoch` 与控制请求 epoch 一致；服务停止、重启、启动失败、State 销毁及应用退出时使 pending/旧 queued dispatch 失效；已 begin 但未确认的操作保留 `unconfirmed_latch`，重启不得自动解锁。
+- 设计边界：默认 disabled 仍拒绝控制；使用 `QPointer` 保护 State/Control 生命周期；复用现有 Control，不重建对象丢失锁；不改 UDP/CAT/TX 调度、不开放 HTTP 控制路由、不新增线程/进程/依赖。
+- 文件计划：`JtdxWebControl.hpp/.cpp` 增加停止失效/服务 epoch 绑定接口；`JtdxWebServer.hpp/.cpp` 增加可观测生命周期信号；`JtdxWebService.hpp/.cpp` 持有并绑定 `QPointer<JtdxWebControl>`；`mainwindow.*` 完成唯一对象接线；`tests/jtdx_web_service_test.cpp` 与控制测试覆盖 State/Control/Service 销毁、失败启动、停止重启及旧 queued dispatch；同步本入口与设计/验收文档。
+- 恢复点：生命周期接口完成后先构建 `jtdx` 与隔离 Service/Control 测试，再执行一次完整 CTest；命令和日志写入 `C:\JTDX64\deps-webui`，构建目录固定为 `C:\JTDX64\build-webui-dev-msys2`，PATH 以 `C:\msys64\mingw64\bin` 优先、`159\bin` 仅补 Hamlib，测试使用 `QT_QPA_PLATFORM=offscreen`。达到阈值后不再开启新实现。
+
 ### P4 频率异步 dispatch gate 小片开始检查点（2026-09-13）
 
 - 额度：本片开局五小时剩余 `100%`、周剩余 `69%`；最新快照五小时剩余约 `43%`、周剩余约 `60%`。本片收尾阈值为五小时剩余低于 `40%`，覆盖历史记录中的 `20%` 门槛。

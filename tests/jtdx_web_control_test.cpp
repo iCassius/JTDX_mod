@@ -46,11 +46,18 @@ namespace
     request.frequency_hz = frequency;
     return request;
   }
+
+  void bind_fixture_epoch (Control& control)
+  {
+    QString const epoch = control.server_epoch ();
+    control.bind_server_epoch (epoch);
+  }
 }
 
 int main ()
 {
   Control control {100};
+  bind_fixture_epoch (control);
   control.set_clock_for_test (1000);
   control.set_observed_state (safe_state (1));
 
@@ -110,6 +117,7 @@ int main ()
          "matching new generation completes pending request");
 
   Control begin_guard {100};
+  bind_fixture_epoch (begin_guard);
   begin_guard.set_clock_for_test (0);
   begin_guard.set_observed_state (safe_state (1));
   Control::Dispatch begin_candidate;
@@ -171,6 +179,7 @@ int main ()
          == QStringLiteral ("shutdown"), "shutdown rejects later requests");
 
   Control queued_timeout {100};
+  bind_fixture_epoch (queued_timeout);
   queued_timeout.set_clock_for_test (10);
   queued_timeout.set_observed_state (safe_state (1));
   Control::Dispatch old_queued_dispatch;
@@ -196,6 +205,7 @@ int main ()
          "expired old queue cannot execute while newer request is pending");
 
   Control timeout {100};
+  bind_fixture_epoch (timeout);
   timeout.set_clock_for_test (10);
   timeout.set_observed_state (safe_state (1));
   timeout.set_frequency_dispatcher ([&] (Control::Dispatch const& dispatch) {
@@ -228,6 +238,7 @@ int main ()
          "epoch rotation does not clear unconfirmed latch");
 
   Control provider {100};
+  bind_fixture_epoch (provider);
   provider.set_clock_for_test (0);
   int provider_reads = 0;
   provider.set_observation_provider ([&] {
@@ -249,6 +260,7 @@ int main ()
           "dispatch re-reads safety and fails closed");
 
   Control unknown_baseline {100};
+  bind_fixture_epoch (unknown_baseline);
   unknown_baseline.set_clock_for_test (0);
   auto unknown_state = safe_state (1);
   unknown_state.frequency_known = false;
@@ -265,6 +277,7 @@ int main ()
          "frequency dispatch requires a known generation and actual CAT frequency");
 
   Control provider_reentrant {100};
+  bind_fixture_epoch (provider_reentrant);
   provider_reentrant.set_clock_for_test (10);
   provider_reentrant.set_observed_state (safe_state (1));
   bool provider_reentry_checked = false;
@@ -288,6 +301,7 @@ int main ()
          "outer request remains pending after rejected provider reentry");
 
   Control rotated_by_provider {100};
+  bind_fixture_epoch (rotated_by_provider);
   rotated_by_provider.set_clock_for_test (0);
   rotated_by_provider.set_observed_state (safe_state (1));
   int rotate_reads = 0;
@@ -304,7 +318,37 @@ int main ()
          && rotated_result.reason == QStringLiteral ("epoch_changed") && rotated_dispatches == 0,
          "provider epoch rotation invalidates the old request before dispatch");
 
+  Control invalidated_by_provider {100};
+  bind_fixture_epoch (invalidated_by_provider);
+  invalidated_by_provider.set_clock_for_test (0);
+  invalidated_by_provider.set_observed_state (safe_state (1));
+  Control::Dispatch invalidated_dispatch;
+  invalidated_by_provider.set_frequency_dispatcher ([&] (Control::Dispatch const& dispatch) {
+      invalidated_dispatch = dispatch;
+    });
+  auto invalidated_request = frequency_request (invalidated_by_provider,
+                                                 QStringLiteral ("provider-stop"), 14074000);
+  check (invalidated_by_provider.submit (invalidated_request).status == Control::Status::Pending,
+         "provider invalidation fixture enters pending");
+  invalidated_by_provider.set_observation_provider ([&] {
+      invalidated_by_provider.invalidate_server_epoch (QStringLiteral ("server_stopped"));
+      return safe_state (1);
+    });
+  Control::Dispatch prepared_after_invalidation;
+  check (!invalidated_by_provider.prepare_dispatch (invalidated_dispatch.request_id,
+                                                     invalidated_dispatch.server_epoch,
+                                                     &prepared_after_invalidation),
+         "provider invalidation prevents prepare in the same callback");
+  check (!invalidated_by_provider.begin_dispatch (invalidated_dispatch),
+         "provider invalidation prevents queued begin");
+  auto after_provider_stop = invalidated_request;
+  after_provider_stop.request_id = QStringLiteral ("provider-stop-new");
+  check (invalidated_by_provider.submit (after_provider_stop).reason
+         == QStringLiteral ("server_unavailable"),
+         "provider invalidation keeps the control unbound until server rebind");
+
   Control reentrant {100};
+  bind_fixture_epoch (reentrant);
   reentrant.set_clock_for_test (0);
   reentrant.set_observed_state (safe_state (1));
   reentrant.set_frequency_dispatcher ([&] (Control::Dispatch const& dispatch) {
@@ -327,6 +371,7 @@ int main ()
          "old callback cannot overwrite the new epoch record");
 
   Control bounded {100};
+  bind_fixture_epoch (bounded);
   bounded.set_clock_for_test (0);
   bounded.set_observed_state (safe_state (1));
   bounded.set_frequency_dispatcher ({ });
@@ -345,6 +390,7 @@ int main ()
   char * argv[] = {app_name, nullptr};
   QCoreApplication app {argc, argv};
   Control event_loop_timeout {20};
+  bind_fixture_epoch (event_loop_timeout);
   event_loop_timeout.set_observed_state (safe_state (1));
   event_loop_timeout.set_frequency_dispatcher ([] (Control::Dispatch const&) {});
   check (event_loop_timeout.submit (frequency_request (event_loop_timeout, QStringLiteral ("timer"),

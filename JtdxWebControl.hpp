@@ -109,6 +109,12 @@ public:
   void set_frequency_dispatcher (DispatchHandler handler);
   void set_select_dx_dispatcher (DispatchHandler handler);
 
+  // 将控制请求绑定到当前成功监听的 WebServer epoch。绑定不会重建协调器，
+  // 因而不会丢失已 begin 操作的未确认锁；停止期间请求保持 fail-closed。
+  void bind_server_epoch (QString server_epoch);
+  void invalidate_server_epoch (QString reason = QStringLiteral ("server_stopped"));
+  bool server_epoch_bound () const { return server_epoch_bound_; }
+
   // 排队回调真正执行时重新读取生产状态并生成一次性 dispatch。
   // prepare 不消费；begin_dispatch 只允许同一请求实际开始一次。
   bool prepare_dispatch (QString const& request_id, QString const& server_epoch,
@@ -170,7 +176,9 @@ private:
   qint64 timeout_ms_ {3000};
   QString epoch_;
   bool shutdown_ {false};
-  // 超时后保持未确认门，避免迟到 CAT 回读与下一请求混淆；仅换 epoch 可恢复。
+  bool server_epoch_bound_ {false};
+  // 超时或已 begin 操作被服务停止后保持未确认门，避免迟到 CAT 回读与下一请求混淆；
+  // 只有显式的上层恢复策略才能清除此门。
   bool unconfirmed_latch_ {false};
   bool submit_in_progress_ {false};
   const int hard_record_limit_ {128};

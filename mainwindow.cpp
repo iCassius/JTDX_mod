@@ -500,6 +500,7 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
   connect (m_messageClient, &MessageClient::decodes_cleared,
            m_webState, &JtdxWebState::clear_decodes);
   m_webService = new JtdxWebService {m_webState, this};
+  m_webService->set_control (m_webControl);
   m_webControl->set_observation_provider ([this] { return webControlObservation (); });
   m_webControl->set_frequency_dispatcher ([this] (JtdxWebControl::Dispatch const& dispatch) {
       QMetaObject::invokeMethod (this, [this, dispatch] { dispatchWebFrequency (dispatch); },

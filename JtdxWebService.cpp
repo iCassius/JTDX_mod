@@ -9,6 +9,12 @@ JtdxWebService::JtdxWebService (JtdxWebState * state, QObject * parent)
   : QObject {parent}
   , server_ {new JtdxWebServer {state, this}}
 {
+  connect (server_, &JtdxWebServer::lifecycle_changed, this,
+           [this] (QString const& epoch, bool listening) {
+             if (!control_) return;
+             if (listening) control_->bind_server_epoch (epoch);
+             else control_->invalidate_server_epoch (QStringLiteral ("server_stopped"));
+           });
 }
 
 JtdxWebService::~JtdxWebService ()
@@ -129,4 +135,16 @@ int JtdxWebService::active_connection_count () const
 void JtdxWebService::set_url_opener (UrlOpener opener)
 {
   url_opener_ = std::move (opener);
+}
+
+void JtdxWebService::set_control (JtdxWebControl * control)
+{
+  if (control_ && control_ != control)
+    control_->invalidate_server_epoch (QStringLiteral ("control_rebound"));
+  control_ = control;
+  if (!control_) return;
+  if (server_ && server_->is_listening ())
+    control_->bind_server_epoch (server_->server_epoch ());
+  else
+    control_->invalidate_server_epoch (QStringLiteral ("server_unavailable"));
 }

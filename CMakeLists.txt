@@ -1676,6 +1676,7 @@ if (JTDX_BUILD_LOCAL_TESTS)
   add_test (NAME jtdx_web_server_test COMMAND jtdx_web_server_test)
   add_executable (jtdx_web_service_test
     tests/jtdx_web_service_test.cpp
+    JtdxWebControl.cpp
     JtdxWebService.cpp
     JtdxWebServer.cpp
     JtdxWebState.cpp

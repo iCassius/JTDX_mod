@@ -4,7 +4,7 @@
 
 计划新增 `JtdxWebState`、`JtdxWebControl`、`JtdxWebServer` 和原生静态资源。三类 C++ 对象均在 `jtdx.exe` 主 Qt 事件循环中运行；基于 Qt5 Network 的异步 `QTcpServer`，不依赖 Qt WebEngine，不新增前端构建链，不为连接创建线程。现有 `MessageServer` 继续承担既有 UDP 职责，Web 绝不复用其监听器或端口。
 
-启动：读取 Web 专用配置 → 校验地址/端口 → 确认不等于任何 UDP 端口 → TCP `listen()` → 记录实际地址/端口和 `server_epoch`。重复启动返回同一服务。停止：停止接收新连接 → 拒绝控制 → 有界关闭 HTTP/SSE → 取消未确认操作并使旧 epoch 失效 → 关闭监听。应用退出中所有控制返回拒绝。
+启动：读取 Web 专用配置 → 校验地址/端口 → 确认不等于任何 UDP 端口 → TCP `listen()` → 记录实际地址/端口和 `server_epoch`，成功监听后由 `JtdxWebService` 把同一 epoch 绑定到唯一 `JtdxWebControl`。重复启动返回同一服务且不改变在途控制。停止：停止接收新连接 → 拒绝控制 → 有界关闭 HTTP/SSE → 取消未确认操作并使旧 epoch 失效 → 关闭监听；已 begin 但未确认的操作保留 `unconfirmed_latch`，重启绑定新 epoch 也不自动解锁，排队但未 begin 的操作不建立该锁。State 销毁、启动失败和应用退出走同一停止失效路径，旧 queued dispatch 必须再次校验绑定 epoch/pending。
 
 ## 状态和只读 API
 
@@ -38,4 +38,4 @@
 
 P2/P4/P5 必须以当前源码复核 `MessageClient` 状态/解码信号、`MainWindow::statusUpdate()`、`MessageClient::status_update()`、`handle_transceiver_update`、`band_changed`/`setRig`、DX 选择、CQ/AutoSeq 和停止入口。P1/P2/P3 已完成状态模型、只读 TCP 服务和菜单生命周期；P4-b 仅增加未激活的内存控制协调器，仍没有 HTTP 控制路由、生产业务入口或真实设备证据。已知 UI 路径存在副作用，不能直接把 UI click、双击解码或 `processMessage` 作为 Web 业务 API。若需抽取共用入口，应保持原 UI 语义并增加回归测试。
 
-P4-b 协调器只接收已规范化的整数 Hz 与 Call/Grid 目标。frequency 的上一层契约必须使用十进制整 Hz 字符串，拒绝负数、NaN、指数、小数 Hz 和越界值后再转换；桌面 MHz/k/band 语义保持不变。frequency 完成必须关联请求 ID/epoch、对应 CAT generation、实际频率和动作后的 state revision；DX 完成使用独立的 DX feedback generation。全局 revision、目标预写或 HTTP 成功不能替代专属回读。协调器默认不实例化、不连接 MainWindow、不直接 CAT/PTT/TX。
+P4-b 协调器只接收已规范化的整数 Hz 与 Call/Grid 目标。frequency 的上一层契约必须使用十进制整 Hz 字符串，拒绝负数、NaN、指数、小数 Hz 和越界值后再转换；桌面 MHz/k/band 语义保持不变。frequency 完成必须关联请求 ID/epoch、对应 CAT generation、实际频率和动作后的 state revision；DX 完成使用独立的 DX feedback generation。全局 revision、目标预写或 HTTP 成功不能替代专属回读。协调器通过可复用的服务 epoch 绑定/停止失效接口接收生命周期，不重建对象；默认未绑定或服务 disabled 时拒绝控制。协调器默认不实例化、不连接 MainWindow、不直接 CAT/PTT/TX。

@@ -2,10 +2,12 @@
 #define JTDX_WEB_SERVICE_HPP
 
 #include <QUrl>
+#include <QPointer>
 
 #include <functional>
 
 #include "JtdxWebServer.hpp"
+#include "JtdxWebControl.hpp"
 
 // P3 Web 生命周期胶水。它只负责把 MainWindow 转换好的配置交给只读
 // JtdxWebServer，并提供菜单打开、停止和退出后的关闭门禁；不依赖
@@ -31,12 +33,16 @@ public:
   int active_connection_count () const;
   bool is_shutdown () const { return shutdown_; }
 
+  // 绑定 MainWindow 持有的唯一控制协调器；QPointer 避免独立销毁时悬垂。
+  void set_control (JtdxWebControl * control);
+
   // 仅供 Qt-only 验收替换 URL 打开器；生产默认使用 QDesktopServices。
   void set_url_opener (UrlOpener opener);
 
 private:
   QString signature (JtdxWebServer::Configuration const& configuration) const;
   JtdxWebServer * server_ {nullptr};
+  QPointer<JtdxWebControl> control_;
   QString configuration_signature_;
   QString service_error_;
   UrlOpener url_opener_;

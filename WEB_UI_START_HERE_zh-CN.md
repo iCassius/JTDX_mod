@@ -4,7 +4,7 @@
 
 ## 当前状态
 
-- 阶段：`P4 频率异步 dispatch gate 小片`，P0/P1/P2 已完成；P3 生产 service/QAction 与自动测试已完成，完整 MainWindow 窗口人工验收留到 P6；HTTP 控制接入和生产 CAT 回读仍未开放。
+- 阶段：`P4 服务/服务器/控制生命周期 epoch 小片`，P0/P1/P2 已完成；P3 生产 service/QAction 与自动测试已完成，P4 现已补齐 Service/Server/Control 的成功监听绑定与停止失效门，完整 MainWindow 窗口人工验收留到 P6；HTTP 控制接入和生产 CAT 回读仍未开放。
 - 基线：当前批次从分支 `main`、HEAD `dcb429f` 的干净工作树开始；P4-a 契约见 [`docs/web-ui/P4-A_普通控制实施契约_zh-CN.md`](docs/web-ui/P4-A_普通控制实施契约_zh-CN.md)，当前结果与恢复点见进度日志。
 - 代码根目录：`C:\JTDX64\jtdx_sourcecode`。用户需求中的 `jtdx\_sourcecode` 按当前实际仓库路径解释。
 - P3 历史范围：增加 Web UI 配置 Tab、持久化摘要令牌、MainWindow 唯一服务生命周期、菜单入口和 Qt Resource 原生深色响应式只读页；服务仍为单进程主 Qt 事件循环，不新增 UDP/线程/进程或控制 API。

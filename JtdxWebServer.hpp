@@ -60,6 +60,10 @@ public:
   // 将用户输入的原始令牌转换为持久化摘要；原文不得写入配置、URL、日志或 HTML。
   static QString bearer_token_digest (QString const& bearer_token);
 
+Q_SIGNALS:
+  // 仅报告 TCP 监听生命周期；控制层由 JtdxWebService 绑定到成功监听的 epoch。
+  void lifecycle_changed (QString server_epoch, bool listening);
+
 private:
   struct Client;
 

@@ -213,13 +213,18 @@ bool JtdxWebServer::start (Configuration configuration)
     }
   configuration_ = configuration;
   server_epoch_ = new_epoch ();
-  if (choose_and_listen (configuration)) return true;
+  if (choose_and_listen (configuration))
+    {
+      Q_EMIT lifecycle_changed (server_epoch_, true);
+      return true;
+    }
   last_error_ = server_.errorString ();
   if (last_error_.isEmpty ()) last_error_ = QStringLiteral ("unable to bind TCP port");
   web_server_state_ = QStringLiteral ("error");
   server_.close ();
   actual_address_ = QHostAddress {};
   actual_port_ = 0;
+  Q_EMIT lifecycle_changed (server_epoch_, false);
   return false;
 }
 
@@ -232,6 +237,7 @@ void JtdxWebServer::stop ()
   actual_address_ = QHostAddress {};
   actual_port_ = 0;
   web_server_state_ = QStringLiteral ("stopped");
+  Q_EMIT lifecycle_changed (server_epoch_, false);
 }
 
 bool JtdxWebServer::is_listening () const
