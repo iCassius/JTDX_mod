@@ -1,5 +1,21 @@
 # JTDX 内置 Web UI：进度与中断恢复日志
 
+### P4 频率异步 dispatch gate 小片开始检查点（2026-09-13）
+
+- 额度：本片开局五小时剩余 `100%`、周剩余 `69%`；最新快照五小时剩余约 `43%`、周剩余约 `60%`。本片收尾阈值为五小时剩余低于 `40%`，覆盖历史记录中的 `20%` 门槛。
+- 基线：仓库 `C:\JTDX64\jtdx_sourcecode`，分支 `main`，HEAD `dcb429f`；开始时工作树干净。
+- 本片目标：把频率排队后的实际执行校验收口到生产 `JtdxWebControl::prepare_dispatch/begin_dispatch`，由 MainWindow 真正调用；补齐 request ID/epoch/pending/deadline/安全/最新 generation 门，防止旧队列在新请求 pending 时执行。
+- 契约修正：prepare 前不得完成 CAT feedback；begin 只允许单次消费；排队未执行的 timeout 不设置硬件未确认锁，已 begin 的 timeout 才设置锁；锁存在时同 ID 同 payload 返回原 timeout 记录，新 ID 拒绝；`rotate_epoch` 不清理未确认锁。
+- 安全投影：MainWindow 将 rig 在线、monitor、start2、tune、autoTx、transmitting、PTT/IPTT 状态投影到生产 observation，移除重复的 MainWindow gate。
+- 文件范围：`JtdxWebControl.hpp/.cpp`、`mainwindow.h/.cpp`、`tests/jtdx_web_control_test.cpp`、本进度日志；不开放 HTTP，不运行 JTDX/CAT/PTT/TX/HIL，不改 159 运行目录。
+- 验证计划：`C:\JTDX64\build-webui-dev-msys2` 中构建 `jtdx` 与控制测试，offscreen 环境执行控制测试及一次完整 CTest；命令输出另存 `C:\JTDX64\deps-webui`。
+- 实际结果：`cmake --build C:\JTDX64\build-webui-dev-msys2 --target jtdx jtdx_web_control_test --parallel 2` 退出码 `0`，日志为 `C:\JTDX64\deps-webui\p4-dispatch-gate-final-build.log`；控制测试通过，日志为 `C:\JTDX64\deps-webui\p4-dispatch-gate-test.log`。
+- 全量回归：`ctest --test-dir C:\JTDX64\build-webui-dev-msys2 --output-on-failure` 为 `100% tests passed out of 19`，总耗时约 `53.33s`，退出码 `0`；日志为 `C:\JTDX64\deps-webui\p4-dispatch-gate-final-ctest.log`。
+- 本片完成：`prepare_dispatch` 在排队执行时重读生产 observation、检查 request ID/epoch/pending/deadline/安全及频率 CAT 基线，`begin_dispatch` 需持有 prepare 标记并校验 generation 后单次消费；MainWindow 已实际调用，不再复制控制 gate。未 begin 的 feedback、旧队列和重复 begin 均不能完成或执行。
+- 锁与幂等：仅已 begin 的超时设置 `unconfirmed_latch`；排队未执行超时允许后续新 ID，超时同 ID 同 payload 返回原记录；epoch 轮换保留未确认锁。未知 rig/monitor 默认 fail-closed，MainWindow 投影 rig/monitor/start2/tune/autoTx/transmitting/PTT/IPTT。
+- 未运行：真实 `jtdx.exe`、CAT/PTT/TX/HIL、浏览器/HTTP 控制、部署；未修改 `C:\JTDX64\159` 运行目录。
+- 结果提交：待精确暂存本片源码、测试和恢复日志后创建本地中文 commit，不 push/amend/reset。
+
 ### P4 频率纯校验与生产适配批次开始检查点（2026-09-13，当前批次）
 
 - 任务编号：`JTDX-WEBUI-P4-FREQUENCY-20260913`；执行档位：用户指定 `gpt-5.6-luna` / `high`。开局额度：五小时剩余 `89%`、周剩余 `83%`；当前收尾阈值改为五小时剩余低于 `20%`。历史批次中的 `30%` 仅作历史记录，不覆盖本批门槛。

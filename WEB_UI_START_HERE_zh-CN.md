@@ -1,11 +1,11 @@
 # JTDX 内置 Web UI：阶段入口与恢复说明
 
-本目录记录 JTDX 内置轻量 Web UI 的需求、边界、设计和阶段证据。当前 P3 生产 service/QAction 与 17 项自动测试已完成；完整 MainWindow 窗口人工验收留到 P6，仍不代表已经启动 JTDX、连接电台或完成 HIL/部署验证。P4-b 已完成不激活的控制协调器基础批次；HTTP 控制接入、现有 Calls/DX 业务入口和 frequency 生产 CAT 适配仍未完成。
+本目录记录 JTDX 内置轻量 Web UI 的需求、边界、设计和阶段证据。当前 P3 生产 service/QAction 与自动测试已完成；完整 MainWindow 窗口人工验收留到 P6，仍不代表已经启动 JTDX、连接电台或完成 HIL/部署验证。P4 频率 dispatch gate 已完成不激活的生产排队执行校验；HTTP 控制接入和频率生产 CAT 回读仍未开放。
 
 ## 当前状态
 
-- 阶段：`P4-b 控制协调器基础批次`，P0/P1/P2 已完成；P3 生产 service/QAction 与 17 项自动测试已完成，完整 MainWindow 窗口人工验收留到 P6；HTTP 控制接入和生产业务适配仍未完成。
-- 基线：当前批次为分支 `main`、HEAD `5611fcc`，开始时工作树干净；P4-a 契约见 [`docs/web-ui/P4-A_普通控制实施契约_zh-CN.md`](docs/web-ui/P4-A_普通控制实施契约_zh-CN.md)，P4-b 结果见进度日志。
+- 阶段：`P4 频率异步 dispatch gate 小片`，P0/P1/P2 已完成；P3 生产 service/QAction 与自动测试已完成，完整 MainWindow 窗口人工验收留到 P6；HTTP 控制接入和生产 CAT 回读仍未开放。
+- 基线：当前批次从分支 `main`、HEAD `dcb429f` 的干净工作树开始；P4-a 契约见 [`docs/web-ui/P4-A_普通控制实施契约_zh-CN.md`](docs/web-ui/P4-A_普通控制实施契约_zh-CN.md)，当前结果与恢复点见进度日志。
 - 代码根目录：`C:\JTDX64\jtdx_sourcecode`。用户需求中的 `jtdx\_sourcecode` 按当前实际仓库路径解释。
 - P3 历史范围：增加 Web UI 配置 Tab、持久化摘要令牌、MainWindow 唯一服务生命周期、菜单入口和 Qt Resource 原生深色响应式只读页；服务仍为单进程主 Qt 事件循环，不新增 UDP/线程/进程或控制 API。
 - 已确认：主程序已有 Qt5 Network、`MessageClient`、`MessageServer` 和 `JTDX_BUILD_LOCAL_TESTS`；P1 状态模型、P2 只读服务和 P3 代码/资源/测试/文档均已有本地提交，P4 及后续控制仍未实现。

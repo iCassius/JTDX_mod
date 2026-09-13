@@ -25,8 +25,12 @@ namespace
     state.safety.known = true;
     state.safety.fresh = true;
     state.safety.business_state_known = true;
+    state.safety.rig_online = true;
+    state.safety.monitoring = true;
     state.state_revision = revision;
     state.frequency_generation = 4;
+    state.frequency_known = true;
+    state.actual_frequency_hz = 14073000;
     state.dx_generation = 8;
     return state;
   }
@@ -64,8 +68,12 @@ int main ()
   control.set_frequency_dispatcher ([&] (Control::Dispatch const& dispatch) {
     ++dispatch_count;
     check (dispatch.server_epoch == control.server_epoch (), "dispatch carries epoch");
+    Control::Dispatch prepared;
+    check (control.prepare_dispatch (dispatch.request_id, dispatch.server_epoch, &prepared),
+           "queued dispatch is prepared at execution time");
+    check (control.begin_dispatch (prepared), "prepared dispatch begins once");
     check (control.feedback_frequency (dispatch.request_id, dispatch.server_epoch,
-                                       dispatch.expected_generation + 1, dispatch.frequency_hz, 2),
+                                       prepared.expected_generation + 1, prepared.frequency_hz, 2),
            "synchronous feedback is accepted");
   });
   auto completed = control.submit (frequency_request (control, QStringLiteral ("sync"), 14074000));
@@ -80,15 +88,45 @@ int main ()
          && conflict.reason == QStringLiteral ("request_id_conflict") && dispatch_count == 1,
          "same id with different payload is a 409 without dispatch");
 
-  control.set_frequency_dispatcher ([] (Control::Dispatch const&) {});
+  Control::Dispatch queued_dispatch;
+  control.set_frequency_dispatcher ([&] (Control::Dispatch const& dispatch) {
+    queued_dispatch = dispatch;
+  });
   auto pending = control.submit (frequency_request (control, QStringLiteral ("pending"), 14075000));
   check (pending.status == Control::Status::Pending && control.has_pending (), "request enters pending");
+  check (!control.feedback_frequency (QStringLiteral ("pending"), control.server_epoch (), 5, 14075000, 2),
+         "feedback cannot complete before queued dispatch begins");
+  check (!control.begin_dispatch (queued_dispatch), "dispatch cannot begin without prepare");
+  Control::Dispatch pending_dispatch;
+  check (control.prepare_dispatch (QStringLiteral ("pending"), control.server_epoch (), &pending_dispatch),
+         "pending request prepares from latest observation");
+  check (control.begin_dispatch (pending_dispatch), "pending request begins dispatch");
+  check (!control.begin_dispatch (pending_dispatch), "same dispatch cannot be consumed twice");
   check (!control.feedback_frequency (QStringLiteral ("pending"), control.server_epoch (), 4, 14075000, 99),
          "old generation cannot complete despite newer global revision");
   check (!control.feedback_frequency (QStringLiteral ("other"), control.server_epoch (), 5, 14075000, 2),
          "feedback for another request cannot complete pending request");
   check (control.feedback_frequency (QStringLiteral ("pending"), control.server_epoch (), 5, 14075000, 2),
          "matching new generation completes pending request");
+
+  Control begin_guard {100};
+  begin_guard.set_clock_for_test (0);
+  begin_guard.set_observed_state (safe_state (1));
+  Control::Dispatch begin_candidate;
+  begin_guard.set_frequency_dispatcher ([&] (Control::Dispatch const& dispatch) {
+    begin_candidate = dispatch;
+  });
+  check (begin_guard.submit (frequency_request (begin_guard, QStringLiteral ("begin-guard"), 14074000)).status
+         == Control::Status::Pending, "begin guard request enters pending");
+  check (begin_guard.prepare_dispatch (begin_candidate.request_id, begin_candidate.server_epoch,
+                                       &begin_candidate), "begin guard prepares request");
+  auto newer_observation = safe_state (1);
+  newer_observation.frequency_generation = begin_candidate.expected_generation + 1;
+  begin_guard.set_observed_state (newer_observation);
+  check (!begin_guard.begin_dispatch (begin_candidate),
+         "generation change between prepare and begin fails closed");
+  check (begin_guard.result (QStringLiteral ("begin-guard")).status == Control::Status::Pending,
+         "generation mismatch leaves request retryable before deadline");
 
   auto select = Control::Request {};
   select.request_id = QStringLiteral ("dx-1");
@@ -102,6 +140,10 @@ int main ()
     select_dispatched = true;
     check (dispatch.dx_call == QStringLiteral ("JA2LCP") && dispatch.dx_grid == QStringLiteral ("PM95"),
            "DX target is normalized at envelope boundary");
+    Control::Dispatch prepared;
+    check (control.prepare_dispatch (dispatch.request_id, dispatch.server_epoch, &prepared),
+           "DX dispatch prepares at execution time");
+    check (control.begin_dispatch (prepared), "DX dispatch begins once");
   });
   auto select_pending = control.submit (select);
   check (select_pending.status == Control::Status::Pending && select_dispatched, "DX enters pending through dispatch");
@@ -128,10 +170,40 @@ int main ()
   check (control.submit (frequency_request (control, QStringLiteral ("after-shutdown"), 14079000)).reason
          == QStringLiteral ("shutdown"), "shutdown rejects later requests");
 
+  Control queued_timeout {100};
+  queued_timeout.set_clock_for_test (10);
+  queued_timeout.set_observed_state (safe_state (1));
+  Control::Dispatch old_queued_dispatch;
+  queued_timeout.set_frequency_dispatcher ([&] (Control::Dispatch const& dispatch) {
+    if (old_queued_dispatch.request_id.isEmpty ()) old_queued_dispatch = dispatch;
+  });
+  auto queued_timeout_request = frequency_request (queued_timeout, QStringLiteral ("queued-timeout"), 14074000);
+  check (queued_timeout.submit (queued_timeout_request).status == Control::Status::Pending,
+         "queued request enters pending before execution");
+  queued_timeout.advance_clock_for_test (100);
+  check (queued_timeout.expire (), "queued request reaches deadline");
+  check (queued_timeout.result (QStringLiteral ("queued-timeout")).status == Control::Status::Timeout,
+         "queued request records timeout");
+  Control::Dispatch expired_dispatch;
+  auto newer_pending = queued_timeout.submit (
+      frequency_request (queued_timeout, QStringLiteral ("newer-pending"), 14075000));
+  check (newer_pending.status == Control::Status::Pending && queued_timeout.has_pending (),
+         "new request can remain pending after queue-only timeout");
+  check (!newer_pending.reason.contains (QStringLiteral ("unconfirmed_feedback")),
+         "queue-only timeout does not assert hardware latch");
+  check (!queued_timeout.prepare_dispatch (old_queued_dispatch.request_id,
+                                           old_queued_dispatch.server_epoch, &expired_dispatch),
+         "expired old queue cannot execute while newer request is pending");
+
   Control timeout {100};
   timeout.set_clock_for_test (10);
   timeout.set_observed_state (safe_state (1));
-  timeout.set_frequency_dispatcher ([] (Control::Dispatch const&) {});
+  timeout.set_frequency_dispatcher ([&] (Control::Dispatch const& dispatch) {
+    Control::Dispatch prepared;
+    check (timeout.prepare_dispatch (dispatch.request_id, dispatch.server_epoch, &prepared),
+           "timeout request prepares before execution");
+    check (timeout.begin_dispatch (prepared), "timeout request begins execution");
+  });
   auto timeout_request = frequency_request (timeout, QStringLiteral ("timeout"), 14074000);
   check (timeout.submit (timeout_request).status == Control::Status::Pending, "timeout request pending");
   timeout.advance_clock_for_test (100);
@@ -143,10 +215,17 @@ int main ()
          "late feedback cannot revive timed-out operation");
   check (timeout.result (QStringLiteral ("timeout")).reason.contains (QStringLiteral ("late_feedback_unknown")),
           "late feedback is explicitly marked unknown");
+  auto timeout_duplicate = timeout.submit (timeout_request);
+  check (timeout_duplicate.status == Control::Status::Timeout
+         && timeout_duplicate.reason.contains (QStringLiteral ("feedback_timeout")),
+         "same timed-out id and payload returns original timeout result");
   check (timeout.submit (frequency_request (timeout, QStringLiteral ("after-timeout"), 14074000)).reason
          == QStringLiteral ("unconfirmed_feedback"),
          "timeout holds an unconfirmed latch against a new request");
-  check (timeout.rotate_epoch (), "epoch rotation is the explicit timeout recovery");
+  check (timeout.rotate_epoch (), "epoch rotation does not fail while preserving latch");
+  check (timeout.submit (frequency_request (timeout, QStringLiteral ("after-rotate"), 14074000)).reason
+         == QStringLiteral ("unconfirmed_feedback"),
+         "epoch rotation does not clear unconfirmed latch");
 
   Control provider {100};
   provider.set_clock_for_test (0);
@@ -158,11 +237,32 @@ int main ()
     return state;
   });
   int provider_dispatches = 0;
-  provider.set_frequency_dispatcher ([&] (Control::Dispatch const&) { ++provider_dispatches; });
+  provider.set_frequency_dispatcher ([&] (Control::Dispatch const& dispatch) {
+    ++provider_dispatches;
+    Control::Dispatch prepared;
+    check (!provider.prepare_dispatch (dispatch.request_id, dispatch.server_epoch, &prepared),
+           "unsafe execution-time observation rejects dispatch");
+  });
   auto provider_result = provider.submit (frequency_request (provider, QStringLiteral ("reread"), 14074000));
   check (provider_result.status == Control::Status::Rejected
-         && provider_result.reason == QStringLiteral ("ptt_active") && provider_dispatches == 0,
+         && provider_result.reason == QStringLiteral ("ptt_active") && provider_dispatches == 1,
           "dispatch re-reads safety and fails closed");
+
+  Control unknown_baseline {100};
+  unknown_baseline.set_clock_for_test (0);
+  auto unknown_state = safe_state (1);
+  unknown_state.frequency_known = false;
+  unknown_baseline.set_observed_state (unknown_state);
+  unknown_baseline.set_frequency_dispatcher ([&] (Control::Dispatch const& dispatch) {
+    Control::Dispatch prepared;
+    check (!unknown_baseline.prepare_dispatch (dispatch.request_id, dispatch.server_epoch, &prepared),
+           "unknown CAT baseline rejects execution");
+  });
+  auto unknown_result = unknown_baseline.submit (
+      frequency_request (unknown_baseline, QStringLiteral ("unknown-baseline"), 14074000));
+  check (unknown_result.status == Control::Status::Rejected
+         && unknown_result.reason == QStringLiteral ("frequency_baseline_unknown"),
+         "frequency dispatch requires a known generation and actual CAT frequency");
 
   Control provider_reentrant {100};
   provider_reentrant.set_clock_for_test (10);
@@ -208,8 +308,12 @@ int main ()
   reentrant.set_clock_for_test (0);
   reentrant.set_observed_state (safe_state (1));
   reentrant.set_frequency_dispatcher ([&] (Control::Dispatch const& dispatch) {
-    check (reentrant.feedback_frequency (dispatch.request_id, dispatch.server_epoch,
-                                         dispatch.expected_generation + 1, dispatch.frequency_hz, 2),
+    Control::Dispatch prepared;
+    check (reentrant.prepare_dispatch (dispatch.request_id, dispatch.server_epoch, &prepared),
+           "reentrant request prepares before feedback");
+    check (reentrant.begin_dispatch (prepared), "reentrant request begins before feedback");
+    check (reentrant.feedback_frequency (prepared.request_id, prepared.server_epoch,
+                                         prepared.expected_generation + 1, prepared.frequency_hz, 2),
            "reentrant handler feedback completes");
     check (reentrant.rotate_epoch (), "completed handler may rotate epoch");
     reentrant.set_frequency_dispatcher ([] (Control::Dispatch const&) {});

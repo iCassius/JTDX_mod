@@ -30,6 +30,13 @@ public:
     bool tx_enabled {false};
     bool watchdog_timeout {false};
     bool business_state_known {false};
+    // MainWindow 业务状态投影；未知时默认关闭，保持 fail-closed。
+    bool rig_online {false};
+    bool monitoring {false};
+    bool start2 {false};
+    bool tune {false};
+    bool auto_tx {false};
+    bool iptt {false};
   };
 
   struct ObservedState
@@ -102,6 +109,12 @@ public:
   void set_frequency_dispatcher (DispatchHandler handler);
   void set_select_dx_dispatcher (DispatchHandler handler);
 
+  // 排队回调真正执行时重新读取生产状态并生成一次性 dispatch。
+  // prepare 不消费；begin_dispatch 只允许同一请求实际开始一次。
+  bool prepare_dispatch (QString const& request_id, QString const& server_epoch,
+                         Dispatch * prepared);
+  bool begin_dispatch (Dispatch const& dispatch);
+
   Result submit (Request request);
   bool feedback_frequency (QString const& request_id, QString const& server_epoch,
                            quint64 generation, qint64 actual_frequency_hz,
@@ -134,6 +147,8 @@ private:
     QString dx_call;
     QString dx_grid;
     bool timed_out {false};
+    bool prepared {false};
+    bool dispatched {false};
   };
 
   static QString normalize_request_id (QString const& request_id);

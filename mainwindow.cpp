@@ -2267,6 +2267,7 @@ JtdxWebControl::ObservedState MainWindow::webControlObservation () const
       && snapshot.value (QStringLiteral ("rig_fresh")).toBool ();
   bool known = false;
   result.safety.transmitting = bool_value ("transmitting", &known);
+  result.safety.transmitting = result.safety.transmitting || m_transmitting;
   result.safety.known = result.safety.known && known;
   result.safety.ptt = bool_value ("ptt", &known);
   result.safety.known = result.safety.known && known;
@@ -2275,6 +2276,14 @@ JtdxWebControl::ObservedState MainWindow::webControlObservation () const
   result.safety.watchdog_timeout = bool_value ("watchdog_timeout", &known);
   result.safety.known = result.safety.known && known;
   result.safety.business_state_known = !snapshot.value (QStringLiteral ("auto_sequence_state")).isNull ();
+  // 控制 gate 需要生产 MainWindow 的瞬时业务状态；这些字段不能由 Web 快照的
+  // nominal/target 值推断，也不能在 dispatch lambda 中复制一套安全判断。
+  result.safety.rig_online = m_rigOk && m_config.is_transceiver_online ();
+  result.safety.monitoring = m_monitoring;
+  result.safety.start2 = m_start2;
+  result.safety.tune = m_tune;
+  result.safety.auto_tx = m_autoTx;
+  result.safety.iptt = g_iptt != 0;
   result.dx_call = snapshot.value (QStringLiteral ("dx_call")).toString ();
   result.dx_grid = snapshot.value (QStringLiteral ("dx_grid")).toString ();
   // 本批只注册 frequency；不得把全局 revision 冒充 DX 业务 generation。
@@ -2285,43 +2294,7 @@ JtdxWebControl::ObservedState MainWindow::webControlObservation () const
 
 void MainWindow::dispatchWebFrequency (JtdxWebControl::Dispatch dispatch)
 {
-  if (!m_webControl || m_webControl->is_shutdown ()) return;
-  if (m_webFrequencyPending) return;
-  m_webControl->expire ();
-  auto const queued_result = m_webControl->result (dispatch.request_id);
-  if (queued_result.status != JtdxWebControl::Status::Pending
-      || queued_result.server_epoch != dispatch.server_epoch
-      || !m_webControl->has_pending ())
-    return;
-  auto const current = webControlObservation ();
-  QString gate_reason;
-  if (!current.safety.known || !current.safety.fresh)
-    gate_reason = QStringLiteral ("safety_unknown_or_stale");
-  else if (current.safety.transmitting)
-    gate_reason = QStringLiteral ("transmitting");
-  else if (current.safety.ptt)
-    gate_reason = QStringLiteral ("ptt_active");
-  else if (current.safety.tx_enabled)
-    gate_reason = QStringLiteral ("tx_enabled");
-  else if (current.safety.watchdog_timeout)
-    gate_reason = QStringLiteral ("watchdog_timeout");
-  else if (!m_rigOk || !m_config.is_transceiver_online ())
-    gate_reason = QStringLiteral ("rig_offline");
-  else if (!m_monitoring)
-    gate_reason = QStringLiteral ("monitor_not_active");
-  else if (m_start2 || m_tune || m_autoTx || m_transmitting || g_iptt != 0)
-    gate_reason = QStringLiteral ("tx_path_active");
-  if (!gate_reason.isEmpty ())
-    {
-      m_webControl->fail (dispatch.request_id, dispatch.server_epoch, gate_reason);
-      return;
-    }
-  if (dispatch.frequency_hz <= 0)
-    {
-      m_webControl->fail (dispatch.request_id, dispatch.server_epoch,
-                          QStringLiteral ("invalid_frequency"));
-      return;
-    }
+  if (!m_webControl || m_webControl->is_shutdown () || m_webFrequencyPending) return;
   auto const validation = JtdxWebFrequency::validate_hz (
       static_cast<JtdxWebFrequency::Frequency> (dispatch.frequency_hz), *m_config.bands ());
   if (!validation.valid)
@@ -2329,6 +2302,10 @@ void MainWindow::dispatchWebFrequency (JtdxWebControl::Dispatch dispatch)
       m_webControl->fail (dispatch.request_id, dispatch.server_epoch, validation.reason);
       return;
     }
+  JtdxWebControl::Dispatch prepared;
+  if (!m_webControl->prepare_dispatch (dispatch.request_id, dispatch.server_epoch, &prepared)) return;
+  if (!m_webControl->begin_dispatch (prepared)) return;
+  dispatch = std::move (prepared);
   m_webFrequencyDispatch = dispatch;
   m_webFrequencyPending = true;
   // Preserve band_changed's desktop side effects and its wide-graph update.
