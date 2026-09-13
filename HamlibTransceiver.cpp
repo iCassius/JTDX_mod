@@ -5,6 +5,9 @@
 
 #include <cstring>
 #include <cmath>
+#include <cstdint>
+#include <algorithm>
+#include <limits>
 
 #include <QByteArray>
 #include <QString>
@@ -28,6 +31,10 @@ namespace
 {
   unsigned constexpr ftx1_model_number {1051};
   QMutex recovery_log_mutex;
+  // Hamlib's debug callback is process-global, while rig calls are normally
+  // synchronous.  A thread-local generation prevents an unrelated thread or
+  // model from contaminating the poll that is being evaluated here.
+  thread_local std::uint64_t hamlib_wrong_reply_generation {0};
 
   QString recovery_log_path ()
   {
@@ -87,6 +94,7 @@ namespace
       case Ftx1CatPollPolicy::Operation::power: return "get_power";
       case Ftx1CatPollPolicy::Operation::swr: return "get_swr";
       case Ftx1CatPollPolicy::Operation::ptt: return "get_ptt";
+      case Ftx1CatPollPolicy::Operation::protocol_sync: return "protocol_sync";
       case Ftx1CatPollPolicy::Operation::count: break;
       }
     return "unknown";
@@ -109,7 +117,8 @@ namespace
                              bool ptt_intent,
                              bool ptt_actual, bool ptt_known,
                              bool ptt_pending, bool ptt_transition,
-                             bool safe_idle)
+                             bool safe_idle,
+                             unsigned protocol_sync_mismatches = 0)
   {
     QMutexLocker locker {&recovery_log_mutex};
     auto const path = recovery_log_path ();
@@ -134,6 +143,7 @@ namespace
                << " ptt_pending=" << (ptt_pending ? "true" : "false")
                << " ptt_transition=" << (ptt_transition ? "true" : "false")
                << " safe_idle=" << (safe_idle ? "true" : "false")
+               << " protocol_sync_mismatches=" << protocol_sync_mismatches
                << " decision=" << poll_decision_name (decision) << '\n';
       }
   }
@@ -153,6 +163,35 @@ namespace
         stream << QDateTime::currentDateTime ().toString (Qt::ISODateWithMs)
                << " [rig-control] hamlib-error level=ERR message=" << diagnostic << '\n';
       }
+  }
+
+  void append_bounded_wrong_reply_log (QString diagnostic)
+  {
+    diagnostic.replace (QRegularExpression ("\\s+"), " ");
+    diagnostic = diagnostic.left (512).trimmed ();
+    QMutexLocker locker {&recovery_log_mutex};
+    static qint64 last_log_ms {-1};
+    static unsigned suppressed {0};
+    auto const now_ms = QDateTime::currentMSecsSinceEpoch ();
+    if (last_log_ms >= 0 && now_ms - last_log_ms < 1000)
+      {
+        ++suppressed;
+        return;
+      }
+
+    auto const path = recovery_log_path ();
+    rotate_recovery_log_if_needed (path);
+    QFile log {path};
+    if (log.open (QIODevice::WriteOnly | QIODevice::Text | QIODevice::Append))
+      {
+        QTextStream stream {&log};
+        stream.setCodec ("UTF-8");
+        stream << QDateTime::currentDateTime ().toString (Qt::ISODateWithMs)
+               << " [rig-control] hamlib-wrong-reply message=" << diagnostic
+               << " suppressed=" << suppressed << '\n';
+      }
+    last_log_ms = now_ms;
+    suppressed = 0;
   }
 
   // Unfortunately bandwidth is conflated  with mode, this is probably
@@ -175,6 +214,14 @@ namespace
     QString message;
     static char constexpr fmt[] = "Hamlib: %s";
     message = message.vasprintf (format, ap).trimmed ();
+    bool const wrong_reply = Ftx1CatPollPolicy::is_newcat_wrong_reply (
+      message.contains (QStringLiteral ("newcat_get_cmd")),
+      message.contains (QStringLiteral ("wrong reply")));
+    if (wrong_reply)
+      {
+        ++hamlib_wrong_reply_generation;
+        append_bounded_wrong_reply_log (message);
+      }
 
     switch (level)
       {
@@ -183,7 +230,7 @@ namespace
         break;
 
       case RIG_DEBUG_ERR:
-        append_hamlib_error_log (message);
+        if (!wrong_reply) append_hamlib_error_log (message);
         qCritical (fmt, message.toLocal8Bit ().data ());
         break;
 
@@ -647,7 +694,8 @@ void HamlibTransceiver::observe_poll_success (Ftx1CatPollPolicy::Operation opera
 
 void HamlibTransceiver::check_poll_read (Ftx1CatPollPolicy::Operation operation,
                                          int ret_code, QString const& doing,
-                                         bool legacy_ignore)
+                                         bool legacy_ignore,
+                                         unsigned protocol_sync_mismatches)
 {
   if (RIG_OK == ret_code)
     {
@@ -686,7 +734,8 @@ void HamlibTransceiver::check_poll_read (Ftx1CatPollPolicy::Operation operation,
                             context.ptt_intent, context.ptt_actual,
                             context.ptt_known, context.ptt_request_pending,
                             context.ptt_transition_pending,
-                            Ftx1CatPollPolicy::safe_idle (context));
+                            Ftx1CatPollPolicy::safe_idle (context),
+                            protocol_sync_mismatches);
       // This optional legacy result completes the current poll without
       // contributing to the next poll's overall failure streak.  No cached
       // value is updated and do_poll() still returns immediately.
@@ -700,7 +749,8 @@ void HamlibTransceiver::check_poll_read (Ftx1CatPollPolicy::Operation operation,
                         context.ptt_intent, context.ptt_actual,
                         context.ptt_known, context.ptt_request_pending,
                         context.ptt_transition_pending,
-                        Ftx1CatPollPolicy::safe_idle (context));
+                        Ftx1CatPollPolicy::safe_idle (context),
+                        protocol_sync_mismatches);
   if (Ftx1CatPollPolicy::Decision::soft_ignore != decision)
     {
       // Escalation and all non-transient/unsafe errors use the existing hard
@@ -1319,6 +1369,27 @@ void HamlibTransceiver::do_poll ()
   bool const ftx1 = is_ftx1_model (model_);
   bool meter_only = false;
   if (ftx1) ftx1_poll_policy_.begin_poll ();
+  auto const poll_generation = hamlib_wrong_reply_generation;
+  bool poll_finished = false;
+  auto finish_ftx1_poll = [&] ()
+    {
+      if (!ftx1 || poll_finished) return;
+      poll_finished = true;
+      auto const generation = hamlib_wrong_reply_generation;
+      if (Ftx1CatPollPolicy::has_new_protocol_sync_events (poll_generation,
+                                                            generation))
+        {
+          auto const mismatch_count = static_cast<unsigned> (
+            std::min<std::uint64_t> (generation - poll_generation,
+                                     static_cast<std::uint64_t> (
+                                       std::numeric_limits<unsigned>::max ())));
+          check_poll_read (Ftx1CatPollPolicy::Operation::protocol_sync,
+                           -RIG_EPROTO,
+                           tr ("checking FTX-1 CAT protocol synchronization"),
+                           false, mismatch_count);
+        }
+      ftx1_poll_policy_.complete_poll ();
+    };
 #if JTDX_DEBUG_TO_FILE
   FILE * pFile = fopen (debug_file_.c_str(),"a");
   auto ms = m_jtdxtime->currentMSecsSinceEpoch2();
@@ -1357,6 +1428,7 @@ void HamlibTransceiver::do_poll ()
             {
               // A soft PTT read failure still ends this poll.  The previous
               // PTT state remains authoritative until the next read.
+              finish_ftx1_poll ();
               return;
             }
         }
@@ -1383,7 +1455,7 @@ void HamlibTransceiver::do_poll ()
       if (skip_nonessential && !meter_only)
         {
           TRACE_CAT_POLL ("HamlibTransceiver", "FTX-1 non-essential CAT reads paused during PTT safety window");
-          ftx1_poll_policy_.complete_poll ();
+          finish_ftx1_poll ();
           return;
         }
     }
@@ -1394,7 +1466,7 @@ void HamlibTransceiver::do_poll ()
       auto const rc = rig_get_vfo (rig_.data (), &v);
       check_poll_read (Ftx1CatPollPolicy::Operation::vfo, rc,
                        tr ("getting current VFO")); // has side effect of establishing current VFO inside hamlib
-      if (ftx1 && RIG_OK != rc) return;
+      if (ftx1 && RIG_OK != rc) { finish_ftx1_poll (); return; }
       if (RIG_OK == rc)
         {
           TRACE_CAT_POLL ("HamlibTransceiver", "VFO =" << rig_strvfo (v));
@@ -1445,7 +1517,7 @@ void HamlibTransceiver::do_poll ()
               check_poll_read (Ftx1CatPollPolicy::Operation::split, rc,
                                tr ("getting split VFO"), true);
             }
-          if (ftx1) return;
+          if (ftx1) { finish_ftx1_poll (); return; }
           // Some rigs (Icom) don't have a way of reporting SPLIT
           // mode
           TRACE_CAT_POLL ("HamlibTransceiver", "rig_get_split_vfo can't do on this rig");
@@ -1470,7 +1542,7 @@ void HamlibTransceiver::do_poll ()
           auto const rc = rig_get_freq (rig_.data (), RIG_VFO_CURR, &f);
           check_poll_read (Ftx1CatPollPolicy::Operation::rx_frequency, rc,
                            tr ("getting current VFO frequency"));
-          if (ftx1 && RIG_OK != rc) return;
+          if (ftx1 && RIG_OK != rc) { finish_ftx1_poll (); return; }
           if (RIG_OK == rc)
             {
               f = std::round (f);
@@ -1502,7 +1574,7 @@ void HamlibTransceiver::do_poll ()
                                         , &f);
           check_poll_read (Ftx1CatPollPolicy::Operation::other_frequency, rc,
                            tr ("getting other VFO frequency"));
-          if (ftx1 && RIG_OK != rc) return;
+          if (ftx1 && RIG_OK != rc) { finish_ftx1_poll (); return; }
           if (RIG_OK == rc)
             {
               f = std::round (f);
@@ -1543,7 +1615,7 @@ void HamlibTransceiver::do_poll ()
         {
           check_poll_read (Ftx1CatPollPolicy::Operation::mode, rc,
                            tr ("getting current mode"), true);
-          if (ftx1) return;
+          if (ftx1) { finish_ftx1_poll (); return; }
           TRACE_CAT_POLL ("HamlibTransceiver", "rig_get_mode mode failed with rc:" << rc << "ignoring");
 #if JTDX_DEBUG_TO_FILE
           pFile = fopen (debug_file_.c_str(),"a");
@@ -1573,7 +1645,7 @@ void HamlibTransceiver::do_poll ()
               } else {
                 check_poll_read (Ftx1CatPollPolicy::Operation::strength, rc,
                                  tr ("getting signal strength"), true);
-                if (ftx1) return;
+                if (ftx1) { finish_ftx1_poll (); return; }
                 TRACE_CAT_POLL ("HamlibTransceiver", "rig_get_level failed with rc:" << rc << "ignoring");
 #if JTDX_DEBUG_TO_FILE
                 pFile = fopen (debug_file_.c_str(),"a");
@@ -1598,7 +1670,7 @@ void HamlibTransceiver::do_poll ()
               } else {
                 check_poll_read (Ftx1CatPollPolicy::Operation::power, rc,
                                  tr ("getting RF power meter"), true);
-                if (ftx1) return;
+                if (ftx1) { finish_ftx1_poll (); return; }
                 TRACE_CAT_POLL ("HamlibTransceiver", "rig_get_level RFPOWER_METER_WATTS failed with rc:" << rc << "ignoring");
 #if JTDX_DEBUG_TO_FILE
                 pFile = fopen (debug_file_.c_str(),"a");
@@ -1624,7 +1696,7 @@ void HamlibTransceiver::do_poll ()
                   } else {
                     check_poll_read (Ftx1CatPollPolicy::Operation::swr, rc,
                                      tr ("getting SWR"), true);
-                    if (ftx1) return;
+                    if (ftx1) { finish_ftx1_poll (); return; }
                     TRACE_CAT_POLL ("HamlibTransceiver", "rig_get_level RIG_LEVEL_SWR failed with rc:" << rc << "ignoring");
 #if JTDX_DEBUG_TO_FILE
                     pFile = fopen (debug_file_.c_str(),"a");
@@ -1665,7 +1737,7 @@ void HamlibTransceiver::do_poll ()
               } else {
                 check_poll_read (Ftx1CatPollPolicy::Operation::power, rc,
                                  tr ("getting RF power"), true);
-                if (ftx1) return;
+                if (ftx1) { finish_ftx1_poll (); return; }
                 TRACE_CAT_POLL ("HamlibTransceiver", "rig_get_level RFPOWER failed with rc:" << rc << "ignoring");
 #if JTDX_DEBUG_TO_FILE
                 pFile = fopen (debug_file_.c_str(),"a");
@@ -1680,7 +1752,7 @@ void HamlibTransceiver::do_poll ()
 
   if (meter_only)
     {
-      ftx1_poll_policy_.complete_poll ();
+      finish_ftx1_poll ();
       return;
     }
 
@@ -1723,7 +1795,7 @@ void HamlibTransceiver::do_poll ()
   rig_set_debug (RIG_DEBUG_WARN);
 #endif
 #endif
-  if (ftx1) ftx1_poll_policy_.complete_poll ();
+  finish_ftx1_poll ();
 }
 
 void HamlibTransceiver::do_ptt (bool on)

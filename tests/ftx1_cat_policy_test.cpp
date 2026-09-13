@@ -113,6 +113,56 @@ int main ()
   require (nonessential_reads_allowed (false, false, true, true, true, 2, true),
            "non-FTX-1 polling schedule must remain unchanged");
 
+  // Protocol desynchronization is a poll-level observation: Hamlib may
+  // eventually return RIG_OK after reporting a wrong response internally.
+  State protocol_sync;
+  protocol_sync.begin_poll ();
+  require (Decision::soft_ignore == protocol_sync.observe_failure (
+      Operation::protocol_sync, idle ()),
+           "first wrong-response poll must be soft ignored while idle");
+  protocol_sync.begin_poll ();
+  require (Decision::soft_ignore == protocol_sync.observe_failure (
+      Operation::protocol_sync, idle ()),
+           "second wrong-response poll must be soft ignored while idle");
+  protocol_sync.begin_poll ();
+  require (Decision::escalate == protocol_sync.observe_failure (
+      Operation::protocol_sync, idle ()),
+           "third wrong-response poll must escalate while idle");
+
+  protocol_sync.reset ();
+  protocol_sync.begin_poll ();
+  protocol_sync.complete_poll ();
+  require (0 == protocol_sync.overall_failure_streak (),
+           "clean poll must clear protocol-sync streak");
+  auto protocol_ptt = idle ();
+  protocol_ptt.ptt_intent = true;
+  require (Decision::hard_failure == protocol_sync.observe_failure (
+      Operation::protocol_sync, protocol_ptt),
+           "protocol mismatch during PTT intent must fail immediately");
+  protocol_ptt = idle ();
+  protocol_ptt.ptt_known = false;
+  require (Decision::hard_failure == protocol_sync.observe_failure (
+      Operation::protocol_sync, protocol_ptt),
+           "protocol mismatch with unknown PTT must fail immediately");
+  protocol_ptt = idle ();
+  protocol_ptt.ptt_transition_pending = true;
+  require (Decision::hard_failure == protocol_sync.observe_failure (
+      Operation::protocol_sync, protocol_ptt),
+           "protocol mismatch during PTT transition must fail immediately");
+
+  require (!has_new_protocol_sync_events (17, 17),
+           "unchanged generation must not create a poll event");
+  require (has_new_protocol_sync_events (17, 18),
+           "new generation must be consumed by the current poll");
+  require (!has_new_protocol_sync_events (18, 17),
+           "older generation must not contaminate a later poll");
+  require (!is_newcat_wrong_reply (false, true),
+           "ordinary warning must not be classified as a protocol mismatch");
+  require (!is_newcat_wrong_reply (true, false),
+           "non-error newcat diagnostic must not be classified as a mismatch");
+  require (is_newcat_wrong_reply (true, true),
+           "only newcat wrong-response diagnostics create a mismatch event");
+
   // A legacy optional result completes the poll and clears the overall
   // streak; a later transient error starts again at the first failure.
   State optional_completion;

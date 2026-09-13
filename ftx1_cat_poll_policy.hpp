@@ -2,6 +2,7 @@
 #define FTX1_CAT_POLL_POLICY_HPP__
 
 #include <array>
+#include <cstdint>
 
 // Qt/Hamlib independent policy for the FTX-1 CAT polling boundary.
 // The caller supplies the concrete Hamlib error classification and the
@@ -19,6 +20,7 @@ namespace Ftx1CatPollPolicy
     power,
     swr,
     ptt,
+    protocol_sync,
     count
   };
 
@@ -96,6 +98,22 @@ namespace Ftx1CatPollPolicy
         break;
       }
     return optional && legacy_nonfatal_error && safe_idle (context);
+  }
+
+  // Hamlib's newcat backend can retry a command after receiving a response
+  // for another command and still return RIG_OK.  The concrete callback
+  // records a monotonic generation; only a generation delta captured inside
+  // the current poll is eligible for this operation.
+  inline bool has_new_protocol_sync_events (std::uint64_t poll_generation,
+                                            std::uint64_t current_generation)
+  {
+    return current_generation > poll_generation;
+  }
+
+  inline bool is_newcat_wrong_reply (bool is_newcat_command,
+                                     bool is_wrong_reply)
+  {
+    return is_newcat_command && is_wrong_reply;
   }
 
   class State

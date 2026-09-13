@@ -47,7 +47,8 @@ class HamlibTransceiver final
 
   void error_check (int ret_code, QString const& doing) const;
   void check_poll_read (Ftx1CatPollPolicy::Operation, int ret_code,
-                        QString const& doing, bool legacy_ignore = false);
+                        QString const& doing, bool legacy_ignore = false,
+                        unsigned protocol_sync_mismatches = 0);
   void observe_poll_success (Ftx1CatPollPolicy::Operation);
   void set_conf (char const * item, char const * value);
   QByteArray get_conf (char const * item);
