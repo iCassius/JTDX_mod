@@ -12,6 +12,8 @@
 
 - 配置：MinGW64 Release，`WSJT_ENABLE_OMNIRIG=OFF`；源码默认值仍为 `ON`，Windows 四段资源布局不变。
 - 权威构建目录：`C:\JTDX64\build-webui-dev-msys2`。
-- 目标 `ftx1_cat_policy_test` 通过；完整 CTest 结果、ZIP 路径、大小和 SHA256 在最终交付验证提交中补录。
-- 测试包目录与 ZIP 仅提供可直接覆盖运行目录的 `bin/`、`plugins/`、`share/` 三个顶层目录；不包含外层脚本或文档。SHA256 sidecar 放在 ZIP 外部。
+- 目标 `ftx1_cat_policy_test` 通过；完整 CTest `19/19` 通过，总耗时 54.88 秒，日志为 `C:\JTDX64\build-webui-dev-msys2\final-cat-sync-ctest-9984c38.log`。
+- 最终测试包目录为 `C:\JTDX64\159.2.10-cat-sync-test`，ZIP 为 `C:\JTDX64\159.2.10-cat-sync-test.zip`，大小 56,177,081 字节、75 条记录，顶层严格为 `bin`、`plugins`、`share`；SHA256 为 `507acb25a5ac9b3209049c47603b806d3ae69e8d8767333b41656e7cb7966e88`，sidecar 在 ZIP 外部。
+- 包内 `bin/jtdx.exe` SHA256 为 `9a11d71ffea637173a43567681f951e6c4666367a53ee397299e8bc70856ac6a`，ProductVersion 为 `2.2.159.2 9984c3`；`msys-hamlib-4.dll` SHA256 为 `630a90e02f56e0d5f02a77e8d172f61f041399900dbffa57a4fb989896895db3`，与既有 `C:\JTDX64\159\bin` 运行时一致。
+- 测试包不含外层脚本或文档，可直接覆盖运行目录的三个运行时目录；未安装或覆盖 `C:\JTDX64\159`。
 - 未启动 JTDX，未连接 CAT/PTT，未进行真实发射、音频或 HIL；未安装、未覆盖 `C:\JTDX64\159`。

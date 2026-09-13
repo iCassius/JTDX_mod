@@ -116,7 +116,9 @@ FTX-1（Hamlib model `1051`）的 `do_poll()` 保持 PTT-first：PTT 未知、�
 
 第二现场文件 `C:\Users\cassi\Downloads\MEM\202609_ALL(1).TXT` 的 SHA256 为 `CD4E566CC482A9474385D273F3911C30C0D742210A1DE3D8797EA884BF94D78B`，日志头为 `JTDX v2.2.159.2.844fd76`。其中 BI4BKX 对 R9OOF 在 UTC `08:38:31–09:11:00` 出现 70 次 TX（30 次 `PM01`、40 次 `R-26`），这是旧版自动特殊目标重试漏控的复现，不能作为当前源码 `cde1cb0` 基线及本次代码提交失效的证据；`wsjtx(1).log` 没有 R9OOF 的 CAT 设置证据，不能据此推断该电台配置。
 
-使用 `C:\JTDX64\build-webui-dev-msys2` 和 MinGW64 工具链完成目标构建、`ftx1_cat_policy_test` 及完整 CTest `19/19` 通过，覆盖空闲 1/2/3 轮、完整成功清零、PTT 不安全立即失败、非 FTX-1 隔离、普通 warning 不触发和 generation 只消费本轮新事件。未启动 JTDX，未连接 CAT/PTT，未进行音频、发射或真实电台 HIL。
+使用 `C:\JTDX64\build-webui-dev-msys2` 和 MinGW64 工具链完成最终 Release 构建（artifact code HEAD `9984c388edf5c91429da7930841e410477b5582d`）；目标 `ftx1_cat_policy_test` 及完整 CTest `19/19` 通过，最新 CTest 日志为 `C:\JTDX64\build-webui-dev-msys2\final-cat-sync-ctest-9984c38.log`，总耗时 54.88 秒。测试覆盖空闲 1/2/3 轮、完整成功清零、PTT 不安全立即失败、非 FTX-1 隔离、普通 warning 不触发和 generation 只消费本轮新事件。
+
+最终交付目录为 `C:\JTDX64\159.2.10-cat-sync-test`，ZIP 为 `C:\JTDX64\159.2.10-cat-sync-test.zip`，大小 56,177,081 字节、75 条记录，根目录严格为 `bin`、`plugins`、`share`；同级 SHA256 sidecar 为 `507acb25a5ac9b3209049c47603b806d3ae69e8d8767333b41656e7cb7966e88`。包内 `bin/jtdx.exe` SHA256 为 `9a11d71ffea637173a43567681f951e6c4666367a53ee397299e8bc70856ac6a`，ProductVersion 为 `2.2.159.2 9984c3`；`msys-hamlib-4.dll` SHA256 为 `630a90e02f56e0d5f02a77e8d172f61f041399900dbffa57a4fb989896895db3`，与既有 `C:\JTDX64\159\bin` 运行时一致。未启动 JTDX，未连接 CAT/PTT，未进行音频、发射或真实电台 HIL。
 
 ## 其他界面功能
 
