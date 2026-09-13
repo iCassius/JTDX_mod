@@ -14,6 +14,7 @@
 - 已实现：配置增加默认关闭的 `WebUiFrequencyControlEnabled` 专用键和设置 checkbox；Service 签名包含该 gate。由于有限 operations/SSE 完成回读尚未接入，MainWindow 强制生产 gate 为 false，checkbox 禁用并提示当前构建未启用，避免只读令牌意外获得写权限。
 - 验证：`cmake --build C:\JTDX64\build-webui-dev-msys2 --target jtdx configuration_web_ui_test jtdx_web_server_test --parallel 2` 退出码 0；`QT_QPA_PLATFORM=offscreen` 下 server/config focused tests 均退出码 0；最终 `C:\msys64\mingw64\bin\ctest.exe --test-dir C:\JTDX64\build-webui-dev-msys2 --output-on-failure` 为 `100% tests passed out of 19`，总耗时约 53.39 秒。
 - 未验证/未交付：未运行 JTDX、未连接 CAT/PTT/TX/电台、未做浏览器/HIL/部署；有限 `operations` 摘要及其 SSE 完成/超时回读仍是后续批次门槛。本片不宣称用户可用 Web 频率写控制。
+- 最终权威证据（结果提交前的文档收尾重建）：`C:\JTDX64\deps-webui\p4-frequency-http-final-build-2ca51ec.log` 明确重建 `jtdx_web_service_test`（含 `JtdxWebService.cpp`、`JtdxWebServer.cpp`）并退出 0；`C:\JTDX64\deps-webui\p4-frequency-http-final-ctest-2ca51ec.log` 为最终全量 CTest `100% tests passed out of 19`、约 53.30 秒。此前 LastTestsFailed/旧 service 二进制不作为最终证据。
 
 ### Web 文档同步与 CAT `.10` 交付基线（2026-09-13）
 
