@@ -36,6 +36,13 @@
 - `LiveFrequencyValidator.cpp:13/47/55` 的 MHz/频段/k 相对 MHz 解析、`validate` 的 Intermediate 语义和 `fixup` 触控件并 emit 的行为，不能直接当作严格安全频段拒绝；P4 实现应抽取纯解析/业务验证，不实例化控件 validator。`FrequencyLineEdit` 不是本入口。
 - 因此 `select-dx` 与 `frequency` 必须是两个独立操作；DX 选择不改频率，frequency 控制也不得用全局 revision 或旧频率相等替代专属 CAT 回读。两者共同拒绝 TX/PTT/arming/状态未知，并分别维护自己的业务 generation。
 
+## 与 CAT 恢复及 P5 AutoSeq/CQ 的交叉边界
+
+- P4 DX 只复用 `MainWindow` 已有业务状态以及 AutoSeq/Halt 的既有入口边界；Web 不自行清 DX、重置 CAT/PTT、复制 recovery，也不从 Web 侧直接拼接或启动 AutoSeq/CQ 发射流程。
+- CAT `protocol_sync` 必须经过既有 offline/reconnect 流程；只有桌面恢复链确认 PTT 已关闭后，才由桌面恢复链清理旧 DX。Web 只读取并呈现该链路的实际状态，不代行清理或解锁。
+- `accepted` 只表示请求已登记，DX 短暂为空也不能宣称通联结束。重连后的新一批完整解码若恢复原 QSO，Web 只呈现实际 QSO/DX 状态，不抢选 DX、不消费恢复候选。
+- CAT 交付证据仅作外部基线引用：代码提交 `328cc7a`、交付文档提交 `a89c9da`（artifact code HEAD `9984c38`）。完整 Release CTest `19/19` 含既有 `ftx1_cat_policy_test`，不能写成由本契约或本 Web 文档批次新增；详见 [`DEVELOPMENT_STATUS_zh-CN.md`](../../DEVELOPMENT_STATUS_zh-CN.md) 与 [`RELEASE_NOTES_2.2.159.2.10_zh-CN.md`](../../RELEASE_NOTES_2.2.159.2.10_zh-CN.md)。
+
 ## P4-a 控制合同
 
 ### 请求和状态门

@@ -1,5 +1,14 @@
 # JTDX 内置 Web UI：进度与中断恢复日志
 
+### Web 文档同步与 CAT `.10` 交付基线（2026-09-13）
+
+- 任务编号：`JTDX-WEBUI-DOC-SYNC-CAT-20260913`；本批额度：五小时剩余 `45%`、周剩余 `33%`；五小时低于 `30%` 后停止新实现，仅做文档收尾、静态检查和交接。
+- 当前基线：仓库 `C:\JTDX64\jtdx_sourcecode`，分支 `main`，HEAD `a89c9da`，工作树干净。`a89c9da` 只补 CAT `.10` 构建与交付文档；本批不改写、回滚或覆盖 CAT 代码或既有 CAT 文档。
+- CAT 交付证据：代码提交 `328cc7a` 的错序检测及 artifact code HEAD `9984c38` 的最终 Release，以 [`DEVELOPMENT_STATUS_zh-CN.md`](../../DEVELOPMENT_STATUS_zh-CN.md) 和 [`RELEASE_NOTES_2.2.159.2.10_zh-CN.md`](../../RELEASE_NOTES_2.2.159.2.10_zh-CN.md) 为来源；权威日志 `C:\JTDX64\build-webui-dev-msys2\final-cat-sync-ctest-9984c38.log` 记录完整 CTest `19/19`，含既有 `ftx1_cat_policy_test`，该测试不是本批新增。
+- P4/P5 交叉边界：Web DX 只复用 `MainWindow`、AutoSeq/Halt 的既有状态/入口边界，不自行清 DX、重置 CAT/PTT 或复制 recovery。`protocol_sync` 经既有 offline/reconnect，桌面恢复链确认 PTT off 后才清旧 DX；`accepted` 或 DX 短暂为空不能宣称通联结束。重连后新完整解码批次若恢复原 QSO，Web 只呈现实际状态，不抢选 DX。
+- 当前 Web 结论与下一步：HTTP 控制仍未接入；下一步仍为 frequency 契约与 HTTP 频率有限切片，当前没有频率 CAT 生产回读或 HIL 证据。P4 DX 与 P5 AutoSeq/CQ 继续沿用上述恢复和状态回读边界。
+- 本批动作：只更新本入口、P4-a 契约和本进度日志；不编译、不测试、不运行 JTDX/CAT/PTT/TX/HIL、不部署。收尾执行 `git diff --check`，随后精确创建中文本地 commit，不 push/amend/reset。
+
 ### P4 服务/服务器/控制生命周期 epoch 小片开始检查点（2026-09-13）
 
 - 任务编号：`JTDX-WEBUI-P4-LIFECYCLE-20260913`；执行档位：用户指定 `gpt-5.6-luna` / `high`。开局额度：五小时剩余 `97%`、周剩余 `57%`；本批低于五小时剩余 `30%` 时停止新实现，仅做最终验证、精确提交和交接（覆盖先前 `40%` 收尾提示）。
