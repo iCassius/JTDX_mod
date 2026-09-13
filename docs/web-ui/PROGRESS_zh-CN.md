@@ -9,6 +9,15 @@
 - 文件计划：`JtdxWebControl.hpp/.cpp` 增加停止失效/服务 epoch 绑定接口；`JtdxWebServer.hpp/.cpp` 增加可观测生命周期信号；`JtdxWebService.hpp/.cpp` 持有并绑定 `QPointer<JtdxWebControl>`；`mainwindow.*` 完成唯一对象接线；`tests/jtdx_web_service_test.cpp` 与控制测试覆盖 State/Control/Service 销毁、失败启动、停止重启及旧 queued dispatch；同步本入口与设计/验收文档。
 - 恢复点：生命周期接口完成后先构建 `jtdx` 与隔离 Service/Control 测试，再执行一次完整 CTest；命令和日志写入 `C:\JTDX64\deps-webui`，构建目录固定为 `C:\JTDX64\build-webui-dev-msys2`，PATH 以 `C:\msys64\mingw64\bin` 优先、`159\bin` 仅补 Hamlib，测试使用 `QT_QPA_PLATFORM=offscreen`。达到阈值后不再开启新实现。
 
+### P4 服务/服务器/控制生命周期 epoch 小片结果（2026-09-13）
+
+- 已完成：`JtdxWebServer` 报告监听生命周期；`JtdxWebService` 以 `QPointer<JtdxWebControl>` 接收成功监听 epoch，并在停止、启动失败、State 销毁和退出路径触发停止失效；Control 默认未绑定服务，绑定同 epoch 幂等，停止期间拒绝新控制，旧 pending/queued dispatch 不能执行。已 begin 未确认操作在停止/重启后保留 `unconfirmed_latch`；未 begin 的排队请求不建立硬件锁。MainWindow 接入唯一 Control；未开放 HTTP 控制路由。
+- 修改文件：`CMakeLists.txt`、`JtdxWebControl.hpp/.cpp`、`JtdxWebServer.hpp/.cpp`、`JtdxWebService.hpp/.cpp`、`mainwindow.cpp`、`tests/jtdx_web_control_test.cpp`、`tests/jtdx_web_service_test.cpp`，以及本入口、设计、验收矩阵和本恢复日志。
+- 验证：首轮 Service 测试二进制因目标尚未重编译而出现 restart latch 断言失败；随后以最新源码重建后 targeted `2/2` 通过。最终构建 `cmake --build C:\JTDX64\build-webui-dev-msys2 --target jtdx jtdx_web_control_test jtdx_web_service_test --parallel 2` 退出码 `0`；完整 `ctest --test-dir C:\JTDX64\build-webui-dev-msys2 --output-on-failure` 为 `19/19` 通过、54.83 秒。日志：`C:\JTDX64\deps-webui\p4-lifecycle-final-build.log`、`C:\JTDX64\deps-webui\p4-lifecycle-final-ctest.log`。
+- 结果提交：`1c6878e`（`P4：统一 Web 服务控制生命周期 epoch`）。最终工作树干净；未运行 `jtdx.exe`，未连接 CAT/PTT/TX，未做浏览器/HIL/部署。
+- 结束额度快照：五小时剩余约 `27%`、周剩余约 `46%`；已低于本片 `30%` 收尾阈值，停止新实现，仅保留本结果与交接。
+- 下一步：由根代理只读复核后决定后续批次；本片不扩展 HTTP 控制或真实设备验证。
+
 ### P4 频率异步 dispatch gate 小片开始检查点（2026-09-13）
 
 - 额度：本片开局五小时剩余 `100%`、周剩余 `69%`；最新快照五小时剩余约 `43%`、周剩余约 `60%`。本片收尾阈值为五小时剩余低于 `40%`，覆盖历史记录中的 `20%` 门槛。
