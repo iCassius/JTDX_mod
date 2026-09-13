@@ -9,6 +9,10 @@
 #include <QSet>
 #include <QString>
 #include <QTcpServer>
+#include "JtdxWebControl.hpp"
+#include "JtdxWebFrequency.hpp"
+#include <functional>
+#include <utility>
 
 #include "JtdxWebState.hpp"
 
@@ -32,6 +36,7 @@ public:
     QString bearer_token;             // P2 测试兼容：启动时立即转换为摘要
     QString bearer_token_sha256;      // 生产配置只保存 64 位十六进制摘要
     QString allowed_origin;            // LAN 时必须精确匹配；空值拒绝 Origin
+    bool enable_frequency_control {false}; // 仅显式开启时允许频率 POST
   };
 
   static constexpr quint16 automatic_port_first = 49152;
@@ -57,6 +62,9 @@ public:
   QString server_epoch () const;
   QString web_server_state () const;
   int active_connection_count () const;
+  void set_control (JtdxWebControl * control) { control_ = control; }
+  using FrequencyValidator = std::function<JtdxWebFrequency::Result (QString const&)>;
+  void set_frequency_validator (FrequencyValidator validator) { frequency_validator_ = std::move (validator); }
   // 将用户输入的原始令牌转换为持久化摘要；原文不得写入配置、URL、日志或 HTML。
   static QString bearer_token_digest (QString const& bearer_token);
 
@@ -86,6 +94,8 @@ private:
   QByteArray event_id () const;
   QJsonObject state_snapshot () const;
   QByteArray json_response (QJsonObject const& object) const;
+  QJsonObject control_response (JtdxWebControl::Result const& result) const;
+  QJsonObject control_error_response (int status, QString reason, QString request_id = {}) const;
   QByteArray http_response (int status, QByteArray const& reason,
                             QByteArray const& content_type, QByteArray const& body,
                             bool close = true) const;
@@ -99,6 +109,8 @@ private:
   void pump_sse (Client * client);
 
   QPointer<JtdxWebState> state_;
+  QPointer<JtdxWebControl> control_;
+  FrequencyValidator frequency_validator_;
   QTcpServer server_;
   QTimer * publish_timer_ {nullptr};
   QHash<QTcpSocket *, Client *> clients_;

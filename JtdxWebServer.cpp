@@ -5,6 +5,7 @@
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonDocument>
+#include <QJsonParseError>
 #include <QPointer>
 #include <QTimer>
 #include <QTcpSocket>
@@ -12,6 +13,8 @@
 #include <QUuid>
 
 #include <algorithm>
+#include <limits>
+#include <cmath>
 
 namespace {
 constexpr int header_timeout_ms = 5000;
@@ -34,13 +37,18 @@ QByteArray status_reason (int status)
   switch (status)
     {
     case 200: return QByteArrayLiteral ("OK");
+    case 202: return QByteArrayLiteral ("Accepted");
     case 400: return QByteArrayLiteral ("Bad Request");
+    case 409: return QByteArrayLiteral ("Conflict");
     case 401: return QByteArrayLiteral ("Unauthorized");
     case 403: return QByteArrayLiteral ("Forbidden");
     case 404: return QByteArrayLiteral ("Not Found");
     case 405: return QByteArrayLiteral ("Method Not Allowed");
     case 408: return QByteArrayLiteral ("Request Timeout");
     case 413: return QByteArrayLiteral ("Payload Too Large");
+    case 429: return QByteArrayLiteral ("Too Many Requests");
+    case 502: return QByteArrayLiteral ("Bad Gateway");
+    case 504: return QByteArrayLiteral ("Gateway Timeout");
     case 431: return QByteArrayLiteral ("Request Header Fields Too Large");
     case 500: return QByteArrayLiteral ("Internal Server Error");
     case 503: return QByteArrayLiteral ("Service Unavailable");
@@ -60,6 +68,7 @@ struct JtdxWebServer::Client
   QTimer * header_timer {nullptr};
   QTimer * drain_timer {nullptr};
   QByteArray request;
+  qint64 expected_request_size {-1};
   QByteArray pending;
   bool sse {false};
   bool draining {false};
@@ -408,16 +417,68 @@ void JtdxWebServer::on_ready_read (QTcpSocket * socket)
       return;
     }
   client->request += bytes;
-  if (client->request.size () > max_header_bytes)
+  if (client->request.size () > max_header_bytes + 4096 + 4)
     {
       reject_connection (socket, 431, QByteArrayLiteral ("header limit"));
       return;
     }
   int const header_end = client->request.indexOf (QByteArrayLiteral ("\r\n\r\n"));
   if (header_end < 0) return;
-  if (header_end + 4 != client->request.size ())
+  if (header_end + 4 > max_header_bytes)
     {
-      reject_connection (socket, 400, QByteArrayLiteral ("request body or pipelining is not supported"));
+      reject_connection (socket, 431, QByteArrayLiteral ("header limit"));
+      return;
+    }
+  if (client->expected_request_size < 0)
+    {
+      QByteArray const header = client->request.left (header_end);
+      QList<QByteArray> lines = header.split ('\n');
+      int content_length_count = 0;
+      qint64 content_length = 0;
+      for (QByteArray line : lines)
+        {
+          if (line.endsWith ('\r')) line.chop (1);
+          int const colon = line.indexOf (':');
+          if (colon <= 0) continue;
+          QByteArray const name = line.left (colon).trimmed ().toLower ();
+          if (name != QByteArrayLiteral ("content-length")) continue;
+          ++content_length_count;
+          QByteArray const value = line.mid (colon + 1).trimmed ();
+          if (value.isEmpty ())
+            {
+              reject_connection (socket, 400, QByteArrayLiteral ("invalid content-length"));
+              return;
+            }
+          bool const exceeds_body_limit = value.size () > 4
+              || (value.size () == 4 && value > QByteArrayLiteral ("4096"));
+          if (exceeds_body_limit)
+            {
+              reject_connection (socket, 413, QByteArrayLiteral ("body limit"));
+              return;
+            }
+          qint64 parsed = 0;
+          for (char const digit : value)
+            {
+              if (digit < '0' || digit > '9')
+                {
+                  reject_connection (socket, 400, QByteArrayLiteral ("invalid content-length"));
+                  return;
+                }
+              parsed = parsed * 10 + (digit - '0');
+            }
+          content_length = parsed;
+        }
+      if (content_length_count > 1)
+        {
+          reject_connection (socket, 400, QByteArrayLiteral ("duplicate content-length"));
+          return;
+        }
+      client->expected_request_size = header_end + 4 + (content_length_count ? content_length : 0);
+    }
+  if (client->request.size () < client->expected_request_size) return;
+  if (client->request.size () > client->expected_request_size)
+    {
+      reject_connection (socket, 400, QByteArrayLiteral ("request pipelining is not supported"));
       return;
     }
   QByteArray const header = client->request.left (header_end);
@@ -437,6 +498,7 @@ void JtdxWebServer::on_ready_read (QTcpSocket * socket)
   if (client->header_timer) client->header_timer->stop ();
   QByteArray request = client->request;
   client->request.clear ();
+  client->expected_request_size = -1;
   process_request (socket, request);
 }
 
@@ -532,6 +594,46 @@ QJsonObject JtdxWebServer::state_snapshot () const
 QByteArray JtdxWebServer::json_response (QJsonObject const& object) const
 {
   return QJsonDocument {object}.toJson (QJsonDocument::Compact);
+}
+
+QJsonObject JtdxWebServer::control_response (JtdxWebControl::Result const& result) const
+{
+  QJsonObject response;
+  response.insert (QStringLiteral ("request_id"), result.request_id);
+  response.insert (QStringLiteral ("operation"), JtdxWebControl::operation_name (result.operation));
+  response.insert (QStringLiteral ("server_epoch"), result.server_epoch);
+  response.insert (QStringLiteral ("status"), JtdxWebControl::status_name (result.status));
+  response.insert (QStringLiteral ("reason"), result.reason);
+  response.insert (QStringLiteral ("received_ms"), result.received_ms);
+  response.insert (QStringLiteral ("deadline_ms"), result.deadline_ms);
+  response.insert (QStringLiteral ("completed_ms"), result.completed_ms < 0
+                   ? QJsonValue {QJsonValue::Null} : QJsonValue {result.completed_ms});
+  response.insert (QStringLiteral ("state_revision"), static_cast<qint64> (result.snapshot.state_revision));
+  if (result.snapshot.frequency_known)
+    response.insert (QStringLiteral ("frequency_hz"), QString::number (result.snapshot.actual_frequency_hz));
+  else
+    response.insert (QStringLiteral ("frequency_hz"), QJsonValue {QJsonValue::Null});
+  response.insert (QStringLiteral ("current_state"), state_snapshot ());
+  return response;
+}
+
+QJsonObject JtdxWebServer::control_error_response (int status, QString reason, QString request_id) const
+{
+  QJsonObject response;
+  response.insert (QStringLiteral ("request_id"), request_id.isEmpty ()
+                   ? QUuid::createUuid ().toString (QUuid::WithoutBraces) : request_id);
+  response.insert (QStringLiteral ("operation"), QStringLiteral ("frequency"));
+  response.insert (QStringLiteral ("server_epoch"), server_epoch_);
+  response.insert (QStringLiteral ("status"), QStringLiteral ("rejected"));
+  response.insert (QStringLiteral ("reason"), std::move (reason));
+  response.insert (QStringLiteral ("received_ms"), activity_clock_.elapsed ());
+  response.insert (QStringLiteral ("deadline_ms"), QJsonValue {QJsonValue::Null});
+  response.insert (QStringLiteral ("completed_ms"), QJsonValue {QJsonValue::Null});
+  response.insert (QStringLiteral ("state_revision"), static_cast<qint64> (state_ ? state_->revision () : 0));
+  response.insert (QStringLiteral ("frequency_hz"), QJsonValue {QJsonValue::Null});
+  response.insert (QStringLiteral ("current_state"), state_snapshot ());
+  Q_UNUSED (status);
+  return response;
 }
 
 QByteArray JtdxWebServer::http_response (int status, QByteArray const& reason,
@@ -649,7 +751,14 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
 {
   Client * client = clients_.value (socket, nullptr);
   if (!client) return;
-  QList<QByteArray> lines = request.left (request.size () - 4).split ('\n');
+  int const header_end = request.indexOf (QByteArrayLiteral ("\r\n\r\n"));
+  if (header_end < 0)
+    {
+      reject_connection (socket, 400, QByteArrayLiteral ("invalid request"));
+      return;
+    }
+  QByteArray const body = request.mid (header_end + 4);
+  QList<QByteArray> lines = request.left (header_end).split ('\n');
   if (lines.isEmpty ())
     {
       reject_connection (socket, 400, QByteArrayLiteral ("empty request"));
@@ -712,21 +821,48 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
       reject_connection (socket, 403, QByteArrayLiteral ("origin denied"));
       return;
     }
-  if (headers.contains (QByteArrayLiteral ("content-length"))
-      || headers.contains (QByteArrayLiteral ("transfer-encoding"))
+  if (headers.contains (QByteArrayLiteral ("transfer-encoding"))
       || headers.contains (QByteArrayLiteral ("expect"))
       || headers.contains (QByteArrayLiteral ("upgrade")))
     {
-      reject_connection (socket, 400, QByteArrayLiteral ("request body or upgrade is unsupported"));
+      reject_connection (socket, 400, QByteArrayLiteral ("transfer-encoding, expect or upgrade is unsupported"));
       return;
     }
-  if (method != QByteArrayLiteral ("GET"))
+  if (method != QByteArrayLiteral ("GET") && method != QByteArrayLiteral ("POST"))
     {
-      reject_connection (socket, 405, QByteArrayLiteral ("GET only"));
+      reject_connection (socket, 405, QByteArrayLiteral ("GET and frequency POST only"));
+      return;
+    }
+  if (method == QByteArrayLiteral ("POST")
+      && headers.value (QByteArrayLiteral ("content-type")).toLower ()
+           != QByteArrayLiteral ("application/json"))
+    {
+      reject_connection (socket, 400, QByteArrayLiteral ("application/json is required"));
+      return;
+    }
+  if (method == QByteArrayLiteral ("GET") && headers.contains (QByteArrayLiteral ("content-length")))
+    {
+      reject_connection (socket, 400, QByteArrayLiteral ("GET must not contain a body"));
+      return;
+    }
+  if (method == QByteArrayLiteral ("POST") && !headers.contains (QByteArrayLiteral ("content-length")))
+    {
+      reject_connection (socket, 400, QByteArrayLiteral ("content-length is required"));
+      return;
+    }
+  if (method == QByteArrayLiteral ("POST") && !origin_allowed (headers.value (QByteArrayLiteral ("origin"))))
+    {
+      reject_connection (socket, 403, QByteArrayLiteral ("same-origin Origin is required"));
+      return;
+    }
+  if (method == QByteArrayLiteral ("POST") && (!headers.contains (QByteArrayLiteral ("origin"))
+                                                || headers.value (QByteArrayLiteral ("origin")).isEmpty ()))
+    {
+      reject_connection (socket, 403, QByteArrayLiteral ("same-origin Origin is required"));
       return;
     }
   QByteArray const path = target;
-  if (path == QByteArrayLiteral ("/"))
+  if (method == QByteArrayLiteral ("GET") && path == QByteArrayLiteral ("/"))
     {
       QByteArray content_type;
       QByteArray const body = web_resource (path, &content_type);
@@ -738,7 +874,8 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
       send_http (socket, 200, QByteArrayLiteral ("OK"), content_type, body);
       return;
     }
-  if (path == QByteArrayLiteral ("/style.css") || path == QByteArrayLiteral ("/app.js"))
+  if (method == QByteArrayLiteral ("GET")
+      && (path == QByteArrayLiteral ("/style.css") || path == QByteArrayLiteral ("/app.js")))
     {
       QByteArray content_type;
       QByteArray const body = web_resource (path, &content_type);
@@ -753,6 +890,91 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
   if (!authorized (headers))
     {
       reject_connection (socket, 401, QByteArrayLiteral ("bearer authentication required"));
+      return;
+    }
+  if (method == QByteArrayLiteral ("POST") && path == QByteArrayLiteral ("/api/v1/control/frequency"))
+    {
+      auto reject_control = [&] (int status, QString reason, QString request_id = QString {}) {
+        send_http (socket, status, status_reason (status), QByteArrayLiteral ("application/json"),
+                   json_response (control_error_response (status, std::move (reason), std::move (request_id))));
+      };
+      if (!configuration_.enable_frequency_control)
+        {
+          reject_control (409, QStringLiteral ("frequency_control_disabled"));
+          return;
+        }
+      if (!control_)
+        {
+          reject_control (409, QStringLiteral ("control_unavailable"));
+          return;
+        }
+      if (!frequency_validator_)
+        {
+          reject_control (409, QStringLiteral ("frequency_validator_unavailable"));
+          return;
+        }
+      if (body.isEmpty () || body.size () > 4096
+          || QString::fromUtf8 (body).toUtf8 () != body)
+        {
+          reject_control (400, QStringLiteral ("invalid_utf8_body"));
+          return;
+        }
+      QJsonParseError parse_error;
+      QJsonDocument document = QJsonDocument::fromJson (body, &parse_error);
+      if (parse_error.error != QJsonParseError::NoError || !document.isObject ())
+        {
+          reject_control (400, QStringLiteral ("invalid_json"));
+          return;
+        }
+      QJsonObject const input = document.object ();
+      static const QSet<QString> fields {
+        QStringLiteral ("request_id"), QStringLiteral ("server_epoch"),
+        QStringLiteral ("state_revision"), QStringLiteral ("frequency_hz")};
+      for (QString const& key : input.keys ())
+        if (!fields.contains (key))
+          {
+            reject_control (400, QStringLiteral ("unknown_json_field"));
+            return;
+          }
+      if (!input.value (QStringLiteral ("request_id")).isString ()
+          || !input.value (QStringLiteral ("server_epoch")).isString ()
+          || !input.value (QStringLiteral ("frequency_hz")).isString ()
+          || !input.value (QStringLiteral ("state_revision")).isDouble ())
+        {
+          reject_control (400, QStringLiteral ("invalid_control_fields"));
+          return;
+        }
+      double const revision_number = input.value (QStringLiteral ("state_revision")).toDouble ();
+      constexpr double max_safe_json_integer = 9007199254740991.0;
+      if (!std::isfinite (revision_number) || revision_number < 0
+          || revision_number > max_safe_json_integer
+          || revision_number != std::floor (revision_number))
+        {
+          reject_control (400, QStringLiteral ("invalid_state_revision"));
+          return;
+        }
+      QString const frequency_text = input.value (QStringLiteral ("frequency_hz")).toString ();
+      JtdxWebFrequency::Result const parsed_frequency = frequency_validator_ (frequency_text);
+      if (!parsed_frequency.valid)
+        {
+          reject_control (400, QStringLiteral ("invalid_frequency_hz"));
+          return;
+        }
+      qint64 const frequency_hz = parsed_frequency.frequency_hz;
+      JtdxWebControl::Request control_request;
+      control_request.request_id = input.value (QStringLiteral ("request_id")).toString ();
+      control_request.server_epoch = input.value (QStringLiteral ("server_epoch")).toString ();
+      control_request.state_revision = static_cast<quint64> (revision_number);
+      control_request.frequency_hz = frequency_hz;
+      control_request.operation = JtdxWebControl::Operation::Frequency;
+      auto const result = control_->submit (std::move (control_request));
+      send_http (socket, result.http_status, status_reason (result.http_status),
+                 QByteArrayLiteral ("application/json"), json_response (control_response (result)));
+      return;
+    }
+  if (method == QByteArrayLiteral ("POST"))
+    {
+      reject_connection (socket, 404, QByteArrayLiteral ("not found"));
       return;
     }
   if (path == QByteArrayLiteral ("/healthz"))

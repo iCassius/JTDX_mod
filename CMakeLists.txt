@@ -1669,6 +1669,9 @@ if (JTDX_BUILD_LOCAL_TESTS)
   add_executable (jtdx_web_server_test
     tests/jtdx_web_server_test.cpp
     JtdxWebServer.cpp
+    JtdxWebControl.cpp
+    JtdxWebFrequency.cpp
+    Bands.cpp
     JtdxWebState.cpp
     ${jtdx_web_server_test_resources})
   target_include_directories (jtdx_web_server_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -1679,6 +1682,8 @@ if (JTDX_BUILD_LOCAL_TESTS)
     JtdxWebControl.cpp
     JtdxWebService.cpp
     JtdxWebServer.cpp
+    JtdxWebFrequency.cpp
+    Bands.cpp
     JtdxWebState.cpp
     ${jtdx_web_server_test_resources})
   target_include_directories (jtdx_web_service_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})

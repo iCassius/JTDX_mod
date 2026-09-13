@@ -1,4 +1,5 @@
 #include "JtdxWebServer.hpp"
+#include "Bands.hpp"
 
 #include <QCoreApplication>
 #include <QCryptographicHash>
@@ -67,6 +68,44 @@ QByteArray raw_request (quint16 port, QByteArray const& wire, int timeout_ms = 2
   socket.write (wire);
   socket.flush ();
   timer.start (timeout_ms);
+  loop.exec ();
+  response += socket.readAll ();
+  return response;
+}
+
+QByteArray post_frequency (quint16 port, QByteArray const& token, QByteArray const& body,
+                           QByteArray const& origin, bool fragmented = false)
+{
+  QTcpSocket socket;
+  QEventLoop loop;
+  QByteArray response;
+  QTimer timer;
+  timer.setSingleShot (true);
+  QObject::connect (&socket, &QTcpSocket::readyRead, [&] { response += socket.readAll (); });
+  QObject::connect (&socket, &QTcpSocket::disconnected, &loop, &QEventLoop::quit);
+  QObject::connect (&timer, &QTimer::timeout, &loop, &QEventLoop::quit);
+  socket.connectToHost (QHostAddress::LocalHost, port);
+  if (!socket.waitForConnected (1000)) return response;
+  QByteArray wire = QByteArrayLiteral ("POST /api/v1/control/frequency HTTP/1.1\r\nHost: 127.0.0.1:")
+      + QByteArray::number (port) + QByteArrayLiteral ("\r\nAuthorization: Bearer ") + token
+      + QByteArrayLiteral ("\r\nOrigin: ") + origin
+      + QByteArrayLiteral ("\r\nContent-Type: application/json\r\nContent-Length: ")
+      + QByteArray::number (body.size ()) + QByteArrayLiteral ("\r\n\r\n");
+  socket.write (wire);
+  if (fragmented)
+    {
+      socket.flush ();
+      QCoreApplication::processEvents (QEventLoop::AllEvents, 10);
+      for (int i = 0; i < body.size (); i += 3)
+        {
+          socket.write (body.mid (i, 3));
+          socket.flush ();
+          QCoreApplication::processEvents (QEventLoop::AllEvents, 5);
+        }
+    }
+  else socket.write (body);
+  socket.flush ();
+  timer.start (2000);
   loop.exec ();
   response += socket.readAll ();
   return response;
@@ -149,6 +188,33 @@ int main (int argc, char ** argv)
   JtdxWebServer::Configuration config;
   QByteArray const token = QByteArrayLiteral ("p3-test-token-0123456789-abcdefghijklmnopqrstuvwxyz");
   config.bearer_token_sha256 = QString::fromLatin1 (QCryptographicHash::hash (token, QCryptographicHash::Sha256).toHex ());
+  JtdxWebControl control {1000};
+  JtdxWebControl::ObservedState observed;
+  observed.safety.known = true;
+  observed.safety.fresh = true;
+  observed.safety.rig_online = true;
+  observed.safety.monitoring = true;
+  observed.safety.business_state_known = true;
+  observed.state_revision = state.revision ();
+  observed.frequency_generation = 1;
+  observed.frequency_known = true;
+  observed.actual_frequency_hz = 14074000;
+  control.set_observed_state (observed);
+  JtdxWebControl::Dispatch captured_dispatch;
+  control.set_frequency_dispatcher ([&] (JtdxWebControl::Dispatch const& dispatch) {
+      captured_dispatch = dispatch;
+      JtdxWebControl::Dispatch prepared;
+      check (control.prepare_dispatch (dispatch.request_id, dispatch.server_epoch, &prepared),
+             "TCP frequency request must reach production prepare dispatcher");
+      check (control.begin_dispatch (prepared),
+             "TCP frequency request must reach production begin dispatcher");
+    });
+  server.set_control (&control);
+  Bands bands;
+  server.set_frequency_validator ([&] (QString const& input) {
+      return JtdxWebFrequency::parse_and_validate_hz (input, bands);
+    });
+  config.enable_frequency_control = true;
   if (app.arguments ().contains (QStringLiteral ("--serve-browser")))
     {
       state.set_clock_for_test (0);
@@ -169,11 +235,69 @@ int main (int argc, char ** argv)
     }
   check (!server.is_listening (), "server must be lazy and stopped by default");
   check (server.start (config), "automatic loopback server should start");
+  control.bind_server_epoch (server.server_epoch ());
   check (server.is_listening () && server.actual_port () >= JtdxWebServer::automatic_port_first
              && server.actual_port () <= JtdxWebServer::automatic_port_last,
          "automatic port must be bounded");
   quint16 const port = server.actual_port ();
-  QByteArray response = request (port, QByteArrayLiteral ("/"));
+  QByteArray const frequency_body = QByteArrayLiteral ("{\"request_id\":\"tcp-frequency-1\",\"server_epoch\":\"")
+      + server.server_epoch ().toUtf8 () + QByteArrayLiteral ("\",\"state_revision\":")
+      + QByteArray::number (observed.state_revision) + QByteArrayLiteral (",\"frequency_hz\":\"14075000\"}");
+  QByteArray response = post_frequency (port, token, frequency_body, QByteArrayLiteral ("http://127.0.0.1:")
+                             + QByteArray::number (port), true);
+  QJsonDocument frequency_response = QJsonDocument::fromJson (response.mid (response.indexOf ("\r\n\r\n") + 4));
+  check (status (response) == 202 && frequency_response.object ().value ("status").toString () == "pending",
+         "fragmented TCP frequency POST returns pending admission");
+  check (captured_dispatch.request_id == "tcp-frequency-1" && captured_dispatch.frequency_hz == 14075000,
+         "TCP frequency POST reaches the production Control dispatch payload");
+  check (control.result ("tcp-frequency-1").status == JtdxWebControl::Status::Pending,
+         "accepted/pending does not claim completed before CAT feedback");
+  QByteArray conflict_body = frequency_body;
+  conflict_body.replace ("14075000", "14076000");
+  check (status (post_frequency (port, token, conflict_body,
+                                QByteArrayLiteral ("http://127.0.0.1:") + QByteArray::number (port))) == 409,
+         "same request id with a different payload is rejected as conflict");
+  check (status (post_frequency (port, {}, frequency_body,
+                                QByteArrayLiteral ("http://127.0.0.1:") + QByteArray::number (port))) == 401,
+         "frequency POST requires bearer authentication");
+  check (status (post_frequency (port, token, frequency_body, QByteArrayLiteral ("http://evil.example"))) == 403,
+         "frequency POST rejects an incorrect Origin");
+  check (control.feedback_frequency (captured_dispatch.request_id, captured_dispatch.server_epoch,
+                                     captured_dispatch.expected_generation + 1, 14075000,
+                                     observed.state_revision + 1),
+         "isolated CAT feedback completes the admitted frequency operation");
+  {
+    JtdxWebServer no_control {&state};
+    auto no_control_config = config;
+    no_control_config.automatic_port = true;
+    no_control.set_frequency_validator ([&] (QString const& input) {
+        return JtdxWebFrequency::parse_and_validate_hz (input, bands);
+      });
+    check (no_control.start (no_control_config), "no-Control fixture starts");
+    QByteArray no_control_body = QByteArrayLiteral ("{\"request_id\":\"no-control\",\"server_epoch\":\"")
+        + no_control.server_epoch ().toUtf8 () + QByteArrayLiteral ("\",\"state_revision\":1,\"frequency_hz\":\"14075000\"}");
+    QByteArray no_control_response = post_frequency (no_control.actual_port (), token, no_control_body,
+                                                     QByteArrayLiteral ("http://127.0.0.1:")
+                                                       + QByteArray::number (no_control.actual_port ()));
+    QJsonDocument no_control_json = QJsonDocument::fromJson (no_control_response.mid (no_control_response.indexOf ("\r\n\r\n") + 4));
+    check (status (no_control_response) == 409
+               && no_control_json.object ().value ("reason").toString () == "control_unavailable",
+           "frequency control without a bound Control is rejected by default");
+    no_control.stop ();
+    no_control_config.enable_frequency_control = false;
+    check (no_control.start (no_control_config), "disabled frequency gate fixture starts");
+    no_control_body.replace ("no-control", "disabled-control");
+    no_control_body.replace (server.server_epoch ().toUtf8 (), no_control.server_epoch ().toUtf8 ());
+    no_control_response = post_frequency (no_control.actual_port (), token, no_control_body,
+                                           QByteArrayLiteral ("http://127.0.0.1:")
+                                             + QByteArray::number (no_control.actual_port ()));
+    no_control_json = QJsonDocument::fromJson (no_control_response.mid (no_control_response.indexOf ("\r\n\r\n") + 4));
+    check (status (no_control_response) == 409
+               && no_control_json.object ().value ("reason").toString () == "frequency_control_disabled",
+           "frequency control remains closed when its explicit gate is disabled");
+    no_control.stop ();
+  }
+  response = request (port, QByteArrayLiteral ("/"));
   check (status (response) == 200 && response.contains (QByteArrayLiteral ("JTDX Web UI")), "root must serve the read-only page");
   check (status (request (port, QByteArrayLiteral ("/style.css"))) == 200, "stylesheet resource must be available without API token");
   check (status (request (port, QByteArrayLiteral ("/app.js"))) == 200, "javascript resource must be available without API token");
@@ -192,9 +316,11 @@ int main (int argc, char ** argv)
          "body framing must be rejected before any control path");
   quint64 const revision_before_post = state.revision ();
   QByteArray const post = QByteArrayLiteral ("POST /api/v1/control/frequency HTTP/1.1\r\nHost: 127.0.0.1:")
-      + QByteArray::number (port) + QByteArrayLiteral ("\r\nAuthorization: Bearer ") + token + QByteArrayLiteral ("\r\n\r\n");
+      + QByteArray::number (port) + QByteArrayLiteral ("\r\nAuthorization: Bearer ") + token
+      + QByteArrayLiteral ("\r\nOrigin: http://127.0.0.1:") + QByteArray::number (port)
+      + QByteArrayLiteral ("\r\nContent-Type: application/json\r\n\r\n");
   int const post_status = status (raw_request (port, post));
-  check (post_status == 404 || post_status == 405,
+  check (post_status == 400,
          "POST/control routes must never execute");
   check (state.revision () == revision_before_post, "rejected control routes must not mutate state");
   check (status (request (port, QByteArrayLiteral ("/api/v1/state?token=leak"), token)) == 400,

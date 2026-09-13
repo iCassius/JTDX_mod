@@ -501,6 +501,9 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
            m_webState, &JtdxWebState::clear_decodes);
   m_webService = new JtdxWebService {m_webState, this};
   m_webService->set_control (m_webControl);
+  m_webService->set_frequency_validator ([this] (QString const& input) {
+      return JtdxWebFrequency::parse_and_validate_hz (input, *m_config.bands ());
+    });
   m_webControl->set_observation_provider ([this] { return webControlObservation (); });
   m_webControl->set_frequency_dispatcher ([this] (JtdxWebControl::Dispatch const& dispatch) {
       QMetaObject::invokeMethod (this, [this, dispatch] { dispatchWebFrequency (dispatch); },
@@ -2223,6 +2226,9 @@ void MainWindow::applyWebUiConfiguration ()
   configuration.bind_address = QHostAddress {m_config.web_ui_bind_address ()};
   configuration.bearer_token_sha256 = m_config.web_ui_token_sha256 ();
   configuration.allowed_origin = m_config.web_ui_allowed_origin ();
+  // P4 HTTP 基础路由尚未具备有限 operations/SSE 完成回读；生产入口保持
+  // fail-closed，即使旧配置或设置值为 true 也不能获得 Web 写权限。
+  configuration.enable_frequency_control = false;
   configuration.udp_ports.insert (m_config.udp_server_port ());
   configuration.udp_ports.insert (m_config.udp2_server_port ());
   bool const applied = m_webService->apply (m_config.web_ui_enabled (), configuration);

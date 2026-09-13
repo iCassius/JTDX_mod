@@ -35,6 +35,7 @@ public:
 
   // 绑定 MainWindow 持有的唯一控制协调器；QPointer 避免独立销毁时悬垂。
   void set_control (JtdxWebControl * control);
+  void set_frequency_validator (JtdxWebServer::FrequencyValidator validator);
 
   // 仅供 Qt-only 验收替换 URL 打开器；生产默认使用 QDesktopServices。
   void set_url_opener (UrlOpener opener);

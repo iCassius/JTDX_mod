@@ -34,6 +34,7 @@ QString JtdxWebService::signature (JtdxWebServer::Configuration const& configura
     QString::number (configuration.automatic_port), QString::number (configuration.port),
     configuration.bind_address.toString (), QString::number (configuration.allow_lan),
     bearer_token_digest, configuration.allowed_origin,
+    QString::number (configuration.enable_frequency_control),
     udp_ports.join (QStringLiteral (","))}.join (QChar {'|'});
 }
 
@@ -142,9 +143,15 @@ void JtdxWebService::set_control (JtdxWebControl * control)
   if (control_ && control_ != control)
     control_->invalidate_server_epoch (QStringLiteral ("control_rebound"));
   control_ = control;
+  if (server_) server_->set_control (control_);
   if (!control_) return;
   if (server_ && server_->is_listening ())
     control_->bind_server_epoch (server_->server_epoch ());
   else
     control_->invalidate_server_epoch (QStringLiteral ("server_unavailable"));
+}
+
+void JtdxWebService::set_frequency_validator (JtdxWebServer::FrequencyValidator validator)
+{
+  if (server_) server_->set_frequency_validator (std::move (validator));
 }

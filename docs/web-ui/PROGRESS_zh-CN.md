@@ -1,5 +1,20 @@
 # JTDX 内置 Web UI：进度与中断恢复日志
 
+### P4 频率 HTTP 最小切片开始检查点（2026-09-14）
+
+- 任务编号：`JTDX-WEBUI-P4-FREQUENCY-HTTP-20260914`；基线：`main/7c79be7`，开始时工作树干净；开局五小时剩余约 `98%`、周剩余约 `28%`，中途现场快照为 `83%`/`26%`。用户授权本片持续至五小时剩余低于 `30%`，之后只做构建、CTest、中文文档、精确提交和交接。
+- 目标：真实 TCP `POST /api/v1/control/frequency` 进入现有 `JtdxWebControl::submit` 和生产 frequency dispatcher 的隔离夹具；仅允许显式专用频率控制开关，默认关闭。保持只读页面、UDP、CAT 恢复和 159 运行目录边界。
+- 契约与文件计划：详见 [`P4-FREQUENCY-HTTP_契约_zh-CN.md`](P4-FREQUENCY-HTTP_契约_zh-CN.md)；源码范围为 `JtdxWebServer.*`、`JtdxWebService.*`、`Configuration.*`/UI、`mainwindow.cpp` 的配置投影，以及 `tests/jtdx_web_server_test.cpp` 的真实 TCP 隔离夹具。请求体 4 KiB、头 16 KiB、5 秒头超时，拒绝 TE/Expect/重复长度/管线/畸形 UTF-8/JSON。
+- 当前状态：HTTP body 解析、频率路由、Control 接线与专用配置 gate 已实现；隔离测试和最终全量 CTest 已通过。本片不启动 JTDX、不连接 CAT/PTT/TX/HIL。
+- 收尾边界：HTTP 基础路由与隔离 TCP→Control 测试已完成，但有限 `operations` 摘要/SSE 完成回读尚未接入；`MainWindow::applyWebUiConfiguration()` 强制生产 `enable_frequency_control=false`，设置 checkbox 保留但禁用并说明“完成回读尚未启用”。本片不宣称用户可用 Web 频率写控制。
+
+### P4 频率 HTTP 最小切片结果（2026-09-14）
+
+- 已实现：`JtdxWebServer` 仅接受带显式非空同源 Origin、Bearer、`Content-Length` 的 JSON frequency POST；头/body 有界，拒绝 Transfer-Encoding、Expect、重复长度、管线、畸形 UTF-8/JSON、越界或非 ASCII 整 Hz。频率经生产注入的 `JtdxWebFrequency`/Bands validator 后进入同一个 `JtdxWebControl::submit`，不复制协调器。
+- 已实现：配置增加默认关闭的 `WebUiFrequencyControlEnabled` 专用键和设置 checkbox；Service 签名包含该 gate。由于有限 operations/SSE 完成回读尚未接入，MainWindow 强制生产 gate 为 false，checkbox 禁用并提示当前构建未启用，避免只读令牌意外获得写权限。
+- 验证：`cmake --build C:\JTDX64\build-webui-dev-msys2 --target jtdx configuration_web_ui_test jtdx_web_server_test --parallel 2` 退出码 0；`QT_QPA_PLATFORM=offscreen` 下 server/config focused tests 均退出码 0；最终 `C:\msys64\mingw64\bin\ctest.exe --test-dir C:\JTDX64\build-webui-dev-msys2 --output-on-failure` 为 `100% tests passed out of 19`，总耗时约 53.39 秒。
+- 未验证/未交付：未运行 JTDX、未连接 CAT/PTT/TX/电台、未做浏览器/HIL/部署；有限 `operations` 摘要及其 SSE 完成/超时回读仍是后续批次门槛。本片不宣称用户可用 Web 频率写控制。
+
 ### Web 文档同步与 CAT `.10` 交付基线（2026-09-13）
 
 - 任务编号：`JTDX-WEBUI-DOC-SYNC-CAT-20260913`；本批额度：五小时剩余 `45%`、周剩余 `33%`；五小时低于 `30%` 后停止新实现，仅做文档收尾、静态检查和交接。
