@@ -5,7 +5,7 @@
 ## 当前状态
 
 - 阶段：`P4 频率 HTTP 基础切片（生产 fail-closed）`，P0/P1/P2/P3 已完成，P4 Service/Server/Control 生命周期、frequency dispatch 基础和有限 operations 摘要/SSE 回读已完成；完整 MainWindow 窗口人工验收留到 P6，生产频率 POST 保持关闭。
-- 基线：本批从分支 `main`、HEAD `7c79be7` 开始，结果提交为 `2ca51ec`；P4 HTTP 契约见 [`docs/web-ui/P4-FREQUENCY-HTTP_契约_zh-CN.md`](docs/web-ui/P4-FREQUENCY-HTTP_契约_zh-CN.md)，当前结果与恢复点见进度日志。
+- 基线：本批从分支 `main`、HEAD `d67fb66` 开始，operations 回读结果提交为 `3f3a799`；P4 HTTP 契约见 [`docs/web-ui/P4-FREQUENCY-HTTP_契约_zh-CN.md`](docs/web-ui/P4-FREQUENCY-HTTP_契约_zh-CN.md)，当前结果与恢复点见进度日志。
 - 代码根目录：`C:\JTDX64\jtdx_sourcecode`。用户需求中的 `jtdx\_sourcecode` 按当前实际仓库路径解释。
 - P3 历史范围：增加 Web UI 配置 Tab、持久化摘要令牌、MainWindow 唯一服务生命周期、菜单入口和 Qt Resource 原生深色响应式只读页；服务仍为单进程主 Qt 事件循环，不新增 UDP/线程/进程或控制 API。
 - 已确认：主程序已有 Qt5 Network、`MessageClient`、`MessageServer` 和 `JTDX_BUILD_LOCAL_TESTS`；P1 状态模型、P2 只读服务、P3 代码/资源/测试/文档、P4 生命周期/dispatch、HTTP 隔离基础和 operations/SSE 有界回读均已有本地修改，用户可用生产控制仍未实现。
@@ -28,14 +28,14 @@
 | P1 | 状态模型 | `JtdxWebState`、状态新鲜度、解码上限、事件循环安全读接口；只读数据接入 | 已通过（独立构建/14 项 CTest；未启动 JTDX/HIL） |
 | P2 | 只读服务器 | `JtdxWebServer`、TCP 端口生命周期、`/`、`/healthz`、`/api/v1/state`、`/api/v1/decodes`、SSE | 已通过（loopback/API/CTest；未启动 JTDX/HIL） |
 | P3 | 设置/菜单/前端骨架 | Web UI 设置 Tab、端口/绑定策略、菜单入口、内置资源、响应式只读页面 | 代码/资源/CTest/浏览器夹具复验已完成；完整 MainWindow 窗口人工验收留到 P6 |
-| P4 | 普通控制 | `JtdxWebControl`、频率切换、过期解码 ID、DX 选择、状态回读 | 生命周期/dispatch 与 frequency HTTP 隔离基础已完成；生产 gate=false，operations/SSE 回读、frequency CAT 业务完成和 DX 入口留后续批次 |
+| P4 | 普通控制 | `JtdxWebControl`、频率切换、过期解码 ID、DX 选择、状态回读 | 生命周期/dispatch、frequency HTTP 隔离基础和 operations/SSE 有界回读已完成；生产 gate=false，frequency CAT 业务和 DX 入口留后续批次 |
 | P5 | 高风险控制 | CQ/AutoSeq 启动、停止流程、二次确认、幂等/超时/冲突和状态回读 | 未开始 |
 | P6 | 整体验证 | 自动化合同、浏览器手测、异常隔离、回归和交付报告 | 未开始 |
 | HIL | 独立授权 | 真实 CAT/PTT/发射、设备反馈、长时间运行和无线电行为 | 未授权/未开始 |
 
 P1 至 P6 每次只推进一个阶段；用户检查额度后再继续。HIL 不属于普通阶段的默认验收。
 
-下一步由根代理审查本批 operations/SSE 隔离证据，再决定是否进入频率 CAT 生产适配；当前没有用户可用的生产频率控制、频率 CAT 生产回读或 HIL 证据。
+下一步由根代理审查业务错误 JSON 合同、前端 operations/frequency 隔离浏览器验收和本批隔离证据，再决定是否进入频率 CAT 生产适配；当前没有用户可用的生产频率控制、频率 CAT 生产回读或 HIL 证据。
 
 本批最终证据：构建日志为 `C:\JTDX64\deps-webui\p4-frequency-http-final-build-2ca51ec.log`，其中确认重新编译 `jtdx_web_service_test` 的 `JtdxWebService.cpp`/`JtdxWebServer.cpp`；全量 CTest 日志为 `C:\JTDX64\deps-webui\p4-frequency-http-final-ctest-2ca51ec.log`，`19/19` 通过。此前 `LastTestsFailed` 或旧 service 二进制状态不作为本批结论。
 

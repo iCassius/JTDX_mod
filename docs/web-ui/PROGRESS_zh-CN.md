@@ -2,7 +2,7 @@
 
 ### P4 operations 状态/SSE 有界回读小片开始检查点（2026-09-14）
 
-- 任务编号：`JTDX-WEBUI-P4-OPERATIONS-20260914`；基线：`main/d67fb66`，开始时工作树干净；本片五小时额度收尾阈值按用户要求为低于 `30%`（入口旧记录中的 `20%` 已纠正），周预算继续受限时只做有界收尾和交接。
+- 任务编号：`JTDX-WEBUI-P4-OPERATIONS-20260914`；基线：`main/d67fb66`，开始时工作树干净；开局五小时剩余约 `90%`、周剩余约 `13%`，中途收尾快照为五小时 `33%`、周 `4%`，最终暂停快照为五小时 `28%`、周 `3%`；本片五小时额度收尾阈值按用户要求为低于 `30%`（入口旧记录中的 `20%` 已纠正），周预算继续受限时只做有界收尾和交接。
 - 目标：复用现有 `JtdxWebControl` 的最多 128 条结果记录，提供事件循环安全的有界 operations 摘要；将其加入既有 state GET 回读，并在 operation 状态变化时通过既有 SSE snapshot（独立于 State revision 的 event id）推送。结果必须保留 `request_id`、状态、原因、时间字段和有限 readback；不递归嵌入 `current_state`，不暴露令牌或凭据。
 - 文件计划：`JtdxWebControl.hpp/.cpp` 增加稳定有序结果摘要与 operation revision；`JtdxWebServer.hpp/.cpp` 增加 operations 投影、包含 control generation 的 SSE event id 与 publish 触发；`tests/jtdx_web_server_test.cpp`、`tests/jtdx_web_control_test.cpp` 覆盖 pending/completed/timeout、重复 ID、state GET/SSE、重连和 epoch/停止清理；同步本入口与 P4 frequency 契约。
 - 安全/范围：生产 `enable_frequency_control` 保持 `false`；不扩 DX/CQ/前端，不改 UDP/解码/CAT，不新增线程/进程，不运行 JTDX、CAT、PTT、TX 或 HIL；不重新实现 Control。
@@ -15,7 +15,9 @@
 - 已实现：SSE 继续只发送既有 `snapshot` 事件；event id 使用当前服务 epoch、State revision、operation revision 和 Server 本地 Control 代次的摘要，Control 状态变化即使 State revision 不变也会触发 snapshot。Control 替换/销毁和新 epoch 均能产生新 id；旧 epoch 结果不进入新快照，Last-Event-ID 仍走有界 resync + 全量 snapshot。
 - 验证：定向构建 `jtdx configuration_web_ui_test jtdx_web_control_test jtdx_web_server_test jtdx_web_service_test jtdx_web_state_test jtdx_web_frequency_test` 退出码 0，日志 `C:\JTDX64\deps-webui\p4-results-final-build-20260914_091331.log`；完整 CTest `100% tests passed out of 19`、总耗时 `59.06s`，日志 `C:\JTDX64\deps-webui\p4-results-final-ctest-20260914_091402.log`。
 - 未验证/未交付：未运行 `jtdx.exe`，未连接 CAT/PTT/TX/电台，未做浏览器/HIL/部署；MainWindow 生产 `enable_frequency_control=false` 保持不变，未扩 DX/CQ/前端、UDP、解码或 CAT。
-- 后续门：由根代理审查业务错误 JSON 合同、前端集成和更高层隔离验收后，再评估是否进入 frequency CAT 生产适配；本片不解除生产 gate。
+- 后续门：根代理只读审查确认，解析有效 `request_id` 的 `invalid_frequency`/`invalid_state_revision` 等拒绝目前仍返回新生成的 request id，需在合同中固定一致行为；401、Origin 和传输层拒绝仍为 text 响应，需明确安全 JSON 边界且不能泄露 state；`resources/web-ui` 当前没有 operations 展示或 frequency 表单，需完成隔离浏览器验收后再评估是否进入 frequency CAT 生产适配。本片不解除生产 gate。
+- 证据边界：Control 销毁时推进 Server 本地代次属于实现与静态审查结论；本片新增测试未单独断言 Control 销毁分支，不能将该分支描述为独立测试覆盖。
+- 结果基线：本片中文档与源码结果提交为 `3f3a799`；工作树在提交后干净。
 
 ### P4 频率 HTTP 最小切片开始检查点（2026-09-14）
 
