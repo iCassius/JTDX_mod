@@ -1,5 +1,22 @@
 # JTDX 内置 Web UI：进度与中断恢复日志
 
+### P4 operations 状态/SSE 有界回读小片开始检查点（2026-09-14）
+
+- 任务编号：`JTDX-WEBUI-P4-OPERATIONS-20260914`；基线：`main/d67fb66`，开始时工作树干净；本片五小时额度收尾阈值按用户要求为低于 `30%`（入口旧记录中的 `20%` 已纠正），周预算继续受限时只做有界收尾和交接。
+- 目标：复用现有 `JtdxWebControl` 的最多 128 条结果记录，提供事件循环安全的有界 operations 摘要；将其加入既有 state GET 回读，并在 operation 状态变化时通过既有 SSE snapshot（独立于 State revision 的 event id）推送。结果必须保留 `request_id`、状态、原因、时间字段和有限 readback；不递归嵌入 `current_state`，不暴露令牌或凭据。
+- 文件计划：`JtdxWebControl.hpp/.cpp` 增加稳定有序结果摘要与 operation revision；`JtdxWebServer.hpp/.cpp` 增加 operations 投影、包含 control generation 的 SSE event id 与 publish 触发；`tests/jtdx_web_server_test.cpp`、`tests/jtdx_web_control_test.cpp` 覆盖 pending/completed/timeout、重复 ID、state GET/SSE、重连和 epoch/停止清理；同步本入口与 P4 frequency 契约。
+- 安全/范围：生产 `enable_frequency_control` 保持 `false`；不扩 DX/CQ/前端，不改 UDP/解码/CAT，不新增线程/进程，不运行 JTDX、CAT、PTT、TX 或 HIL；不重新实现 Control。
+- 验证计划：在 `C:\JTDX64\build-webui-dev-msys2` 以 `C:\msys64\mingw64\bin` 优先、`C:\JTDX64\159\bin` 补 Hamlib、`QT_QPA_PLATFORM=offscreen` 构建所有受影响目标并跑完整 CTest；真实 TCP 仅使用隔离生产 Control 夹具，证据写入 `C:\JTDX64\deps-webui\p4-results-final-*.log`。
+
+### P4 operations 状态/SSE 有界回读小片结果（2026-09-14）
+
+- 已实现：`JtdxWebControl` 返回最多 128 条稳定排序的结果副本，并以独立 operation revision 表示新增、状态完成/超时、epoch 清理和迟到反馈原因变化；不暴露内部 `Record&`，不新增线程或信号重入路径。
+- 已实现：既有 `/api/v1/state` 快照加入 `operation_revision` 与按当前 server epoch 过滤的 `operations`；每项含 `request_id`、operation/status/reason、接收/截止/完成时间、generation 和有限 `readback`。`readback.confirmed=false` 明确 timeout 保留值不是当前实际读回；不嵌套 `current_state`，不包含令牌。
+- 已实现：SSE 继续只发送既有 `snapshot` 事件；event id 使用当前服务 epoch、State revision、operation revision 和 Server 本地 Control 代次的摘要，Control 状态变化即使 State revision 不变也会触发 snapshot。Control 替换/销毁和新 epoch 均能产生新 id；旧 epoch 结果不进入新快照，Last-Event-ID 仍走有界 resync + 全量 snapshot。
+- 验证：定向构建 `jtdx configuration_web_ui_test jtdx_web_control_test jtdx_web_server_test jtdx_web_service_test jtdx_web_state_test jtdx_web_frequency_test` 退出码 0，日志 `C:\JTDX64\deps-webui\p4-results-final-build-20260914_091331.log`；完整 CTest `100% tests passed out of 19`、总耗时 `59.06s`，日志 `C:\JTDX64\deps-webui\p4-results-final-ctest-20260914_091402.log`。
+- 未验证/未交付：未运行 `jtdx.exe`，未连接 CAT/PTT/TX/电台，未做浏览器/HIL/部署；MainWindow 生产 `enable_frequency_control=false` 保持不变，未扩 DX/CQ/前端、UDP、解码或 CAT。
+- 后续门：由根代理审查业务错误 JSON 合同、前端集成和更高层隔离验收后，再评估是否进入 frequency CAT 生产适配；本片不解除生产 gate。
+
 ### P4 频率 HTTP 最小切片开始检查点（2026-09-14）
 
 - 任务编号：`JTDX-WEBUI-P4-FREQUENCY-HTTP-20260914`；基线：`main/7c79be7`，开始时工作树干净；开局五小时剩余约 `98%`、周剩余约 `28%`，中途现场快照为 `83%`/`26%`。用户授权本片持续至五小时剩余低于 `30%`，之后只做构建、CTest、中文文档、精确提交和交接。

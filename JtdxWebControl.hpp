@@ -103,6 +103,9 @@ public:
   int hard_record_limit () const { return hard_record_limit_; }
   bool has_pending () const { return !pending_request_id_.isEmpty (); }
   Result result (QString const& request_id) const;
+  // 返回按接收时间和 request_id 稳定排序的副本；调用方不得持有内部记录引用。
+  QVector<Result> operation_results () const;
+  quint64 operation_revision () const { return operation_revision_; }
 
   void set_observed_state (ObservedState state);
   void set_observation_provider (ObservationProvider provider);
@@ -161,6 +164,7 @@ private:
   static bool printable_ascii (QString const& value, int max_length);
   static QString canonical_payload (Request const& request);
   static bool safe_to_dispatch (SafetySnapshot const& safety, QString * reason);
+  void mark_operations_changed ();
 
   qint64 now () const;
   ObservedState observation () const;
@@ -181,6 +185,7 @@ private:
   // 只有显式的上层恢复策略才能清除此门。
   bool unconfirmed_latch_ {false};
   bool submit_in_progress_ {false};
+  quint64 operation_revision_ {0};
   const int hard_record_limit_ {128};
   QHash<QString, Record> records_;
   QString pending_request_id_;

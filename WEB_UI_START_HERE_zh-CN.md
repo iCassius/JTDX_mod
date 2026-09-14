@@ -1,14 +1,14 @@
 # JTDX 内置 Web UI：阶段入口与恢复说明
 
-本目录记录 JTDX 内置轻量 Web UI 的需求、边界、设计和阶段证据。当前 P3 生产 service/QAction、P4 生命周期/dispatch 基础和 P4 频率 HTTP 隔离入口已完成；完整 MainWindow 窗口人工验收留到 P6，仍不代表已经启动 JTDX、连接 JTDX 电台或完成 HIL/部署验证。频率 HTTP 生产写入口因有限 operations/SSE 完成回读尚未接入而强制关闭，不能把隔离夹具的 `accepted/pending` 当作 CAT 完成。当前 Web 本批结果基线为 `2ca51ec`；较早 CAT `.10` 交付提交 `a89c9da` 仅作外部历史参考。
+本目录记录 JTDX 内置轻量 Web UI 的需求、边界、设计和阶段证据。当前 P3 生产 service/QAction、P4 生命周期/dispatch 基础、频率 HTTP 隔离入口和有限 operations/SSE 完成回读已完成；完整 MainWindow 窗口人工验收留到 P6，仍不代表已经启动 JTDX、连接 JTDX 电台或完成 HIL/部署验证。频率 HTTP 生产写入口仍强制关闭，不能把隔离夹具的 `accepted/pending` 当作 CAT 完成。较早 CAT `.10` 交付提交 `a89c9da` 仅作外部历史参考。
 
 ## 当前状态
 
-- 阶段：`P4 频率 HTTP 基础切片（生产 fail-closed）`，P0/P1/P2/P3 已完成，P4 Service/Server/Control 生命周期与 frequency dispatch 基础已完成；完整 MainWindow 窗口人工验收留到 P6。有限 operations 摘要/SSE 完成与超时回读尚未接入，生产频率 POST 保持关闭。
+- 阶段：`P4 频率 HTTP 基础切片（生产 fail-closed）`，P0/P1/P2/P3 已完成，P4 Service/Server/Control 生命周期、frequency dispatch 基础和有限 operations 摘要/SSE 回读已完成；完整 MainWindow 窗口人工验收留到 P6，生产频率 POST 保持关闭。
 - 基线：本批从分支 `main`、HEAD `7c79be7` 开始，结果提交为 `2ca51ec`；P4 HTTP 契约见 [`docs/web-ui/P4-FREQUENCY-HTTP_契约_zh-CN.md`](docs/web-ui/P4-FREQUENCY-HTTP_契约_zh-CN.md)，当前结果与恢复点见进度日志。
 - 代码根目录：`C:\JTDX64\jtdx_sourcecode`。用户需求中的 `jtdx\_sourcecode` 按当前实际仓库路径解释。
 - P3 历史范围：增加 Web UI 配置 Tab、持久化摘要令牌、MainWindow 唯一服务生命周期、菜单入口和 Qt Resource 原生深色响应式只读页；服务仍为单进程主 Qt 事件循环，不新增 UDP/线程/进程或控制 API。
-- 已确认：主程序已有 Qt5 Network、`MessageClient`、`MessageServer` 和 `JTDX_BUILD_LOCAL_TESTS`；P1 状态模型、P2 只读服务、P3 代码/资源/测试/文档、P4 生命周期/dispatch 与 HTTP 隔离基础均已有本地提交，operations/SSE 业务回读和用户可用生产控制仍未实现。
+- 已确认：主程序已有 Qt5 Network、`MessageClient`、`MessageServer` 和 `JTDX_BUILD_LOCAL_TESTS`；P1 状态模型、P2 只读服务、P3 代码/资源/测试/文档、P4 生命周期/dispatch、HTTP 隔离基础和 operations/SSE 有界回读均已有本地修改，用户可用生产控制仍未实现。
 - CAT 交付基线：代码提交 `328cc7a` 的错序检测及后续 artifact code HEAD `9984c38` 已由 `a89c9da` 记录最终 Release、完整 CTest `19/19`（含既有 `ftx1_cat_policy_test`）；该测试并非本 Web 文档批次新增。Web 仍只呈现实际状态，不把 CAT 构建证据或 HTTP `accepted` 当成设备回读或通联完成。
 - 进程边界：Web 功能必须零新增进程、零新增常驻线程，优先使用 JTDX 主 Qt 事件循环。当前程序已有 `proc_jtdxjt9` 解码子进程，Web 任务不得把它误写成 Web 新增进程，也不得为了 Web 重构或删除它。
 
@@ -17,7 +17,7 @@
 1. 先读本文件、`docs/web-ui/PROGRESS_zh-CN.md`，再读与当前阶段对应的设计文档。
 2. 检查 `git status --short --branch`、`git log -1 --oneline`；若基线或工作树与记录不符，先更新恢复日志，不覆盖已有修改。
 3. 每一阶段只做一个可审查批次：先源码事实和文件计划，再实现，再做该阶段静态/单元/API 验证，最后写恢复记录并提交中文 commit。
-4. 每批开始读取当前配额；当五小时窗口剩余低于 `20%` 时，立即把已完成、未完成、命令和证据写入恢复日志，只做有界收尾、静态检查、精确提交和交接，不开启新的实现面；不把“请求已发出”当成完成。此前日志中的 `30%` 收尾阈值仅适用于历史批次，当前批次以 `20%` 为准。
+4. 每批开始读取当前配额；本批按用户要求，当五小时窗口剩余低于 `30%` 时立即把已完成、未完成、命令和证据写入恢复日志，只做有界收尾、静态检查、精确提交和交接，不开启新的实现面；不把“请求已发出”当成完成。后续批次应在开始检查点明确记录其收尾阈值。
 5. P0 文档阶段不启动 JTDX、不连接真实电台、不执行 CAT/PTT/TX/HIL、不向群晖部署。用户后续继续到 P3/P6 时，可在隔离配置、`Rig=None` 且无真实 CAT 连接的条件下进行本地浏览器验证；开始前必须证明不会自动连接硬件。真实 CAT/PTT/TX 和无线电行为仍需单独授权。
 
 ## 阶段顺序
@@ -35,7 +35,7 @@
 
 P1 至 P6 每次只推进一个阶段；用户检查额度后再继续。HIL 不属于普通阶段的默认验收。
 
-下一步是补齐有限 operations 摘要及 SSE 完成/超时回读，并经独立验收后重新评估生产 gate；当前已有 HTTP 隔离入口，但没有用户可用的生产频率控制、频率 CAT 生产回读或 HIL 证据。
+下一步由根代理审查本批 operations/SSE 隔离证据，再决定是否进入频率 CAT 生产适配；当前没有用户可用的生产频率控制、频率 CAT 生产回读或 HIL 证据。
 
 本批最终证据：构建日志为 `C:\JTDX64\deps-webui\p4-frequency-http-final-build-2ca51ec.log`，其中确认重新编译 `jtdx_web_service_test` 的 `JtdxWebService.cpp`/`JtdxWebServer.cpp`；全量 CTest 日志为 `C:\JTDX64\deps-webui\p4-frequency-http-final-ctest-2ca51ec.log`，`19/19` 通过。此前 `LastTestsFailed` 或旧 service 二进制状态不作为本批结论。
 

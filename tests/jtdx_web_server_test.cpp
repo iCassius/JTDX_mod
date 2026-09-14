@@ -17,6 +17,43 @@ namespace {
 int failures = 0;
 int status (QByteArray const& response);
 
+struct ParsedSseEvent
+{
+  QByteArray name;
+  QByteArray id;
+  QJsonObject data;
+};
+
+QVector<ParsedSseEvent> parse_sse_events (QByteArray const& response)
+{
+  QVector<ParsedSseEvent> events;
+  int offset = 0;
+  while (offset < response.size ())
+    {
+      int const end = response.indexOf (QByteArrayLiteral ("\n\n"), offset);
+      if (end < 0) break;
+      QByteArray const block = response.mid (offset, end - offset);
+      int const event_pos = block.indexOf (QByteArrayLiteral ("event: "));
+      int const id_pos = block.indexOf (QByteArrayLiteral ("id: "));
+      int const data_pos = block.indexOf (QByteArrayLiteral ("data: "));
+      int const data_end = block.indexOf ('\n', data_pos) < 0 ? block.size () : block.indexOf ('\n', data_pos);
+      if (event_pos >= 0 && id_pos >= 0 && data_pos >= 0 && data_end > data_pos)
+        {
+          QJsonDocument document = QJsonDocument::fromJson (block.mid (data_pos + 6, data_end - data_pos - 6));
+          if (document.isObject ())
+            {
+              ParsedSseEvent event;
+              event.name = block.mid (event_pos + 7, block.indexOf ('\n', event_pos) - event_pos - 7);
+              event.id = block.mid (id_pos + 4, block.indexOf ('\n', id_pos) - id_pos - 4);
+              event.data = document.object ();
+              events.append (std::move (event));
+            }
+        }
+      offset = end + 2;
+    }
+  return events;
+}
+
 void check (bool condition, char const * message)
 {
   if (!condition)
@@ -266,6 +303,177 @@ int main (int argc, char ** argv)
                                      captured_dispatch.expected_generation + 1, 14075000,
                                      observed.state_revision + 1),
          "isolated CAT feedback completes the admitted frequency operation");
+  response = request (port, QByteArrayLiteral ("/api/v1/state"), token);
+  QJsonDocument operations_state = QJsonDocument::fromJson (response.mid (response.indexOf ("\r\n\r\n") + 4));
+  QJsonArray operation_rows = operations_state.object ().value (QStringLiteral ("operations")).toArray ();
+  check (status (response) == 200 && !operation_rows.isEmpty (),
+         "state GET exposes a bounded operations summary");
+  QJsonObject completed_operation;
+  for (QJsonValue const& row : operation_rows)
+    if (row.toObject ().value (QStringLiteral ("request_id")).toString () == QStringLiteral ("tcp-frequency-1"))
+      completed_operation = row.toObject ();
+  check (completed_operation.value (QStringLiteral ("status")).toString () == QStringLiteral ("completed")
+             && completed_operation.value (QStringLiteral ("reason")).toString () == QStringLiteral ("feedback_matched")
+             && completed_operation.value (QStringLiteral ("readback")).toObject ().value (QStringLiteral ("confirmed")).toBool (),
+         "state operations readback reports completed feedback with confirmation");
+  check (!completed_operation.contains (QStringLiteral ("current_state")),
+         "operation summary must not recursively embed current_state");
+
+  // A live SSE peer must receive a new snapshot when only the Control result changes.
+  QTcpSocket operation_sse;
+  QEventLoop operation_sse_loop;
+  QTimer operation_sse_timer;
+  QByteArray operation_sse_response;
+  bool initial_sse_complete = false;
+  operation_sse_timer.setSingleShot (true);
+  QObject::connect (&operation_sse, &QTcpSocket::readyRead, [&] {
+      operation_sse_response += operation_sse.readAll ();
+      if ((!initial_sse_complete && operation_sse_response.contains (QByteArrayLiteral ("event: snapshot\n")))
+          || (initial_sse_complete && operation_sse_response.contains (QByteArrayLiteral ("sse-frequency"))
+              && operation_sse_response.contains (QByteArrayLiteral ("\"status\":\"completed\""))))
+        operation_sse_loop.quit ();
+    });
+  QObject::connect (&operation_sse_timer, &QTimer::timeout, &operation_sse_loop, &QEventLoop::quit);
+  operation_sse.connectToHost (QHostAddress::LocalHost, port);
+  check (operation_sse.waitForConnected (1000), "operation SSE fixture must connect");
+  operation_sse.write (QByteArrayLiteral ("GET /api/v1/events HTTP/1.1\r\nHost: 127.0.0.1:")
+                       + QByteArray::number (port) + QByteArrayLiteral ("\r\nAuthorization: Bearer ")
+                       + token + QByteArrayLiteral ("\r\n\r\n"));
+  operation_sse.flush ();
+  operation_sse_timer.start (2000);
+  operation_sse_loop.exec ();
+  QByteArray const initial_operation_sse = operation_sse_response;
+  initial_sse_complete = true;
+  QVector<ParsedSseEvent> initial_events = parse_sse_events (initial_operation_sse);
+  QByteArray initial_snapshot_id;
+  for (ParsedSseEvent const& event : initial_events)
+    if (event.name == QByteArrayLiteral ("snapshot") && event.data.contains (QStringLiteral ("operations")))
+      initial_snapshot_id = event.id;
+  check (!initial_snapshot_id.isEmpty (), "operation SSE initial snapshot must succeed");
+  QByteArray const sse_body = QByteArrayLiteral ("{\"request_id\":\"sse-frequency\",\"server_epoch\":\"")
+      + server.server_epoch ().toUtf8 () + QByteArrayLiteral ("\",\"state_revision\":")
+      + QByteArray::number (observed.state_revision) + QByteArrayLiteral (",\"frequency_hz\":\"14076000\"}");
+  QByteArray const sse_post = post_frequency (port, token, sse_body,
+                                               QByteArrayLiteral ("http://127.0.0.1:") + QByteArray::number (port));
+  check (status (sse_post) == 202 && control.result (QStringLiteral ("sse-frequency")).status
+             == JtdxWebControl::Status::Pending,
+         "SSE operation fixture remains pending before feedback");
+  check (control.feedback_frequency (captured_dispatch.request_id, captured_dispatch.server_epoch,
+                                     captured_dispatch.expected_generation + 1, 14076000,
+                                     observed.state_revision + 2),
+         "SSE operation fixture accepts isolated completion feedback");
+  operation_sse_timer.start (3000);
+  operation_sse_loop.exec ();
+  QByteArray completed_sse_id;
+  bool sse_completed = false;
+  for (ParsedSseEvent const& event : parse_sse_events (operation_sse_response))
+    if (event.name == QByteArrayLiteral ("snapshot"))
+      for (QJsonValue const& row : event.data.value (QStringLiteral ("operations")).toArray ())
+        if (row.toObject ().value (QStringLiteral ("request_id")).toString () == QStringLiteral ("sse-frequency")
+            && row.toObject ().value (QStringLiteral ("status")).toString () == QStringLiteral ("completed")
+            && row.toObject ().value (QStringLiteral ("readback")).toObject ().value (QStringLiteral ("confirmed")).toBool ())
+          {
+            sse_completed = true;
+            completed_sse_id = event.id;
+          }
+  check (sse_completed && completed_sse_id != initial_snapshot_id,
+         "SSE snapshot updates with a fresh id when only operation status changes");
+  operation_sse.disconnectFromHost ();
+
+  // Timeout is observable through the same state snapshot and does not call CAT feedback.
+  JtdxWebControl timeout_control {40};
+  timeout_control.set_observed_state (observed);
+  JtdxWebControl::Dispatch timeout_dispatch;
+  timeout_control.set_frequency_dispatcher ([&] (JtdxWebControl::Dispatch const& dispatch) {
+      timeout_dispatch = dispatch;
+      JtdxWebControl::Dispatch prepared;
+      check (timeout_control.prepare_dispatch (dispatch.request_id, dispatch.server_epoch, &prepared),
+             "timeout fixture prepares through Control");
+      check (timeout_control.begin_dispatch (prepared), "timeout fixture begins through Control");
+    });
+  server.set_control (&timeout_control);
+  timeout_control.bind_server_epoch (server.server_epoch ());
+  QTcpSocket timeout_sse;
+  QEventLoop timeout_sse_loop;
+  QTimer timeout_sse_timer;
+  QByteArray timeout_sse_response;
+  bool timeout_sse_initial = false;
+  timeout_sse_timer.setSingleShot (true);
+  QObject::connect (&timeout_sse, &QTcpSocket::readyRead, [&] {
+      timeout_sse_response += timeout_sse.readAll ();
+      if (!timeout_sse_initial && timeout_sse_response.contains (QByteArrayLiteral ("event: snapshot\n")))
+        timeout_sse_loop.quit ();
+      if (timeout_sse_initial)
+        for (ParsedSseEvent const& event : parse_sse_events (timeout_sse_response))
+          if (event.name == QByteArrayLiteral ("snapshot"))
+            for (QJsonValue const& row : event.data.value (QStringLiteral ("operations")).toArray ())
+              if (row.toObject ().value (QStringLiteral ("request_id")).toString () == QStringLiteral ("tcp-timeout")
+                  && row.toObject ().value (QStringLiteral ("status")).toString () == QStringLiteral ("timeout"))
+                timeout_sse_loop.quit ();
+    });
+  QObject::connect (&timeout_sse_timer, &QTimer::timeout, &timeout_sse_loop, &QEventLoop::quit);
+  timeout_sse.connectToHost (QHostAddress::LocalHost, port);
+  check (timeout_sse.waitForConnected (1000), "timeout SSE fixture must connect");
+  timeout_sse.write (QByteArrayLiteral ("GET /api/v1/events HTTP/1.1\r\nHost: 127.0.0.1:")
+                     + QByteArray::number (port) + QByteArrayLiteral ("\r\nAuthorization: Bearer ")
+                     + token + QByteArrayLiteral ("\r\n\r\n"));
+  timeout_sse.flush ();
+  timeout_sse_timer.start (2000);
+  timeout_sse_loop.exec ();
+  QByteArray timeout_initial_id;
+  for (ParsedSseEvent const& event : parse_sse_events (timeout_sse_response))
+    if (event.name == QByteArrayLiteral ("snapshot")) timeout_initial_id = event.id;
+  timeout_sse_initial = true;
+  check (!timeout_initial_id.isEmpty (), "timeout SSE initial snapshot must succeed");
+  QByteArray const timeout_body = QByteArrayLiteral ("{\"request_id\":\"tcp-timeout\",\"server_epoch\":\"")
+      + server.server_epoch ().toUtf8 () + QByteArrayLiteral ("\",\"state_revision\":")
+      + QByteArray::number (observed.state_revision) + QByteArrayLiteral (",\"frequency_hz\":\"14077000\"}");
+  check (status (post_frequency (port, token, timeout_body,
+                                 QByteArrayLiteral ("http://127.0.0.1:") + QByteArray::number (port))) == 202,
+         "timeout fixture is admitted as pending");
+  QEventLoop timeout_loop;
+  QTimer timeout_wait;
+  timeout_wait.setSingleShot (true);
+  QObject::connect (&timeout_wait, &QTimer::timeout, &timeout_loop, &QEventLoop::quit);
+  timeout_wait.start (100);
+  timeout_loop.exec ();
+  timeout_sse_timer.start (3000);
+  timeout_sse_loop.exec ();
+  QByteArray timeout_event_id;
+  bool timeout_sse_seen = false;
+  for (ParsedSseEvent const& event : parse_sse_events (timeout_sse_response))
+    if (event.name == QByteArrayLiteral ("snapshot"))
+      for (QJsonValue const& row : event.data.value (QStringLiteral ("operations")).toArray ())
+        if (row.toObject ().value (QStringLiteral ("request_id")).toString () == QStringLiteral ("tcp-timeout")
+            && row.toObject ().value (QStringLiteral ("status")).toString () == QStringLiteral ("timeout"))
+          {
+            timeout_sse_seen = true;
+            timeout_event_id = event.id;
+          }
+  check (timeout_sse_seen && timeout_event_id != timeout_initial_id,
+         "timeout updates active SSE without CAT feedback state change");
+  response = request (port, QByteArrayLiteral ("/api/v1/state"), token);
+  QJsonDocument timeout_state = QJsonDocument::fromJson (response.mid (response.indexOf ("\r\n\r\n") + 4));
+  bool timeout_seen = false;
+  for (QJsonValue const& row : timeout_state.object ().value (QStringLiteral ("operations")).toArray ())
+    if (row.toObject ().value (QStringLiteral ("request_id")).toString () == QStringLiteral ("tcp-timeout"))
+      timeout_seen = row.toObject ().value (QStringLiteral ("status")).toString () == QStringLiteral ("timeout")
+          && !row.toObject ().value (QStringLiteral ("readback")).toObject ().value (QStringLiteral ("confirmed")).toBool ();
+  check (timeout_seen, "timeout status and unconfirmed readback are visible over state GET");
+  check (timeout_control.result (QStringLiteral ("tcp-timeout")).snapshot.frequency_generation
+             == observed.frequency_generation,
+         "timeout leaves the isolated CAT observation generation unchanged");
+  timeout_sse.disconnectFromHost ();
+  response = sse_request (port, token, timeout_event_id, 2000);
+  bool timeout_resync_seen = false;
+  for (ParsedSseEvent const& event : parse_sse_events (response))
+    if (event.name == QByteArrayLiteral ("snapshot"))
+      for (QJsonValue const& row : event.data.value (QStringLiteral ("operations")).toArray ())
+        if (row.toObject ().value (QStringLiteral ("request_id")).toString () == QStringLiteral ("tcp-timeout")
+            && row.toObject ().value (QStringLiteral ("status")).toString () == QStringLiteral ("timeout"))
+          timeout_resync_seen = true;
+  check (response.contains (QByteArrayLiteral ("event: resync_required\n")) && timeout_resync_seen,
+         "Last-Event-ID reconnect resynchronizes the bounded timeout result");
   {
     JtdxWebServer no_control {&state};
     auto no_control_config = config;
@@ -410,6 +618,10 @@ int main (int argc, char ** argv)
   server.stop ();
   check (!server.is_listening () && server.web_server_state () == QStringLiteral ("stopped"), "stop must close listener");
   check (server.start (config) && server.server_epoch () != old_epoch, "restart must create a new epoch");
+  response = request (server.actual_port (), QByteArrayLiteral ("/api/v1/state"), token);
+  QJsonDocument restarted_state = QJsonDocument::fromJson (response.mid (response.indexOf ("\r\n\r\n") + 4));
+  check (restarted_state.object ().value (QStringLiteral ("operations")).toArray ().isEmpty (),
+         "server epoch restart filters old Control results from the new snapshot");
   server.stop ();
 
   QTcpServer manual_probe;

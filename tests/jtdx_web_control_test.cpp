@@ -87,6 +87,10 @@ int main ()
   check (completed.status == Control::Status::Completed && completed.reason == QStringLiteral ("feedback_matched"),
          "synchronous dispatch feedback completes");
   check (dispatch_count == 1, "synchronous dispatch occurs once");
+  check (control.operation_revision () > 0 && control.operation_results ().size () == 1,
+         "operation revision and bounded result copy expose the completed record");
+  check (control.operation_results ().constFirst ().request_id == QStringLiteral ("sync"),
+         "operation result copy preserves request id");
   auto duplicate = control.submit (frequency_request (control, QStringLiteral ("sync"), 14074000));
   check (duplicate.status == Control::Status::Completed && dispatch_count == 1,
          "same id and payload is idempotent");

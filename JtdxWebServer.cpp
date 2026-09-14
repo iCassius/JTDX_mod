@@ -174,6 +174,7 @@ bool JtdxWebServer::listen_on (QHostAddress const& address, quint16 port)
   web_server_state_ = QStringLiteral ("listening");
   last_error_.clear ();
   last_published_revision_ = state_ ? state_->revision () : 0;
+  last_published_operations_revision_ = control_ ? control_->operation_revision () : 0;
   last_snapshot_ms_ = -1;
   last_heartbeat_ms_ = -1;
   publish_timer_->start ();
@@ -297,6 +298,20 @@ int JtdxWebServer::active_connection_count () const
 QString JtdxWebServer::bearer_token_digest (QString const& bearer_token)
 {
   return QString::fromLatin1 (QCryptographicHash::hash (bearer_token.toUtf8 (), QCryptographicHash::Sha256).toHex ());
+}
+
+void JtdxWebServer::set_control (JtdxWebControl * control)
+{
+  QObject::disconnect (control_destroyed_connection_);
+  control_ = control;
+  ++control_generation_;
+  // 协调器替换也要让现有 SSE 客户端获得一次新的有界投影。
+  last_published_operations_revision_ = std::numeric_limits<quint64>::max ();
+  if (control_)
+    control_destroyed_connection_ = connect (control_, &QObject::destroyed, this, [this] {
+        ++control_generation_;
+        last_published_operations_revision_ = std::numeric_limits<quint64>::max ();
+      });
 }
 
 void JtdxWebServer::accept_connections ()
@@ -579,8 +594,65 @@ bool JtdxWebServer::authorized (QHash<QByteArray, QByteArray> const& headers) co
 
 QByteArray JtdxWebServer::event_id () const
 {
-  return server_epoch_.toUtf8 () + QByteArrayLiteral ("-")
-       + QByteArray::number (state_ ? state_->revision () : 0);
+  QByteArray const material = QByteArray::number (state_ ? state_->revision () : 0)
+      + QByteArrayLiteral ("|")
+      + QByteArray::number (control_ ? control_->operation_revision () : 0)
+      + QByteArrayLiteral ("|") + QByteArray::number (control_generation_);
+  QByteArray const digest = QCryptographicHash::hash (material, QCryptographicHash::Sha256).toHex ().left (16);
+  return server_epoch_.toUtf8 () + QByteArrayLiteral ("-") + digest;
+}
+
+QJsonObject JtdxWebServer::operation_result (JtdxWebControl::Result const& result) const
+{
+  QJsonObject output;
+  output.insert (QStringLiteral ("request_id"), result.request_id);
+  output.insert (QStringLiteral ("operation"), JtdxWebControl::operation_name (result.operation));
+  output.insert (QStringLiteral ("status"), JtdxWebControl::status_name (result.status));
+  output.insert (QStringLiteral ("reason"), result.reason);
+  output.insert (QStringLiteral ("server_epoch"), result.server_epoch);
+  output.insert (QStringLiteral ("received_ms"), result.received_ms);
+  output.insert (QStringLiteral ("deadline_ms"), result.deadline_ms);
+  output.insert (QStringLiteral ("completed_ms"), result.completed_ms < 0
+                 ? QJsonValue {QJsonValue::Null} : QJsonValue {result.completed_ms});
+  output.insert (QStringLiteral ("initial_state_revision"),
+                 static_cast<qint64> (result.initial_state_revision));
+  output.insert (QStringLiteral ("generation"), static_cast<qint64> (result.generation));
+
+  QJsonObject readback;
+  readback.insert (QStringLiteral ("confirmed"),
+                   result.status == JtdxWebControl::Status::Completed);
+  readback.insert (QStringLiteral ("state_revision"),
+                   static_cast<qint64> (result.snapshot.state_revision));
+  readback.insert (QStringLiteral ("frequency_known"), result.snapshot.frequency_known);
+  readback.insert (QStringLiteral ("frequency_hz"), result.snapshot.frequency_known
+                   ? QJsonValue {QString::number (result.snapshot.actual_frequency_hz)}
+                   : QJsonValue {QJsonValue::Null});
+  readback.insert (QStringLiteral ("frequency_generation"),
+                   static_cast<qint64> (result.snapshot.frequency_generation));
+  readback.insert (QStringLiteral ("dx_known"), result.snapshot.dx_known);
+  readback.insert (QStringLiteral ("dx_call"), result.snapshot.dx_known
+                   ? QJsonValue {result.snapshot.dx_call} : QJsonValue {QJsonValue::Null});
+  readback.insert (QStringLiteral ("dx_grid"), result.snapshot.dx_known
+                   ? QJsonValue {result.snapshot.dx_grid} : QJsonValue {QJsonValue::Null});
+  readback.insert (QStringLiteral ("dx_generation"),
+                   static_cast<qint64> (result.snapshot.dx_generation));
+  output.insert (QStringLiteral ("readback"), readback);
+  return output;
+}
+
+QJsonObject JtdxWebServer::operations_snapshot () const
+{
+  QJsonObject output;
+  output.insert (QStringLiteral ("server_epoch"), server_epoch_);
+  output.insert (QStringLiteral ("operation_revision"),
+                 static_cast<qint64> (control_ ? control_->operation_revision () : 0));
+  QJsonArray operations;
+  if (control_)
+    for (auto const& result : control_->operation_results ())
+      if (result.server_epoch == server_epoch_)
+        operations.append (operation_result (result));
+  output.insert (QStringLiteral ("operations"), operations);
+  return output;
 }
 
 QJsonObject JtdxWebServer::state_snapshot () const
@@ -588,6 +660,9 @@ QJsonObject JtdxWebServer::state_snapshot () const
   QJsonObject snapshot = state_ ? state_->json_snapshot () : QJsonObject {};
   snapshot.insert (QStringLiteral ("server_epoch"), server_epoch_);
   snapshot.insert (QStringLiteral ("web_server_state"), web_server_state_);
+  QJsonObject const operations = operations_snapshot ();
+  snapshot.insert (QStringLiteral ("operation_revision"), operations.value (QStringLiteral ("operation_revision")));
+  snapshot.insert (QStringLiteral ("operations"), operations.value (QStringLiteral ("operations")));
   return snapshot;
 }
 
@@ -598,16 +673,7 @@ QByteArray JtdxWebServer::json_response (QJsonObject const& object) const
 
 QJsonObject JtdxWebServer::control_response (JtdxWebControl::Result const& result) const
 {
-  QJsonObject response;
-  response.insert (QStringLiteral ("request_id"), result.request_id);
-  response.insert (QStringLiteral ("operation"), JtdxWebControl::operation_name (result.operation));
-  response.insert (QStringLiteral ("server_epoch"), result.server_epoch);
-  response.insert (QStringLiteral ("status"), JtdxWebControl::status_name (result.status));
-  response.insert (QStringLiteral ("reason"), result.reason);
-  response.insert (QStringLiteral ("received_ms"), result.received_ms);
-  response.insert (QStringLiteral ("deadline_ms"), result.deadline_ms);
-  response.insert (QStringLiteral ("completed_ms"), result.completed_ms < 0
-                   ? QJsonValue {QJsonValue::Null} : QJsonValue {result.completed_ms});
+  QJsonObject response = operation_result (result);
   response.insert (QStringLiteral ("state_revision"), static_cast<qint64> (result.snapshot.state_revision));
   if (result.snapshot.frequency_known)
     response.insert (QStringLiteral ("frequency_hz"), QString::number (result.snapshot.actual_frequency_hz));
@@ -1029,6 +1095,7 @@ void JtdxWebServer::broadcast_snapshot (bool force)
   for (QTcpSocket * socket : sockets)
     if (Client * client = clients_.value (socket, nullptr)) send_sse (client, payload);
   last_published_revision_ = revision;
+  last_published_operations_revision_ = control_ ? control_->operation_revision () : 0;
   last_snapshot_ms_ = now;
 }
 
@@ -1037,8 +1104,10 @@ void JtdxWebServer::on_publish_timer ()
   if (!is_listening ()) return;
   qint64 const now = activity_clock_.elapsed ();
   quint64 const revision = state_ ? state_->revision () : 0;
+  quint64 const operations_revision = control_ ? control_->operation_revision () : 0;
+  bool const operations_changed = operations_revision != last_published_operations_revision_;
   if (last_snapshot_ms_ < 0 || revision != last_published_revision_
-      || now - last_snapshot_ms_ >= snapshot_interval_ms)
+      || operations_changed || now - last_snapshot_ms_ >= snapshot_interval_ms)
     broadcast_snapshot (true);
   if (last_heartbeat_ms_ < 0 || now - last_heartbeat_ms_ >= heartbeat_interval_ms)
     {

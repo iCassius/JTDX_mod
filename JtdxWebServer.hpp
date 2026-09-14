@@ -62,7 +62,7 @@ public:
   QString server_epoch () const;
   QString web_server_state () const;
   int active_connection_count () const;
-  void set_control (JtdxWebControl * control) { control_ = control; }
+  void set_control (JtdxWebControl * control);
   using FrequencyValidator = std::function<JtdxWebFrequency::Result (QString const&)>;
   void set_frequency_validator (FrequencyValidator validator) { frequency_validator_ = std::move (validator); }
   // 将用户输入的原始令牌转换为持久化摘要；原文不得写入配置、URL、日志或 HTML。
@@ -93,6 +93,8 @@ private:
   bool authorized (QHash<QByteArray, QByteArray> const& headers) const;
   QByteArray event_id () const;
   QJsonObject state_snapshot () const;
+  QJsonObject operation_result (JtdxWebControl::Result const& result) const;
+  QJsonObject operations_snapshot () const;
   QByteArray json_response (QJsonObject const& object) const;
   QJsonObject control_response (JtdxWebControl::Result const& result) const;
   QJsonObject control_error_response (int status, QString reason, QString request_id = {}) const;
@@ -110,6 +112,7 @@ private:
 
   QPointer<JtdxWebState> state_;
   QPointer<JtdxWebControl> control_;
+  QMetaObject::Connection control_destroyed_connection_;
   FrequencyValidator frequency_validator_;
   QTcpServer server_;
   QTimer * publish_timer_ {nullptr};
@@ -118,11 +121,13 @@ private:
   QHostAddress actual_address_;
   quint16 actual_port_ {0};
   QByteArray bearer_token_digest_;
+  quint64 control_generation_ {0};
   QString server_epoch_;
   QString last_error_;
   QString web_server_state_ {QStringLiteral ("stopped")};
   QElapsedTimer activity_clock_;
   quint64 last_published_revision_ {0};
+  quint64 last_published_operations_revision_ {0};
   qint64 last_snapshot_ms_ {-1};
   qint64 last_heartbeat_ms_ {-1};
 };

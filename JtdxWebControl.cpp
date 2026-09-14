@@ -106,6 +106,24 @@ JtdxWebControl::Result JtdxWebControl::result (QString const& request_id) const
   return it == records_.constEnd () ? Result {} : it.value ().result;
 }
 
+QVector<JtdxWebControl::Result> JtdxWebControl::operation_results () const
+{
+  QVector<Result> results;
+  results.reserve (records_.size ());
+  for (auto const& record : records_)
+    results.append (record.result);
+  std::sort (results.begin (), results.end (), [] (Result const& left, Result const& right) {
+    if (left.received_ms != right.received_ms) return left.received_ms < right.received_ms;
+    return left.request_id < right.request_id;
+  });
+  return results;
+}
+
+void JtdxWebControl::mark_operations_changed ()
+{
+  ++operation_revision_;
+}
+
 void JtdxWebControl::set_observed_state (ObservedState state)
 {
   observed_ = std::move (state);
@@ -137,7 +155,10 @@ void JtdxWebControl::bind_server_epoch (QString server_epoch)
   if (!pending_request_id_.isEmpty ())
     invalidate_server_epoch (QStringLiteral ("server_epoch_changed"));
   if (!server_epoch_bound_ || epoch_ != server_epoch)
-    records_.clear ();
+    {
+      if (!records_.isEmpty ()) mark_operations_changed ();
+      records_.clear ();
+    }
   epoch_ = std::move (server_epoch);
   server_epoch_bound_ = true;
 }
@@ -202,6 +223,7 @@ void JtdxWebControl::finish (Record& record, Status status, QString reason, quin
       pending_request_id_.clear ();
       expiry_timer_.stop ();
     }
+  mark_operations_changed ();
 }
 
 JtdxWebControl::Result JtdxWebControl::submit (Request request)
@@ -284,6 +306,7 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
   record.dx_call = request.dx_call;
   record.dx_grid = request.dx_grid;
   records_.insert (request.request_id, record);
+  mark_operations_changed ();
   auto inserted = records_.find (request.request_id);
   inserted.value ().result.received_ms = record.received_ms;
   inserted.value ().result.deadline_ms = record.deadline_ms;
@@ -535,7 +558,10 @@ bool JtdxWebControl::feedback_frequency (QString const& request_id, QString cons
         {
           auto late = records_.find (last_timed_out_request_id_);
           if (late != records_.end () && late.value ().timed_out && late.value ().dispatched)
-            late.value ().result.reason = QStringLiteral ("feedback_timeout/late_feedback_unknown");
+            {
+              late.value ().result.reason = QStringLiteral ("feedback_timeout/late_feedback_unknown");
+              mark_operations_changed ();
+            }
         }
       return false;
     }
@@ -576,7 +602,10 @@ bool JtdxWebControl::feedback_select_dx (QString const& request_id, QString cons
         {
           auto late = records_.find (last_timed_out_request_id_);
           if (late != records_.end () && late.value ().timed_out && late.value ().dispatched)
-            late.value ().result.reason = QStringLiteral ("feedback_timeout/late_feedback_unknown");
+            {
+              late.value ().result.reason = QStringLiteral ("feedback_timeout/late_feedback_unknown");
+              mark_operations_changed ();
+            }
         }
       return false;
     }
@@ -649,7 +678,11 @@ void JtdxWebControl::on_timer ()
 bool JtdxWebControl::rotate_epoch ()
 {
   if (shutdown_ || !pending_request_id_.isEmpty ()) return false;
-  if (!unconfirmed_latch_) records_.clear ();
+  if (!unconfirmed_latch_)
+    {
+      if (!records_.isEmpty ()) mark_operations_changed ();
+      records_.clear ();
+    }
   epoch_ = QUuid::createUuid ().toString (QUuid::WithoutBraces);
   return true;
 }
