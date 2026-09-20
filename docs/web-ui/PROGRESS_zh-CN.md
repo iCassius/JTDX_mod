@@ -2,6 +2,7 @@
 
 ### 2026-09-20 P4 频率表单浏览器故障注入与身份锁修复
 
+- 最终收尾检查点：五小时额度剩余 `28%`（已用 `72%`），已低于用户规定的 `30%` 阈值；本轮停止新实现，仅保留本地结果提交和交接。
 - 基线为 `main/fb16e8b`；开始本轮时五小时额度为 `100%`，生产 `MainWindow` frequency gate 保持 `false`。本轮范围仅为 `resources/web-ui/app.js` 与本节指定中文文档；未启动真实 JTDX，未连接 CAT/PTT/TX，未做 HIL。
 - 真实 IAB + 隔离 `--serve-browser-frequency` 人工故障注入中，频率 POST 被拦截，未发送给 fixture。验证了：传输超过 5 秒后结果未知且锁发送；同 token 重新连接仍锁；HTTP 200 `completed`/`confirmed=false`、HTTP 200 `completed`/`confirmed=true` 但 wrong Hz、错误 `request_id`、非法 JSON 均锁发送。上述场景顶部实际频率为 `14.074`，`operations` 为零；清除拦截后关闭页面，fixture 已停止。
 - 额外复现 HTTP 500 + 匹配 ID/epoch + `completed`/`confirmed=true`/目标频率的矛盾响应：旧实现会在点击重连后错误解锁。前端最小修复让结算逻辑接收 `response.ok`，非 2xx 的矛盾 `completed` 保留 `frequencyRequest` 与 `frequencyUnknown`，合法 `failed`/`rejected`/`timeout` 终态维持原行为。重建后的真实 IAB fixture `49153` 复测后，同 token 连接仍为禁用，未知身份锁保留，顶部实际频率为 `14.074`。
