@@ -253,7 +253,11 @@ int main (int argc, char ** argv)
       return JtdxWebFrequency::parse_and_validate_hz (input, bands);
     });
   config.enable_frequency_control = true;
-  if (app.arguments ().contains (QStringLiteral ("--serve-browser-frequency")))
+  bool const browser_frequency_fixture = app.arguments ().contains (
+      QStringLiteral ("--serve-browser-frequency"))
+      || app.arguments ().contains (QStringLiteral ("--serve-browser-frequency-empty"))
+      || app.arguments ().contains (QStringLiteral ("--serve-browser-frequency-invalidated"));
+  if (browser_frequency_fixture)
     {
       // This branch is a loopback-only browser fixture.  It uses the production
       // State/Control/Server path while keeping all radio I/O out of the test.
@@ -263,12 +267,23 @@ int main (int argc, char ** argv)
                             QStringLiteral ("AA00"), QStringLiteral ("FN31"), false, {}, false, false);
       state.observe_rig (true, 14074000, 14074000, false);
       state.observe_business_state (false, QStringLiteral ("idle"), QStringLiteral ("idle"), {});
-      state.set_frequency_candidates (
-          QStringLiteral ("FT8"), QStringLiteral ("All"),
-          {{7074000u, QStringLiteral ("40m"), QStringLiteral ("FT8"), QStringLiteral ("All"), true},
-           {14074000u, QStringLiteral ("20m"), QStringLiteral ("FT8"), QStringLiteral ("All"), true},
-           {14075000u, QStringLiteral ("20m"), QStringLiteral ("FT8"), QStringLiteral ("All"), false},
-           {14076000u, QStringLiteral ("20m"), QStringLiteral ("JT65"), QStringLiteral ("All"), false}});
+      bool const empty_frequency_fixture = app.arguments ().contains (
+          QStringLiteral ("--serve-browser-frequency-empty"));
+      bool const invalidated_frequency_fixture = app.arguments ().contains (
+          QStringLiteral ("--serve-browser-frequency-invalidated"));
+      if (empty_frequency_fixture)
+        {
+          state.set_frequency_candidates (QStringLiteral ("FT4"), QStringLiteral ("Region 3"), {});
+        }
+      else
+        {
+          state.set_frequency_candidates (
+              QStringLiteral ("FT8"), QStringLiteral ("All"),
+              {{7074000u, QStringLiteral ("40m"), QStringLiteral ("FT8"), QStringLiteral ("All"), true},
+               {14074000u, QStringLiteral ("20m"), QStringLiteral ("FT8"), QStringLiteral ("All"), true},
+               {14075000u, QStringLiteral ("20m"), QStringLiteral ("FT8"), QStringLiteral ("All"), false},
+               {14076000u, QStringLiteral ("20m"), QStringLiteral ("JT65"), QStringLiteral ("All"), false}});
+        }
 
       control.set_observation_provider ([&state] {
           QJsonObject const snapshot = state.json_snapshot ();
@@ -310,6 +325,15 @@ int main (int argc, char ** argv)
       std::fprintf (stdout, "WEB_UI_FIXTURE_URL=%s\nWEB_UI_FIXTURE_TOKEN=%s\n",
                     fixture_url.constData (), token.constData ());
       std::fflush (stdout);
+      if (invalidated_frequency_fixture)
+        {
+          QTimer::singleShot (60000, &state, [&state] {
+            state.set_frequency_candidates (
+                QStringLiteral ("FT8"), QStringLiteral ("Region 2"),
+                {{14074000u, QStringLiteral ("20m"), QStringLiteral ("FT8"), QStringLiteral ("Region 2"), true},
+                 {14076000u, QStringLiteral ("20m"), QStringLiteral ("FT8"), QStringLiteral ("Region 2"), false}});
+          });
+        }
       QTimer::singleShot (300000, &app, &QCoreApplication::quit);
       return app.exec ();
     }

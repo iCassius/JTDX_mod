@@ -1,5 +1,13 @@
 # JTDX 内置 Web UI：进度与中断恢复日志
 
+### 2026-09-21 P4 频率候选边界浏览器验收
+
+- 在既有 loopback `--serve-browser-frequency` 夹具上增加两个测试专用场景：`--serve-browser-frequency-empty` 发布 `FT4 / Region 3` 空候选；`--serve-browser-frequency-invalidated` 先发布 FT8/All 候选，随后通过既有 SSE 快照切换到 FT8/Region 2 并移除已选的 `7.074000`。没有新增生产端点、后台服务或控制能力。
+- 人工浏览器验收分别确认：空候选时频段/预设下拉只保留占位项，手动 `14.075000` 可输入且发送操作仍为 `0` 条；候选失效后上下文显示 `FT8 / Region 2 · 2 条候选`，预设选择清空但目标输入仍保留 `7.074000`；选择候选本身不产生 POST/操作结果；停止夹具后显示未连接、连接断开、保留旧操作快照，发送按钮禁用。
+- 自动化边界仍由既有 `jtdx_web_state_test` 的空列表/上下文/revision 断言和 `jtdx_web_frequency_candidates_test` 的过滤/排序/上限断言覆盖；本轮浏览器结果是人工观察，不冒充自动 DOM 回归。
+- 测试夹具目标重建退出码为 `0`；清理浏览器页及夹具重连后，受影响 `jtdx_web_server_test` 为 `1/1` 通过（36.39 秒）。最终完整 CTest 为 `20/20`、`100% tests passed`、57.18 秒；日志：`C:\JTDX64\deps-webui\p4-frequency-candidates-browser-boundary-clean-final-ctest.log`。此前孤立失败由仍在自动重连的临时浏览器页污染慢 SSE 夹具，未修改断言、超时或背压上限。
+- 生产 `MainWindow` frequency gate 仍为 `false`；未启动真实 `jtdx.exe`，未连接 CAT/PTT/TX，未做 HIL 或部署。下一片如继续，应优先补自动化浏览器/页面合同能力评估，不扩展新的控制功能。
+
 ### 2026-09-20 P4 频段筛选与常用频率候选小片
 
 - 基线为 `main/e03e292`，本片只推进频率表单候选展示，不改变生产写控制边界。候选由 `Configuration::frequencies()` 的 `FrequencyList_v2` 原始项构建，按当前 mode/region 与 `Bands::find()` 过滤、去重、按 Hz 排序；生产候选默认上限 200，状态快照硬上限 500。未读取 `QComboBox`，未改既有 model filter，JS 不保存频率表。

@@ -4,6 +4,10 @@
 
 ## 最新恢复结果（2026-09-20）
 
+### P4 频率候选边界浏览器验收（2026-09-21）
+
+已在隔离 loopback 夹具补齐空候选、上下文变化、候选失效、手动文本保留、选择不自动发送和断开状态验收。测试专用参数为 `--serve-browser-frequency-empty` 与 `--serve-browser-frequency-invalidated`，不新增生产端点或控制能力。清理浏览器页和夹具后，受影响服务端测试 `1/1` 通过；最终完整 CTest `20/20`、`100% tests passed`、57.18 秒，日志为 `C:\JTDX64\deps-webui\p4-frequency-candidates-browser-boundary-clean-final-ctest.log`。生产 gate 仍为 `false`，未启动真实 JTDX、未连接 CAT/PTT/TX、未做 HIL/部署。详见 [`docs/web-ui/PROGRESS_zh-CN.md`](docs/web-ui/PROGRESS_zh-CN.md) 与 [`docs/web-ui/P4-FREQUENCY-FORM_验收_zh-CN.md`](docs/web-ui/P4-FREQUENCY-FORM_验收_zh-CN.md)。
+
 ### P4 频段筛选与常用频率候选小片
 
 本片在 `main/e03e292` 上完成：候选来自 `Configuration::frequencies()` 的 `FrequencyList_v2` 与 `Bands`，按当前 mode/region 过滤、去重、排序并有界发布；前端频段筛选和常用频率选择只填入目标输入，不自动发送，手动输入保留。隔离浏览器夹具已验证 40m/20m 候选、选择后操作结果保持 `0` 条，以及 `390x844` 窄屏布局。此前 `17/20` 失败已定位为 DLL 搜索顺序混用运行库；按构建一致的 MSYS2 Qt 优先顺序重跑后，全量 CTest `20/20`、`100% tests passed`、`57.55 sec`，日志为 `C:\JTDX64\deps-webui\p4-frequency-candidates-final-ctest-6dbe33d.log`。生产 gate 仍为 `false`，未启动真实 JTDX、未连接 CAT/PTT/TX、未做 HIL/部署。详见 [`docs/web-ui/PROGRESS_zh-CN.md`](docs/web-ui/PROGRESS_zh-CN.md) 与 [`docs/web-ui/P4-FREQUENCY-FORM_验收_zh-CN.md`](docs/web-ui/P4-FREQUENCY-FORM_验收_zh-CN.md)。
