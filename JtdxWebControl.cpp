@@ -29,8 +29,15 @@ JtdxWebControl::JtdxWebControl (qint64 timeout_ms, Clock clock, QObject * parent
 
 QString JtdxWebControl::operation_name (Operation operation)
 {
-  return operation == Operation::Frequency ? QStringLiteral ("frequency")
-                                            : QStringLiteral ("select-dx");
+  switch (operation)
+    {
+    case Operation::Frequency: return QStringLiteral ("frequency");
+    case Operation::SelectDx: return QStringLiteral ("select-dx");
+    case Operation::StartCq: return QStringLiteral ("start-cq");
+    case Operation::StartAutoCall: return QStringLiteral ("start-auto-call");
+    case Operation::StopAutoCall: return QStringLiteral ("stop-auto-call");
+    }
+  return QStringLiteral ("unknown");
 }
 
 QString JtdxWebControl::status_name (Status status)
@@ -68,6 +75,9 @@ QString JtdxWebControl::canonical_payload (Request const& request)
 {
   if (request.operation == Operation::Frequency)
     return QStringLiteral ("frequency:") + QString::number (request.frequency_hz);
+  if (request.operation == Operation::StartCq || request.operation == Operation::StartAutoCall
+      || request.operation == Operation::StopAutoCall)
+    return operation_name (request.operation);
   QString const call = request.dx_call.trimmed ().toUpper ();
   QString const grid = request.dx_grid.trimmed ().toUpper ();
   return QStringLiteral ("select-dx:") + QString::number (call.size ()) + QStringLiteral (":") + call
@@ -240,7 +250,7 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
     {
       if (request.frequency_hz <= 0) return reject (request, QStringLiteral ("invalid_frequency"), 400);
     }
-  else
+  else if (request.operation == Operation::SelectDx)
     {
       request.dx_call = request.dx_call.trimmed ().toUpper ();
       request.dx_grid = request.dx_grid.trimmed ().toUpper ();
@@ -317,6 +327,10 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
   record.dx_time = request.dx_time;
   record.dx_selection_source = request.dx_selection_source;
   record.dx_source_decode_id = request.dx_source_decode_id;
+  record.baseline_business_generation = current.business_generation;
+  record.target_cq_state = request.operation == Operation::StartCq ? QStringLiteral ("armed")
+      : request.operation == Operation::StopAutoCall ? QStringLiteral ("idle") : QString {};
+  record.target_auto_sequence_enabled = request.operation == Operation::StartAutoCall;
   records_.insert (request.request_id, record);
   mark_operations_changed ();
   auto inserted = records_.find (request.request_id);
@@ -337,12 +351,18 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
   Record& stored = stored_it.value ();
   stored.result.snapshot = current;
   stored.baseline_generation = request.operation == Operation::Frequency
-      ? current.frequency_generation : current.dx_generation;
+      ? current.frequency_generation : request.operation == Operation::SelectDx
+        ? current.dx_generation : current.business_generation;
   stored.baseline_state_revision = current.state_revision;
   bool const already_matches = request.operation == Operation::Frequency
       ? (current.frequency_known && current.actual_frequency_hz == request.frequency_hz)
-      : (current.dx_known && current.dx_call.trimmed ().toUpper () == request.dx_call
-         && current.dx_grid.trimmed ().toUpper () == request.dx_grid);
+      : request.operation == Operation::SelectDx
+        ? (current.dx_known && current.dx_call.trimmed ().toUpper () == request.dx_call
+           && current.dx_grid.trimmed ().toUpper () == request.dx_grid)
+        : (current.business_state_known
+           && current.auto_sequence_enabled == (request.operation == Operation::StartAutoCall)
+           && (request.operation != Operation::StartCq || current.cq_state == QStringLiteral ("armed"))
+           && (request.operation != Operation::StopAutoCall || current.cq_state == QStringLiteral ("idle")));
   if (already_matches)
     {
       finish (stored, Status::Completed,
@@ -375,8 +395,8 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
   dispatch.dx_time = request.dx_time;
   dispatch.dx_selection_source = request.dx_selection_source;
   dispatch.dx_source_decode_id = request.dx_source_decode_id;
-  DispatchHandler handler = request.operation == Operation::Frequency
-      ? frequency_dispatcher_ : select_dx_dispatcher_;
+  DispatchHandler handler = request.operation == Operation::Frequency ? frequency_dispatcher_
+      : request.operation == Operation::SelectDx ? select_dx_dispatcher_ : business_dispatcher_;
   try
     {
       if (!handler)
@@ -480,7 +500,8 @@ bool JtdxWebControl::prepare_dispatch (QString const& request_id, QString const&
 
   it.value ().result.snapshot = current;
   it.value ().baseline_generation = it.value ().result.operation == Operation::Frequency
-      ? current.frequency_generation : current.dx_generation;
+      ? current.frequency_generation : it.value ().result.operation == Operation::SelectDx
+        ? current.dx_generation : current.business_generation;
   it.value ().baseline_state_revision = current.state_revision;
   it.value ().prepared = true;
 
@@ -554,7 +575,8 @@ bool JtdxWebControl::begin_dispatch (Dispatch const& dispatch)
       return false;
     }
   quint64 const current_generation = dispatch.operation == Operation::Frequency
-      ? current.frequency_generation : current.dx_generation;
+      ? current.frequency_generation : dispatch.operation == Operation::SelectDx
+        ? current.dx_generation : current.business_generation;
   if (current_generation != it.value ().baseline_generation)
     {
       it.value ().prepared = false;
@@ -667,6 +689,46 @@ bool JtdxWebControl::feedback_select_dx (QString const& request_id, QString cons
   record.result.snapshot.dx_selection_source = dx_selection_source;
   record.result.snapshot.dx_source_decode_id = dx_source_decode_id;
   record.result.snapshot.dx_generation = generation;
+  record.result.snapshot.state_revision = state_revision;
+  finish (record, Status::Completed, QStringLiteral ("feedback_matched"), generation);
+  return true;
+}
+
+bool JtdxWebControl::feedback_business (QString const& request_id, QString const& server_epoch,
+                                        quint64 generation, QString cq_state,
+                                        bool auto_sequence_enabled, quint64 state_revision)
+{
+  if (!server_epoch_bound_ || pending_request_id_.isEmpty ()
+      || request_id != pending_request_id_ || server_epoch != epoch_)
+    return false;
+  auto it = records_.find (request_id);
+  if (it == records_.end () || !it.value ().dispatched
+      || (it.value ().result.operation != Operation::StartCq
+          && it.value ().result.operation != Operation::StartAutoCall
+          && it.value ().result.operation != Operation::StopAutoCall)) return false;
+  Record& record = it.value ();
+  if (now () >= record.deadline_ms)
+    {
+      finish (record, Status::Timeout, QStringLiteral ("feedback_timeout"));
+      record.timed_out = true;
+      unconfirmed_latch_ = true;
+      last_timed_out_request_id_ = request_id;
+      return false;
+    }
+  if (generation <= record.baseline_generation || state_revision <= record.baseline_state_revision)
+    return false;
+  bool const cq_matches = record.result.operation == Operation::StartCq
+      ? cq_state == QStringLiteral ("armed") : record.result.operation == Operation::StopAutoCall
+        ? (cq_state == QStringLiteral ("idle") || cq_state == QStringLiteral ("not_selected")) : true;
+  bool const auto_matches = record.result.operation == Operation::StartAutoCall
+      ? auto_sequence_enabled : record.result.operation == Operation::StopAutoCall
+        ? !auto_sequence_enabled : true;
+  if (!cq_matches || !auto_matches) return false;
+  record.result.snapshot = observed_;
+  record.result.snapshot.business_generation = generation;
+  record.result.snapshot.business_state_known = true;
+  record.result.snapshot.cq_state = cq_state;
+  record.result.snapshot.auto_sequence_enabled = auto_sequence_enabled;
   record.result.snapshot.state_revision = state_revision;
   finish (record, Status::Completed, QStringLiteral ("feedback_matched"), generation);
   return true;

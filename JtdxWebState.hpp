@@ -70,6 +70,7 @@ public:
   // 仅由真实 rig 观测事件递增；不能由通用 status 或 nominal 目标推导。
   quint64 rig_generation () const { return rig_generation_; }
   quint64 dx_generation () const { return dx_generation_; }
+  quint64 business_generation () const { return business_generation_; }
 
   void observe_status (Frequency target_frequency, QString const& mode,
                       QString const& dx_call, QString const& report,
@@ -143,6 +144,7 @@ private:
   qint64 test_now_ms_ {0};
   int decode_limit_ {default_decode_limit};
   quint64 revision_ {0};
+  quint64 business_generation_ {0};
   quint64 next_decode_id_ {1};
   QList<Decode> decodes_;
 

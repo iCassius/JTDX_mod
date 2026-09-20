@@ -9,7 +9,7 @@
 | P2 | TCP 启停、自动/手动端口、占用/UDP 分离、`/`、`healthz`、state、decodes、SSE 重连/背压 | 已通过（loopback/API/CTest；未启动 JTDX/HIL） |
 | P3 | 设置保存/重载、LAN 开关和鉴权、菜单重复点击、资源、桌面/移动只读页面；浏览器手测 | 生产 `JtdxWebService`/真实 `QAction` 与 17 项自动测试已完成；完整 MainWindow 窗口人工验收留到 P6 |
 | P4 | 频率校验/切换/实际回读、过期 decode、DX 校验/选择/应用；API 合同和单元 | 频率与 DX 软件安全门、独立显式配置、MainWindow 隔离适配契约、DX 专属 generation/source 回读、跨客户端未确认锁与 Service/Server/Control 生命周期 epoch 已通过隔离测试；完整窗口/CAT 回读、浏览器人工验收待后续批次 |
-| P5 | CQ/AutoSeq 安全门、二次确认、启停状态机、超时/重复/退出/冲突；原有 AutoSeq/CAT 回归 | 未开始 |
+| P5 | CQ/AutoSeq 安全门、二次确认、启停状态机、超时/重复/退出/冲突；原有 AutoSeq/CAT 回归 | CQ/AutoSeq 软件命令、二次确认、业务 generation 回读和默认关闭配置已通过隔离测试；真实 CAT/PTT/TX/HIL 与浏览器人工验收待后续 |
 | P6 | 全 API、异常隔离、UDP/CAT/解码/自动呼叫回归、浏览器结果、交付报告 | 未开始 |
 | HIL | CAT/PTT/TX、设备回读、长时运行和无线电行为；需独立授权 | 未授权 |
 
@@ -18,7 +18,7 @@
 1. Web 启动、停止、异常；手动/自动 TCP 端口、占用；TCP 与 UDP 完全分离、无第二 UDP 监听、不改 UDP 配置。
 2. 菜单重复点击、浏览器失败、设置保存重载、安全重启；状态 JSON、解码列表、SSE/重连、`Last-Event-ID`/revision、背压和连接上限。
 3. 频率非法输入、TX 中安全语义、实际频率回读；DX 呼号/Grid 校验、过期 decode、独立 generation 回读、选择与开始分离。
-4. CQ/AutoSeq 状态门、二次确认、停止优先级、停止回读；控制超时、重复 request、旧 epoch、revision 冲突、退出期间请求和未知状态提示。
+4. CQ/AutoSeq 状态门、二次确认、停止优先级、业务 generation 回读；控制超时、重复 request、旧 epoch、revision 冲突、退出期间请求和未知状态提示。
 5. read/control 鉴权、LAN 强保护、Host/Origin/CSRF、body/连接/慢连接/日志限长；Web 异常不影响 JTDX。
 6. 原有 UDP、CAT、解码、自动呼叫测试无回归；静态、单元、API 合同、浏览器、HIL、生产六层证据分别记录。
 

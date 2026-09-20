@@ -18,7 +18,7 @@ class JtdxWebControl : public QObject
   Q_OBJECT
 
 public:
-  enum class Operation { Frequency, SelectDx };
+  enum class Operation { Frequency, SelectDx, StartCq, StartAutoCall, StopAutoCall };
   enum class Status { Received, Accepted, Pending, Completed, Failed, Rejected, Timeout };
 
   struct SafetySnapshot
@@ -55,6 +55,10 @@ public:
     QString dx_time;
     QString dx_selection_source;
     quint64 dx_source_decode_id {0};
+    quint64 business_generation {0};
+    bool business_state_known {false};
+    QString cq_state;
+    bool auto_sequence_enabled {false};
   };
 
   struct Request
@@ -126,6 +130,7 @@ public:
   void set_observation_provider (ObservationProvider provider);
   void set_frequency_dispatcher (DispatchHandler handler);
   void set_select_dx_dispatcher (DispatchHandler handler);
+  void set_business_dispatcher (DispatchHandler handler) { business_dispatcher_ = std::move (handler); }
 
   // 将控制请求绑定到当前成功监听的 WebServer epoch。绑定不会重建协调器，
   // 因而不会丢失已 begin 操作的未确认锁；停止期间请求保持 fail-closed。
@@ -148,6 +153,9 @@ public:
                            quint64 state_revision, QString dx_report = {},
                            qint32 dx_frequency_offset = 0, QString dx_time = {},
                            QString dx_selection_source = {}, quint64 dx_source_decode_id = 0);
+  bool feedback_business (QString const& request_id, QString const& server_epoch,
+                          quint64 generation, QString cq_state, bool auto_sequence_enabled,
+                          quint64 state_revision);
   bool fail (QString const& request_id, QString const& server_epoch, QString reason);
   bool expire ();
   bool rotate_epoch ();
@@ -178,6 +186,9 @@ private:
     QString dx_time;
     QString dx_selection_source;
     quint64 dx_source_decode_id {0};
+    quint64 baseline_business_generation {0};
+    QString target_cq_state;
+    bool target_auto_sequence_enabled {false};
     bool timed_out {false};
     bool prepared {false};
     bool dispatched {false};
@@ -215,6 +226,7 @@ private:
   ObservationProvider observation_provider_;
   DispatchHandler frequency_dispatcher_;
   DispatchHandler select_dx_dispatcher_;
+  DispatchHandler business_dispatcher_;
   QString last_timed_out_request_id_;
   QTimer expiry_timer_;
 };

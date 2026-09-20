@@ -159,6 +159,17 @@ QByteArray post_select_dx (quint16 port, QByteArray const& token, QByteArray con
   return raw_request (port, wire);
 }
 
+QByteArray post_business (quint16 port, QByteArray const& token, QByteArray const& path,
+                          QByteArray const& body, QByteArray const& origin)
+{
+  QByteArray wire = QByteArrayLiteral ("POST /api/v1/control/") + path
+      + QByteArrayLiteral (" HTTP/1.1\r\nHost: 127.0.0.1:") + QByteArray::number (port)
+      + QByteArrayLiteral ("\r\nAuthorization: Bearer ") + token + QByteArrayLiteral ("\r\nOrigin: ")
+      + origin + QByteArrayLiteral ("\r\nContent-Type: application/json\r\nContent-Length: ")
+      + QByteArray::number (body.size ()) + QByteArrayLiteral ("\r\n\r\n") + body;
+  return raw_request (port, wire);
+}
+
 bool partial_header_times_out (quint16 port)
 {
   QTcpSocket socket;
@@ -277,6 +288,7 @@ int main (int argc, char ** argv)
     });
   config.enable_frequency_control = true;
   config.enable_dx_control = true;
+  config.enable_automation_control = true;
   bool const browser_frequency_fixture = app.arguments ().contains (
       QStringLiteral ("--serve-browser-frequency"))
       || app.arguments ().contains (QStringLiteral ("--serve-browser-frequency-empty"))
@@ -553,6 +565,44 @@ int main (int argc, char ** argv)
   check (status (post_select_dx (port, token, stale_dx_body,
                                 QByteArrayLiteral ("http://127.0.0.1:") + QByteArray::number (port))) == 409,
          "stale or unknown decode id is rejected before dispatch");
+
+  JtdxWebControl::Dispatch captured_business;
+  control.set_business_dispatcher ([&] (JtdxWebControl::Dispatch const& dispatch) {
+      captured_business = dispatch;
+      JtdxWebControl::Dispatch prepared;
+      check (control.prepare_dispatch (dispatch.request_id, dispatch.server_epoch, &prepared),
+             "TCP CQ request reaches production prepare dispatcher");
+      check (control.begin_dispatch (prepared),
+             "TCP CQ request reaches production begin dispatcher");
+    });
+  QByteArray const cq_body = QByteArrayLiteral ("{\"request_id\":\"tcp-cq-1\",\"server_epoch\":\"")
+      + server.server_epoch ().toUtf8 () + QByteArrayLiteral ("\",\"state_revision\":")
+      + QByteArray::number (observed.state_revision) + QByteArrayLiteral (",\"confirm\":true}");
+  QJsonObject const cq_response = response_json (post_business (
+      port, token, QByteArrayLiteral ("start-cq"), cq_body,
+      QByteArrayLiteral ("http://127.0.0.1:") + QByteArray::number (port)));
+  check (cq_response.value (QStringLiteral ("status")).toString () == QStringLiteral ("pending")
+             && captured_business.operation == JtdxWebControl::Operation::StartCq,
+         "confirmed CQ POST enters the business operation queue");
+  auto business_observation = observed;
+  business_observation.business_generation = 1;
+  business_observation.business_state_known = true;
+  business_observation.cq_state = QStringLiteral ("armed");
+  business_observation.state_revision = observed.state_revision + 1;
+  control.set_observed_state (business_observation);
+  check (control.feedback_business (captured_business.request_id, captured_business.server_epoch,
+                                    business_observation.business_generation,
+                                    business_observation.cq_state, false,
+                                    business_observation.state_revision),
+         "CQ operation completes only on matching business state feedback");
+  QJsonObject const completed_cq = response_json (post_business (
+      port, token, QByteArrayLiteral ("start-cq"), cq_body,
+      QByteArrayLiteral ("http://127.0.0.1:") + QByteArray::number (port)));
+  check (completed_cq.value (QStringLiteral ("status")).toString () == QStringLiteral ("completed")
+             && completed_cq.value (QStringLiteral ("readback")).toObject ().value (QStringLiteral ("cq_state")).toString ()
+                    == QStringLiteral ("armed"),
+         "completed CQ result exposes confirmed business readback");
+  control.set_observed_state (observed);
 
   // A live SSE peer must receive a new snapshot when only the Control result changes.
   QTcpSocket operation_sse;

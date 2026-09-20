@@ -39,6 +39,7 @@ public:
     QString allowed_origin;            // LAN 时必须精确匹配；空值拒绝 Origin
     bool enable_frequency_control {false}; // 仅显式开启时允许频率 POST
     bool enable_dx_control {false}; // 仅显式开启时允许选择 DX POST
+    bool enable_automation_control {false}; // 仅显式开启时允许 CQ/AutoSeq 控制 POST
   };
 
   static constexpr quint16 automatic_port_first = 49152;

@@ -174,7 +174,12 @@ void JtdxWebState::observe_business_state (bool auto_sequence_enabled,
                                            QString const& current_tx_text)
 {
   Q_ASSERT (QThread::currentThread () == thread ());
+  bool const changed = !has_business_state_
+      || auto_sequence_enabled_ != auto_sequence_enabled
+      || qso_stage_ != qso_stage || cq_state_ != cq_state
+      || current_tx_text_ != current_tx_text;
   ++revision_;
+  if (changed) ++business_generation_;
   has_business_state_ = true;
   auto_sequence_enabled_ = auto_sequence_enabled;
   qso_stage_ = qso_stage;
@@ -393,8 +398,9 @@ QJsonObject JtdxWebState::json_snapshot () const
   object.insert (QStringLiteral ("web_server_state"), QJsonValue {QJsonValue::Null});
   object.insert (QStringLiteral ("auto_sequence_state"), has_business_state_
                 ? QJsonValue {auto_sequence_enabled_ ? QStringLiteral ("enabled")
-                                                     : QStringLiteral ("disabled")}
+                                                      : QStringLiteral ("disabled")}
                 : QJsonValue {QJsonValue::Null});
+  object.insert (QStringLiteral ("business_generation"), static_cast<qint64> (business_generation_));
   object.insert (QStringLiteral ("qso_stage"), has_business_state_ ? nullable_string (qso_stage_)
                                                                       : QJsonValue {QJsonValue::Null});
   object.insert (QStringLiteral ("cq_state"), has_business_state_ ? nullable_string (cq_state_)

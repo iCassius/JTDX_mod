@@ -416,6 +416,10 @@ private:
   JtdxWebControl::ObservedState webControlObservation () const;
   void dispatchWebFrequency (JtdxWebControl::Dispatch);
   void dispatchWebDx (JtdxWebControl::Dispatch);
+  void dispatchWebBusiness (JtdxWebControl::Dispatch);
+  void applyWebStartCq ();
+  void applyWebStartAutoCall ();
+  void applyWebStopAutoCall ();
 
   JTDXDateTime * m_jtdxtime;
   QProcessEnvironment const& m_env;

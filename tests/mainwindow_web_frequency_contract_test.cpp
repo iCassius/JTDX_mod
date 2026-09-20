@@ -69,7 +69,7 @@ int main ()
              && source.contains ("m_webControl->feedback_select_dx"),
          "MainWindow completes DX only from the independent selection observation");
   auto const dx_dispatch = source.indexOf ("void MainWindow::dispatchWebDx");
-  auto const dx_next_function = source.indexOf ("void MainWindow::on_actionOpenWebUi_triggered", dx_dispatch);
+  auto const dx_next_function = source.indexOf ("void MainWindow::applyWebStartCq", dx_dispatch);
   QByteArray const dx_dispatch_body = source.mid (dx_dispatch, dx_next_function - dx_dispatch);
   check (dx_dispatch >= 0 && dx_next_function > dx_dispatch
              && !dx_dispatch_body.contains ("processMessage")
@@ -78,6 +78,10 @@ int main ()
              && !dx_dispatch_body.contains ("enableTx_mode")
              && !dx_dispatch_body.contains ("haltTx"),
          "DX adapter only updates the input projection and cannot enter QSO or TX paths");
+  check (source.contains ("configuration.enable_automation_control = m_config.web_ui_automation_control_enabled ()")
+             && source.contains ("void MainWindow::dispatchWebBusiness")
+             && source.contains ("m_webControl->feedback_business"),
+         "MainWindow forwards CQ/AutoSeq commands through a separate business-state readback adapter");
 
   JtdxWebControl control {100};
   control.set_clock_for_test (0);

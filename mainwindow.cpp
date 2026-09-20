@@ -515,6 +515,10 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
       QMetaObject::invokeMethod (this, [this, dispatch] { dispatchWebDx (dispatch); },
                                   Qt::QueuedConnection);
     });
+  m_webControl->set_business_dispatcher ([this] (JtdxWebControl::Dispatch const& dispatch) {
+      QMetaObject::invokeMethod (this, [this, dispatch] { dispatchWebBusiness (dispatch); },
+                                  Qt::QueuedConnection);
+    });
   connect (&m_config, &Configuration::web_ui_open_requested,
            this, &MainWindow::on_actionOpenWebUi_triggered);
   connect (&m_config, &Configuration::web_ui_restart_requested, this, [this] {
@@ -2236,6 +2240,7 @@ void MainWindow::applyWebUiConfiguration ()
   // JtdxWebControl 在主线程重新读取 CAT/发送安全状态并等待实际回读。
   configuration.enable_frequency_control = m_config.web_ui_frequency_control_enabled ();
   configuration.enable_dx_control = m_config.web_ui_dx_control_enabled ();
+  configuration.enable_automation_control = m_config.web_ui_automation_control_enabled ();
   configuration.udp_ports.insert (m_config.udp_server_port ());
   configuration.udp_ports.insert (m_config.udp2_server_port ());
   bool const applied = m_webService->apply (m_config.web_ui_enabled (), configuration);
@@ -2324,6 +2329,10 @@ JtdxWebControl::ObservedState MainWindow::webControlObservation () const
   result.dx_time = snapshot.value (QStringLiteral ("dx_time")).toString ();
   result.dx_selection_source = snapshot.value (QStringLiteral ("dx_selection_source")).toString ();
   result.dx_source_decode_id = snapshot.value (QStringLiteral ("dx_source_decode_id")).toVariant ().toULongLong ();
+  result.business_generation = snapshot.value (QStringLiteral ("business_generation")).toVariant ().toULongLong ();
+  result.business_state_known = snapshot.value (QStringLiteral ("auto_sequence_state")).isString ();
+  result.auto_sequence_enabled = snapshot.value (QStringLiteral ("auto_sequence_state")).toString () == QStringLiteral ("enabled");
+  result.cq_state = snapshot.value (QStringLiteral ("cq_state")).toString ();
   return result;
 }
 
@@ -2382,6 +2391,49 @@ void MainWindow::dispatchWebDx (JtdxWebControl::Dispatch dispatch)
                                     observed.state_revision, dispatch.dx_report,
                                     dispatch.dx_frequency_offset, dispatch.dx_time,
                                     dispatch.dx_selection_source, dispatch.dx_source_decode_id);
+}
+
+void MainWindow::applyWebStartCq ()
+{
+  genStdMsgs (m_rpt);
+  ui->genMsg->setText (ui->tx6->text ());
+  m_curMsgTx = ui->genMsg->text ();
+  m_ntx = 7;
+  m_QSOProgress = CALLING;
+  m_nlasttx = 6;
+  ui->rbGenMsg->setChecked (true);
+  if (m_transmitting) m_restart = true;
+}
+
+void MainWindow::applyWebStartAutoCall ()
+{
+  if (!m_autoseq) on_AutoSeqButton_clicked (true);
+}
+
+void MainWindow::applyWebStopAutoCall ()
+{
+  on_stopTxButton_clicked ();
+}
+
+void MainWindow::dispatchWebBusiness (JtdxWebControl::Dispatch dispatch)
+{
+  if (!m_webControl || m_webControl->is_shutdown ()) return;
+  JtdxWebControl::Dispatch prepared;
+  if (!m_webControl->prepare_dispatch (dispatch.request_id, dispatch.server_epoch, &prepared)) return;
+  if (!m_webControl->begin_dispatch (prepared)) return;
+  dispatch = std::move (prepared);
+  switch (dispatch.operation)
+    {
+    case JtdxWebControl::Operation::StartCq: applyWebStartCq (); break;
+    case JtdxWebControl::Operation::StartAutoCall: applyWebStartAutoCall (); break;
+    case JtdxWebControl::Operation::StopAutoCall: applyWebStopAutoCall (); break;
+    default: m_webControl->fail (dispatch.request_id, dispatch.server_epoch, QStringLiteral ("invalid_business_operation")); return;
+    }
+  statusUpdate ();
+  auto const observed = webControlObservation ();
+  m_webControl->feedback_business (dispatch.request_id, dispatch.server_epoch,
+                                   observed.business_generation, observed.cq_state,
+                                   observed.auto_sequence_enabled, observed.state_revision);
 }
 
 void MainWindow::on_actionOpenWebUi_triggered ()
@@ -7516,15 +7568,8 @@ void MainWindow::enable_DXCC_entity ()
 void MainWindow::on_pbCallCQ_clicked()
 {
 //  clearDXfields(" field cleared, SLOT on_pbCallCQ_clicked()"); // this line is duplicated in SLOT on_txb6_clicked()
-//need to sync CQ direction, instead of  ui->txrb6->setChecked(true); :
-  ui->txb6->click (); // check if there is any dependency
-  genStdMsgs(m_rpt);
-  ui->genMsg->setText(ui->tx6->text());
-  m_ntx=7;
-  m_QSOProgress = CALLING;
-  m_nlasttx=6;
-  ui->rbGenMsg->setChecked(true);
-  if(m_transmitting) m_restart=true;
+  ui->txb6->click ();
+  applyWebStartCq ();
 }
 
 void MainWindow::on_pbAnswerCaller_clicked()

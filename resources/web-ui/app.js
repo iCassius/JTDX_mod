@@ -18,6 +18,9 @@
   let dxRequest = null;
   let dxUnknown = false;
   let dxAbort = null;
+  let businessRequest = null;
+  let businessUnknown = false;
+  let businessAbort = null;
   let connectionSession = 0;
   let connected = false;
   let frequencyCandidates = [];
@@ -56,6 +59,7 @@
     }
     updateFrequencyForm();
     updateDxControls();
+    updateBusinessControls();
   }
 
   function bool(value) {
@@ -210,6 +214,13 @@
     node.className = "frequency-result " + (kind || "");
   }
 
+  function businessStatus(message, kind) {
+    const node = el("business_result");
+    if (!node) return;
+    node.textContent = message;
+    node.className = "frequency-result " + (kind || "");
+  }
+
   function operationForRequest(snapshot) {
     if (!frequencyRequest || !snapshot || !Array.isArray(snapshot.operations)) return null;
     return snapshot.operations.find((row) => row && typeof row === "object"
@@ -226,6 +237,14 @@
       && row.server_epoch === dxRequest.epoch) || null;
   }
 
+  function operationForBusiness(snapshot) {
+    if (!businessRequest || !snapshot || !Array.isArray(snapshot.operations)) return null;
+    return snapshot.operations.find((row) => row && typeof row === "object"
+      && row.operation === businessRequest.operation
+      && row.request_id === businessRequest.requestId
+      && row.server_epoch === businessRequest.epoch) || null;
+  }
+
   function readbackMatches(row, targetHz) {
     const readback = row && row.readback && typeof row.readback === "object" ? row.readback : null;
     return !!(readback && readback.confirmed === true
@@ -238,6 +257,15 @@
       && readback.dx_call === request.call && (readback.dx_grid || "") === (request.grid || "")
       && readback.dx_selection_source === "decode"
       && integerValue(readback.dx_source_decode_id) === request.decodeId);
+  }
+
+  function readbackMatchesBusiness(row, request) {
+    const readback = row && row.readback && typeof row.readback === "object" ? row.readback : null;
+    if (!readback || readback.confirmed !== true) return false;
+    if (request.operation === "start-cq") return readback.cq_state === "armed";
+    if (request.operation === "start-auto-call") return readback.auto_sequence_enabled === true;
+    return readback.auto_sequence_enabled === false
+      && ["idle", "not_selected"].includes(readback.cq_state);
   }
 
   function terminalOperation(row) {
@@ -297,6 +325,33 @@
       }
     }
     updateDxControls();
+  }
+
+  function reconcileBusiness(snapshot) {
+    if (!businessRequest || !snapshot) return;
+    const epoch = typeof snapshot.server_epoch === "string" ? snapshot.server_epoch : "";
+    if (epoch && epoch !== businessRequest.epoch) {
+      businessRequest = null;
+      businessUnknown = false;
+      businessStatus("服务 epoch 已变化，旧 CQ/AutoSeq 请求已失效。", "warning");
+      return;
+    }
+    const row = operationForBusiness(snapshot);
+    if (row && terminalOperation(row)) {
+      if (row.status === "completed" && readbackMatchesBusiness(row, businessRequest)) {
+        businessStatus("CQ/AutoSeq 操作已由业务状态回读确认。", "success");
+        businessRequest = null;
+        businessUnknown = false;
+      } else if (row.status === "completed") {
+        businessUnknown = true;
+        businessStatus("服务报告完成，但业务回读不匹配，结果未知。", "warning");
+      } else {
+        businessRequest = null;
+        businessUnknown = false;
+        businessStatus("CQ/AutoSeq 请求未完成：" + boundedString(row.reason || "服务未提供原因", 180), "error");
+      }
+    }
+    updateBusinessControls();
   }
 
   function frequencyGateReason(snapshot) {
@@ -359,6 +414,33 @@
     }
   }
 
+  function businessGateReason(snapshot) {
+    if (!snapshot) return "等待新鲜状态快照";
+    if (snapshot.automation_control_enabled !== true) return "桌面尚未开放 CQ/AutoSeq 控制";
+    if (!connected) return "等待连接和最新状态快照";
+    if (snapshot.online !== true || snapshot.rig_online !== true) return "主程序或电台未在线";
+    if (snapshot.rig_fresh !== true || snapshot.freshness !== "fresh") return "状态快照陈旧";
+    if (snapshot.tx_enabled !== false || snapshot.transmitting !== false || snapshot.ptt !== false
+        || snapshot.watchdog_timeout !== false) return "当前 TX/PTT 状态不是明确安全值";
+    if (integerValue(snapshot.state_revision) == null) return "缺少安全状态 revision";
+    if (businessUnknown) return "上一次 CQ/AutoSeq 结果未知，等待回读或新 epoch";
+    if (businessRequest) return "已有 CQ/AutoSeq 请求处理中";
+    return "";
+  }
+
+  function updateBusinessControls() {
+    const reason = businessGateReason(currentSnapshot);
+    ["business_start_cq", "business_start_auto", "business_stop"].forEach((id) => {
+      const button = el(id);
+      if (button) button.disabled = !!reason;
+    });
+    const status = el("business_control_status");
+    if (status) {
+      status.textContent = reason || "每次操作都需要页面确认";
+      status.className = "frequency-control-status " + (reason ? "blocked" : "ready");
+    }
+  }
+
   function clearRenderedSnapshot(message) {
     currentSnapshot = null;
     frequencyCandidates = [];
@@ -370,7 +452,7 @@
       "freshness", "frequency_freshness", "last_status_update", "last_decode_update", "decode_age",
       "dx_call", "dx_grid", "report", "df", "tx_mode", "tx_enabled", "transmitting", "decoding",
       "tx_first", "watchdog_timeout", "cq_qso", "auto_sequence_state", "current_tx_text", "decode_count",
-      "dx_selection_status", "dx_selection_result"]
+      "dx_selection_status", "dx_selection_result", "business_control_status", "business_result"]
       .forEach((id) => text(id, null));
     const box = el("decodes");
     if (box) box.replaceChildren();
@@ -378,6 +460,7 @@
     updateFrequencyChoices(null);
     updateFrequencyForm();
     updateDxControls();
+    updateBusinessControls();
   }
 
   function operationLabel(value) {
@@ -498,6 +581,7 @@
     renderOperations(freshness, message);
     reconcileFrequency(snapshot);
     reconcileDx(snapshot);
+    reconcileBusiness(snapshot);
   }
 
   function render(snapshot) {
@@ -568,6 +652,7 @@
     updateOperations(snapshot);
     updateFrequencyForm();
     updateDxControls();
+    updateBusinessControls();
   }
 
   function auth() {
@@ -795,6 +880,64 @@
     }
   }
 
+  async function sendBusiness(operation) {
+    const gate = businessGateReason(currentSnapshot);
+    if (gate || !currentSnapshot) { updateBusinessControls(); return; }
+    const labels = {"start-cq": "启动 CQ", "start-auto-call": "启动 AutoSeq", "stop-auto-call": "停止 CQ/AutoSeq"};
+    if (!globalThis.confirm("确认" + labels[operation] + "？页面只提交命令，完成必须等待主程序业务状态回读。")) return;
+    let requestId;
+    try { requestId = secureRequestId(); } catch (_) {
+      businessStatus("浏览器没有可用的安全随机源，无法发送命令。", "error");
+      return;
+    }
+    const request = {requestId, operation, epoch: currentSnapshot.server_epoch, session: connectionSession};
+    businessRequest = request;
+    businessUnknown = false;
+    businessStatus("正在发送" + labels[operation] + "…", "processing");
+    updateBusinessControls();
+    const local = new AbortController();
+    businessAbort = local;
+    const timer = setTimeout(() => local.abort(), 5000);
+    try {
+      const response = await fetch("/api/v1/control/" + operation, {
+        method: "POST",
+        headers: Object.assign({"Content-Type": "application/json", "Accept": "application/json"}, auth()),
+        body: JSON.stringify({request_id: request.requestId, server_epoch: request.epoch,
+          state_revision: integerValue(currentSnapshot.state_revision), confirm: true}),
+        cache: "no-store", signal: local.signal
+      });
+      if (request.session !== connectionSession || businessRequest !== request) return;
+      let payload = null;
+      try { payload = await response.json(); } catch (_) { payload = null; }
+      if (!responseIdentityMatches(payload, request)) {
+        businessUnknown = true;
+        businessStatus("响应无法与本次命令安全匹配，结果未知。", "warning");
+      } else if (["received", "accepted", "pending"].includes(payload.status)) {
+        businessStatus("命令已登记，等待业务状态回读；HTTP 响应不代表完成。", "processing");
+      } else if (payload.status === "completed" && response.ok && readbackMatchesBusiness(payload, request)) {
+        businessRequest = null;
+        businessUnknown = false;
+        businessStatus("操作已由业务状态回读确认。", "success");
+      } else if (payload.status === "failed" || payload.status === "rejected" || payload.status === "timeout") {
+        businessRequest = null;
+        businessUnknown = false;
+        businessStatus("命令未完成：" + responseReason(payload, "服务未提供原因"), "error");
+      } else {
+        businessUnknown = true;
+        businessStatus("完成响应缺少匹配业务回读，结果未知。", "warning");
+      }
+      updateBusinessControls();
+    } catch (error) {
+      if (request.session !== connectionSession || businessRequest !== request) return;
+      businessUnknown = true;
+      businessStatus(error && error.name === "AbortError" ? "命令超时，结果未知。" : "命令传输异常，结果未知。", "warning");
+      updateBusinessControls();
+    } finally {
+      clearTimeout(timer);
+      if (businessAbort === local) businessAbort = null;
+    }
+  }
+
   function timedRead(reader, run) {
     let timer;
     const timeout = new Promise((_, reject) => {
@@ -868,6 +1011,7 @@
     if (controller) controller.abort();
     if (frequencyAbort) frequencyAbort.abort();
     if (dxAbort) dxAbort.abort();
+    if (businessAbort) businessAbort.abort();
     if (frequencyRequest) {
       frequencyUnknown = true;
       frequencyStatus("会话已更换，旧频率请求结果未知；等待匹配回读或新 epoch。", "warning");
@@ -880,6 +1024,12 @@
     } else {
       dxUnknown = false;
     }
+    if (businessRequest) {
+      businessUnknown = true;
+      businessStatus("会话已更换，旧 CQ/AutoSeq 请求结果未知。", "warning");
+    } else {
+      businessUnknown = false;
+    }
     token = el("token_input").value;
     el("auth_error").textContent = "";
     clearRenderedSnapshot("令牌已更换，等待对应会话的状态快照");
@@ -889,6 +1039,9 @@
   });
 
   el("frequency_send").addEventListener("click", sendFrequency);
+  el("business_start_cq").addEventListener("click", () => sendBusiness("start-cq"));
+  el("business_start_auto").addEventListener("click", () => sendBusiness("start-auto-call"));
+  el("business_stop").addEventListener("click", () => sendBusiness("stop-auto-call"));
   el("frequency_band").addEventListener("change", () => {
     el("frequency_preset").value = "";
     updateFrequencyChoices(currentSnapshot);
@@ -912,4 +1065,5 @@
   }, 1000);
   updateFrequencyChoices(null);
   updateFrequencyForm();
+  updateBusinessControls();
 }());

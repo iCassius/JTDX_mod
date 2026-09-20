@@ -166,6 +166,33 @@ int main ()
                                     QStringLiteral ("JA2LCP"), QStringLiteral ("PM95"), 2),
          "DX independent feedback generation completes");
 
+  Control::Request start_cq;
+  start_cq.request_id = QStringLiteral ("cq-1");
+  start_cq.operation = Control::Operation::StartCq;
+  start_cq.server_epoch = control.server_epoch ();
+  start_cq.state_revision = 1;
+  bool business_dispatched = false;
+  control.set_business_dispatcher ([&] (Control::Dispatch const& dispatch) {
+    business_dispatched = true;
+    Control::Dispatch prepared;
+    check (control.prepare_dispatch (dispatch.request_id, dispatch.server_epoch, &prepared),
+           "CQ dispatch prepares at execution time");
+    check (control.begin_dispatch (prepared), "CQ dispatch begins once");
+  });
+  auto const cq_pending = control.submit (start_cq);
+  check (cq_pending.status == Control::Status::Pending && business_dispatched,
+         "CQ command enters pending through the business dispatcher");
+  auto business_observation = safe_state (3);
+  business_observation.business_generation = 1;
+  business_observation.business_state_known = true;
+  business_observation.cq_state = QStringLiteral ("armed");
+  business_observation.state_revision = 3;
+  control.set_observed_state (business_observation);
+  check (control.feedback_business (QStringLiteral ("cq-1"), control.server_epoch (), 1,
+                                    QStringLiteral ("armed"), false, 3),
+         "CQ command requires a later matching business-state readback");
+  control.set_observed_state (safe_state (1));
+
   auto busy_a = frequency_request (control, QStringLiteral ("busy-a"), 14076000);
   auto busy_b = frequency_request (control, QStringLiteral ("busy-b"), 14077000);
   control.set_frequency_dispatcher ({ });

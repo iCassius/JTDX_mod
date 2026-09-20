@@ -1,5 +1,13 @@
 # JTDX 内置 Web UI：进度与中断恢复日志
 
+### 2026-09-21 P5 CQ/AutoSeq 启停软件链路批次
+
+- 新增独立 `WebUiAutomationControlEnabled` 配置，默认关闭；新增 `start-cq`、`start-auto-call`、`stop-auto-call` 三个 POST 命令，命令体必须带 `confirm: true`，前端每次提交前再做二次确认。
+- `JtdxWebControl` 增加业务命令 dispatcher 和独立 `business_generation` 回读；`JtdxWebState` 只有业务字段实际变化时才递增该 generation。HTTP `accepted/pending` 不代表完成，完成必须匹配 `cq_state` 或 AutoSeq 开关的业务回读。
+- MainWindow 通过窄的业务适配方法执行 CQ/AutoSeq 状态转换并在主 Qt 事件循环中回读；未新增线程、进程、UDP、PTT 或 CAT 入口。停止命令复用既有停止优先级，页面不会无确认发送。
+- 软件验证覆盖 Control 业务 generation、Server 三类命令中的确认/排队/回读、配置持久化、Service 签名、MainWindow 静态契约、前端 `node --check`；完整 CTest 待本片收尾后记录。
+- 未验证：未启动真实 `jtdx.exe`，未连接真实 CAT/PTT/TX，未做真实发射、HIL、完整窗口人工验收、浏览器人工验收或部署；软件业务回读不能证明无线电已经发射。
+
 ### 2026-09-21 P4 DX 选择软件链路批次
 
 - 基线：`main/ced90ea`；继续保持默认关闭、loopback/令牌/同源与主 Qt 事件循环边界。新增独立 `WebUiDxControlEnabled` 配置，不与频率控制开关隐式耦合。
