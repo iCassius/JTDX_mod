@@ -6,8 +6,9 @@
 - `JtdxWebState` 新增有界 `frequency_candidates` 快照及 mode/region 上下文；`MainWindow::statusUpdate()` 复用现有状态刷新点发布候选。Web 页面新增频段筛选和常用频率选择；选择只填入原有 MHz 输入，不触发 POST、不触发 TX，手动输入仍可用；候选失效时只清空预设选择，不覆盖手动文本。
 - 新增 `JtdxWebFrequencyCandidates` 单元测试覆盖 All/Region、FT8/JT9、Bands 过滤、重复频率默认标记合并、排序、上限和空结果；状态测试覆盖快照字段、去重和 revision 稳定性。受影响目标构建退出码为 `0`，`node --check resources/web-ui/app.js` 退出码为 `0`；新增/相关定向 CTest 曾为 `3/3` 通过。
 - 隔离 `--serve-browser-frequency` 本地夹具验收：连接后浏览器显示 `FT8 / All · 4 条候选`，频段筛选 `40m/20m` 正常；选择 `7.074000 MHz` 后目标输入变为 `7.074000`，操作卡仍为 `0` 条；随后手动输入 `14.075000` 仍可用。`390x844` 窄屏截图确认频率表单纵向排列、无横向溢出。夹具已停止。
-- 全量 CTest 当前最终复跑为 `17/20` 通过：`configuration_web_ui_test` 与 `jtdx_web_service_test` 以 Windows `0xc0000602` fail-fast 退出，`jtdx_web_server_test` 在现有慢 SSE 背压断言处报告 `active count=1`；上述失败不是本片新增测试，需后续单独收敛，不能把本次全量结果描述为全绿。生产 `MainWindow` frequency gate 仍为 `false`。
-- 未启动真实 `jtdx.exe`，未连接 CAT/PTT/TX，未做 HIL 或部署；本片只使用本地隔离浏览器夹具和自动化测试。下一片应先独立收敛上述既有测试环境/时序失败，再考虑候选空列表的浏览器切换场景；生产频率写入口继续关闭。
+- 早先一次 `17/20` 结果不是源码回归：复现确认测试命令把 `C:\JTDX64\159\bin` 放在 Qt DLL 前，GUI/service 测试混入两套 Qt/运行库而以 `0xc0000602` fail-fast 退出；慢 SSE 失败也来自同一轮混用环境。改为构建一致的 `PATH=C:\msys64\mingw64\bin;C:\msys64\usr\bin;C:\JTDX64\159\bin;...` 后，`configuration_web_ui_test`、`jtdx_web_server_test`、`jtdx_web_service_test` 均通过。
+- 权威全量 CTest 为 `20/20`、`100% tests passed`、`57.55 sec`；日志：`C:\JTDX64\deps-webui\p4-frequency-candidates-final-ctest-6dbe33d.log`。生产 `MainWindow` frequency gate 仍为 `false`。
+- 未启动真实 `jtdx.exe`，未连接 CAT/PTT/TX，未做 HIL 或部署；本片只使用本地隔离浏览器夹具和自动化测试。后续如复跑必须保留上述 DLL 顺序，避免再次混用运行库；候选空列表的浏览器切换场景仍可作为下一片专项，生产频率写入口继续关闭。
 
 ### 2026-09-20 P4 频率表单浏览器故障注入与身份锁修复
 

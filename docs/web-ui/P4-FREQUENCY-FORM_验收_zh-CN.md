@@ -6,7 +6,7 @@
 
 候选由桌面侧 `Configuration::frequencies()` / `FrequencyList_v2` 与 `Bands` 生成，服务端按当前 mode/region 过滤并以有界快照发送；前端不硬编码频率表、不读取 `QComboBox`，也不改变既有 model filter。频段下拉只筛选服务端候选，常用频率下拉的选择只填入现有目标 MHz 输入，不自动发送；手动输入仍保留。
 
-隔离 `--serve-browser-frequency` 夹具中，连接后显示 `FT8 / All · 4 条候选`，可见 `40m`、`20m`；选择 `7.074000 MHz` 后目标输入为 `7.074000`，操作结果保持 `0` 条；切换 `20m` 后只显示 20m 候选，手动输入 `14.075000` 仍可用。`390x844` 窄屏下频率表单纵向布局正常。构建、JavaScript 语法检查和相关定向测试通过；全量 CTest 最终复跑为 `17/20`，其中 3 项既有 GUI/SSE 环境或时序失败，详见进度日志，不作为本片新增功能失败的证据。
+隔离 `--serve-browser-frequency` 夹具中，连接后显示 `FT8 / All · 4 条候选`，可见 `40m`、`20m`；选择 `7.074000 MHz` 后目标输入为 `7.074000`，操作结果保持 `0` 条；切换 `20m` 后只显示 20m 候选，手动输入 `14.075000` 仍可用。`390x844` 窄屏下频率表单纵向布局正常。构建、JavaScript 语法检查和相关定向测试通过；此前 `17/20` 失败由 DLL 搜索顺序混用运行库造成，修正为构建一致的 MSYS2 Qt 优先顺序后，全量 CTest `20/20`、`100% tests passed`、`57.55 sec`，权威日志为 `C:\JTDX64\deps-webui\p4-frequency-candidates-final-ctest-6dbe33d.log`。
 
 本片仍未启动真实 JTDX、未连接 CAT/PTT/TX、未做 HIL 或部署；生产 `MainWindow` frequency gate 仍为 `false`。候选空列表的浏览器切换场景尚未专项人工验证，单元测试已覆盖 mode/region 无匹配结果。
 
