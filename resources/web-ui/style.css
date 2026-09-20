@@ -26,6 +26,18 @@ h2 { font-size: 1rem; color: #a9bfdd; margin-bottom: 16px; }
 .frequency { grid-column: span 2; }
 .frequency strong { display: block; font-size: clamp(2rem, 6vw, 4.4rem); letter-spacing: .02em; color: #d8e7ff; }
 .frequency small, .notice { color: #8290a5; }
+.frequency-control { grid-column: span 2; }
+.frequency-control-help { margin: -7px 0 14px; color: #8290a5; font-size: .9rem; }
+.frequency-form { display: flex; align-items: center; gap: 10px; }
+.frequency-form label { color: #a9bfdd; white-space: nowrap; }
+.frequency-form input { flex: 1; min-width: 0; background: #0e1118; border: 1px solid #40536e; border-radius: 7px; color: #e7edf7; padding: 9px; font: inherit; font-variant-numeric: tabular-nums; }
+.frequency-form button { background: #477fbf; color: white; border: 0; border-radius: 7px; padding: 9px 16px; white-space: nowrap; }
+.frequency-form button:disabled { background: #354256; color: #8d99aa; cursor: not-allowed; }
+.frequency-control-status, .frequency-result { margin: 12px 0 0; font-size: .88rem; }
+.frequency-control-status.blocked, .frequency-result.warning { color: #f0c674; }
+.frequency-control-status.ready, .frequency-result.success { color: #73e0b5; }
+.frequency-result.processing { color: #9fc7ff; }
+.frequency-result.error { color: #e89a9a; }
 dl { display: grid; grid-template-columns: 1fr auto; gap: 10px 14px; margin: 0; }
 dt { color: #8694a8; }
 dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
@@ -64,6 +76,7 @@ dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
 @media (max-width: 650px) {
   main { padding: 20px 12px; }
   .frequency { grid-column: span 1; }
+  .frequency-control { grid-column: span 1; }
   .decode { grid-template-columns: 1fr 1fr; }
   .decode .text { grid-column: 1 / -1; }
   .operations-heading { display: block; }
@@ -72,4 +85,6 @@ dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
   .operation-row dd { text-align: left; }
   .auth { display: grid; grid-template-columns: 1fr auto; }
   .auth label, .auth span { grid-column: 1 / -1; }
+  .frequency-form { display: grid; grid-template-columns: 1fr auto; }
+  .frequency-form label { grid-column: 1 / -1; }
 }

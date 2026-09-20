@@ -660,6 +660,13 @@ QJsonObject JtdxWebServer::state_snapshot () const
   QJsonObject snapshot = state_ ? state_->json_snapshot () : QJsonObject {};
   snapshot.insert (QStringLiteral ("server_epoch"), server_epoch_);
   snapshot.insert (QStringLiteral ("web_server_state"), web_server_state_);
+  snapshot.insert (QStringLiteral ("frequency_control_enabled"),
+                   configuration_.enable_frequency_control
+                   && control_
+                   && control_->server_epoch_bound ()
+                   && control_->server_epoch () == server_epoch_
+                   && !control_->is_shutdown ()
+                   && static_cast<bool> (frequency_validator_));
   QJsonObject const operations = operations_snapshot ();
   snapshot.insert (QStringLiteral ("operation_revision"), operations.value (QStringLiteral ("operation_revision")));
   snapshot.insert (QStringLiteral ("operations"), operations.value (QStringLiteral ("operations")));

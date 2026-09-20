@@ -1,5 +1,13 @@
 # JTDX 内置 Web UI：进度与中断恢复日志
 
+### 2026-09-20 P4 手动频率表单隔离验收收尾与提交恢复
+
+- 基线为 `main/2e378fc`。上一轮已完成本批源码、测试、三份前端资源和中文文档，但额度耗尽未提交；本轮仅恢复收尾记录并精确提交，不改代码、不重测。
+- 权威构建日志 `C:\JTDX64\deps-webui\p4-frequency-form-final-build.log` 退出码为 `0`；全量 CTest 日志 `C:\JTDX64\deps-webui\p4-frequency-form-final-ctest.log` 为 `19/19` 通过、总耗时 `58.86 sec`。日志尾部确认主程序、Web Server/Service 和测试目标完成链接，CTest 全部通过。
+- 隔离 `--serve-browser-frequency` 真实 TCP fixture 验收：`14.075000` 首次请求先 pending 后由匹配回读完成并更新顶部实际频率；`14.076000` 以独立 request ID 成功；`99999` 被服务端以 `invalid_frequency_hz` 拒绝且实际频率保持不变。`390` 视口 DOM `clientWidth=scrollWidth=375`，无水平溢出；不宣称全面视觉审查。
+- `productionMainWindow` gate 保持 `false`；本次仅使用测试可执行文件和隔离 fixture 验收，未增加线程、UDP 监听或生产进程。未启动真实 `jtdx.exe`，未连接 CAT，未执行 PTT/TX/HIL。
+- 当前剩余门：预设频率/频段选择、异常客户端专项（异常传输、epoch/token 等场景）和生产启用仍未完成。提交前只执行 `git diff --check`，不 push、amend 或 reset；额外用户改动不纳入本批。
+
 ### 2026-09-20 P4 操作结果卡片隔离浏览器验收收尾
 
 - 上一轮在五小时额度剩余 `29%` 时触发收尾阈值并暂停新实现，但收尾额度耗尽，验收结果未写入；本轮恢复额度为五小时 `100%`、周 `68%`。本轮不新增测试，仅补齐上一轮已完成的结果记录。
@@ -330,3 +338,9 @@ rg -n "MessageClient|MessageServer|statusUpdate|status_update|decode|handle_tran
 - 下一步：
 - 结束额度：
 ```
+## 2026-09-20 P4 手动频率表单收尾
+
+- 基线：前端片段基线 `2e378fc`；本轮增加原生手动频率表单、capability 安全状态门、字符串 Hz 请求、POST deadline、响应/SSE 匹配回读和未知结果锁；生产 `MainWindow` gate 保持 `false`。
+- 软件验收：隔离 `--serve-browser-frequency` 真实 TCP fixture 提供 `fresh` safe state、`frequency_control_enabled: true` 和模拟 feedback。`14.075000`、`14.076000` 两次请求均 pending 后 completed，request ID 独立；`99999` 服务端返回 `invalid_frequency_hz`，顶部实际频率保持 `14.076000 MHz`。`390` 视口 DOM `clientWidth=scrollWidth=375`，无水平溢出。
+- 权威证据：构建退出码 `0`，日志 `C:\JTDX64\deps-webui\p4-frequency-form-final-build.log`；全量 CTest `19/19`、`58.86 sec`，日志 `C:\JTDX64\deps-webui\p4-frequency-form-final-ctest.log`。
+- 边界：仅模拟 fixture 软件验证；未启动真实 JTDX，未连接 CAT，未执行 PTT/TX/HIL。异常传输、epoch/token 切换仅静态实现未专项浏览器测；预设频率/频段、生产启用和高层隔离验证仍未完成。详见 `docs/web-ui/P4-FREQUENCY-FORM_验收_zh-CN.md`。

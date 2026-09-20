@@ -4,6 +4,12 @@
 
 ## 最新恢复结果（2026-09-20）
 
+### P4 手动频率表单与 capability fixture 验收
+
+基于前端片段基线 `2e378fc`，本轮已完成原生手动频率表单、安全频率 POST、capability 状态门和结果回读；生产 `MainWindow` gate 仍为 `false`。隔离 `--serve-browser-frequency` 真实 TCP fixture 软件验收通过：`14.075000`、`14.076000` 两次独立请求均经历 pending 后由匹配回读完成，`99999` 由服务端以 `invalid_frequency_hz` 拒绝且实际频率保持上一成功值；`390` 视口 DOM `clientWidth=scrollWidth=375`，无水平溢出。构建退出码 `0`，日志 `C:\JTDX64\deps-webui\p4-frequency-form-final-build.log`；全量 CTest `19/19`、`58.86 sec`，日志 `C:\JTDX64\deps-webui\p4-frequency-form-final-ctest.log`。
+
+本轮仅使用模拟 fixture，未启动真实 JTDX、未连接 CAT、未执行 PTT/TX/HIL；未声称完整视觉审查。异常传输、epoch/token 切换只完成静态实现，尚未专项浏览器验收；预设频率/频段、生产启用和高层隔离验证仍未完成。详见 [`docs/web-ui/P4-FREQUENCY-FORM_验收_zh-CN.md`](docs/web-ui/P4-FREQUENCY-FORM_验收_zh-CN.md)。
+
 ### P4 操作结果卡片隔离浏览器验收收尾
 
 上一轮在五小时额度剩余 `29%` 时按规则停止新实现，但收尾额度耗尽，未写入结果。本轮恢复时额度为五小时 `100%`、周 `68%`；本轮不新增测试，仅补齐上一轮已完成的验收记录。隔离 `--serve-browser` 真实 TCP fixture 运行 5 分钟，使用只读数据、生产 `frequency gate=false`，模拟 4 条操作结果：`pending`、`timeout`、`failed`、`completed` 中文状态正确；仅 confirmed completed 显示 `14.075000 MHz`，其他值未知且顶部实际频率仍未知；陈旧快照提示正确。`1280x900` 与 `390x844` 视觉通过，窄屏 `clientWidth=scrollWidth=375` 无水平溢出；停止自建 fixture 后显示“连接断开，保留旧操作快照”，四条结果保留。权威构建日志 `C:\JTDX64\deps-webui\p4-operations-ui-final-build.log` 退出码为 `0`，全量 CTest 日志 `C:\JTDX64\deps-webui\p4-operations-ui-final-ctest.log` 为 `19/19`、`57.20 sec`。本轮未启动真实 JTDX、未连接 CAT、未执行 PTT/TX/HIL。
