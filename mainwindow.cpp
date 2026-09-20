@@ -2228,9 +2228,9 @@ void MainWindow::applyWebUiConfiguration ()
   configuration.bind_address = QHostAddress {m_config.web_ui_bind_address ()};
   configuration.bearer_token_sha256 = m_config.web_ui_token_sha256 ();
   configuration.allowed_origin = m_config.web_ui_allowed_origin ();
-  // P4 HTTP 基础路由尚未具备有限 operations/SSE 完成回读；生产入口保持
-  // fail-closed，即使旧配置或设置值为 true 也不能获得 Web 写权限。
-  configuration.enable_frequency_control = false;
+  // 配置开关只决定是否暴露频率 POST；实际 dispatch 仍由
+  // JtdxWebControl 在主线程重新读取 CAT/发送安全状态并等待实际回读。
+  configuration.enable_frequency_control = m_config.web_ui_frequency_control_enabled ();
   configuration.udp_ports.insert (m_config.udp_server_port ());
   configuration.udp_ports.insert (m_config.udp2_server_port ());
   bool const applied = m_webService->apply (m_config.web_ui_enabled (), configuration);

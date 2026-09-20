@@ -12,4 +12,4 @@ SSE `snapshot` 同样携带 `operations`。服务以 Control 的独立 operation
 
 隔离测试覆盖分片 body、Content-Length、鉴权、错误 Origin、重复 ID 冲突、非法频率、关闭开关、无 Control 默认拒绝、accepted 不等于 completed、state GET/SSE 的 pending→completed 与 timeout 回读、event id 变化、Last-Event-ID 重连、epoch 过滤、停止重启失效和既有只读回归。测试不启动 JTDX、不连接电台、不执行 PTT/TX/HIL。
 
-当前交付门：有限 `operations` 摘要及其 SSE 更新已接入并通过隔离验收，但 MainWindow 生产入口仍强制 `enable_frequency_control=false`；频率 CAT 生产适配、完整窗口验收与 HIL 仍未交付。本片不宣称用户可用的 Web 频率写控制。
+当前交付门：有限 `operations` 摘要及其 SSE 更新、MainWindow 频率适配隔离契约和显式配置开关已接入并通过软件隔离验收；默认配置仍关闭，真实 CAT 回读、完整窗口验收与 HIL 仍未交付。本片不把软件隔离结果宣称为真实设备频率控制完成。

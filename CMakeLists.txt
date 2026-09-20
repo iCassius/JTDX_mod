@@ -1635,6 +1635,16 @@ if (JTDX_BUILD_LOCAL_TESTS)
   target_include_directories (jtdx_web_control_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   target_link_libraries (jtdx_web_control_test Qt5::Core)
   add_test (NAME jtdx_web_control_test COMMAND jtdx_web_control_test)
+  add_executable (mainwindow_web_frequency_contract_test
+    tests/mainwindow_web_frequency_contract_test.cpp
+    JtdxWebControl.cpp)
+  target_compile_definitions (mainwindow_web_frequency_contract_test PRIVATE
+    JTDX_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+  target_include_directories (mainwindow_web_frequency_contract_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR})
+  target_link_libraries (mainwindow_web_frequency_contract_test Qt5::Core)
+  add_test (NAME mainwindow_web_frequency_contract_test
+    COMMAND mainwindow_web_frequency_contract_test)
   add_executable (jtdx_web_frequency_test
     tests/jtdx_web_frequency_test.cpp
     JtdxWebFrequency.cpp

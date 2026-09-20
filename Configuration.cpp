@@ -2286,9 +2286,8 @@ Radio::convert_dark("#fafbfe",useDarkStyle_),Radio::convert_dark("#dcdef1",useDa
   ui_->TCP_checkBox->setChecked (enable_tcp_connection_);
   ui_->web_ui_enabled_check_box->setChecked (web_ui_enabled_);
   ui_->web_ui_frequency_control_check_box->setChecked (web_ui_frequency_control_enabled_);
-  ui_->web_ui_frequency_control_check_box->setEnabled (false);
   ui_->web_ui_frequency_control_check_box->setToolTip (
-      tr ("当前构建的 HTTP 控制完成回读尚未启用；此选项仅保存配置，生产入口保持关闭。"));
+      tr ("默认关闭；仅在确认 CAT 实际频率回读后允许 Web 客户端切换频率。"));
   ui_->web_ui_bind_combo_box->setCurrentIndex (web_ui_allow_lan_ ? 1 : 0);
   ui_->web_ui_bind_address_line_edit->setText (web_ui_bind_address_);
   ui_->web_ui_automatic_port_check_box->setChecked (web_ui_automatic_port_);

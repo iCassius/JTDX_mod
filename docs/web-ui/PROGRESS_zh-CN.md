@@ -1,5 +1,16 @@
 # JTDX 内置 Web UI：进度与中断恢复日志
 
+### 2026-09-21 P4 频率恢复边界与显式启用批次
+
+- 基线：`main/961706e`，开始时工作树干净；五小时额度开始约 `87%`，本批按低于 `30%` 停止新实现。范围限定为频率恢复边界、高层 MainWindow 适配隔离契约、配置/菜单流程和跨客户端未确认锁；不进入 DX/CQ/AutoSeq。
+- 已完成：`Configuration` Web UI 频率控制复选框恢复为可交互；专用 `WebUiFrequencyControlEnabled` 默认关闭并持久化。`MainWindow::applyWebUiConfiguration()` 将用户显式开关传给 Web 服务；`JtdxWebControl` 仍在执行前重读安全状态和 CAT 基线，`dispatchWebFrequency()` 继续复用 `band_changed()`，完成只接受真实 rig generation/频率回读。
+- 新增 `tests/mainwindow_web_frequency_contract_test.cpp`：静态锁定 MainWindow 观察字段、`prepare_dispatch → begin_dispatch → band_changed` 顺序、无 TX/PTT 入口，并用 Qt-only 隔离 Control 模拟 Rig=None 拒绝与后续匹配回读完成。该测试是高层适配契约，不是完整 MainWindow 窗口或真实设备测试。
+- `tests/jtdx_web_server_test.cpp` 新增跨客户端场景：一个 HTTP/SSE 客户端超时后，第二个 request_id/客户端仍收到 `409 unconfirmed_feedback`，不能重放；既有 Service 测试继续覆盖 stop/restart 新 epoch、旧 queued/begun dispatch 和同一 Control 重绑定。
+- 构建：`cmake -S C:\JTDX64\jtdx_sourcecode -B C:\JTDX64\build-webui-dev-msys2` 后，目标 `jtdx configuration_web_ui_test jtdx_web_control_test jtdx_web_server_test jtdx_web_service_test mainwindow_web_frequency_contract_test` 构建退出码 `0`；日志 `C:\JTDX64\deps-webui\p4-frequency-gate-build.log`。
+- 定向回归：`mainwindow_web_frequency_contract_test configuration_web_ui_test jtdx_web_control_test jtdx_web_server_test jtdx_web_service_test` 为 `5/5`，日志 `C:\JTDX64\deps-webui\p4-frequency-gate-focused-ctest.log`。
+- 完整回归：CTest `21/21`、`100% tests passed`、57.25 秒，权威日志 `C:\JTDX64\deps-webui\p4-frequency-gate-final-ctest.log`。构建警告为既有弃用/截断警告，没有新增失败。
+- 未运行：真实 `jtdx.exe`、真实 CAT/PTT/TX、HIL、部署和完整 MainWindow 人工窗口验收。下一批进入 DX 选择；不能把本批软件安全门当成真实 CAT 完成证明。
+
 ### 2026-09-21 P4 频率候选边界浏览器验收
 
 - 在既有 loopback `--serve-browser-frequency` 夹具上增加两个测试专用场景：`--serve-browser-frequency-empty` 发布 `FT4 / Region 3` 空候选；`--serve-browser-frequency-invalidated` 先发布 FT8/All 候选，随后通过既有 SSE 快照切换到 FT8/Region 2 并移除已选的 `7.074000`。没有新增生产端点、后台服务或控制能力。

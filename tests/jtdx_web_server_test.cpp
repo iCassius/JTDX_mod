@@ -648,6 +648,20 @@ int main (int argc, char ** argv)
           timeout_resync_seen = true;
   check (response.contains (QByteArrayLiteral ("event: resync_required\n")) && timeout_resync_seen,
          "Last-Event-ID reconnect resynchronizes the bounded timeout result");
+  // The timeout latch is service-wide: another browser/client must not replay
+  // an operation merely because it has a different request id or SSE session.
+  QByteArray const cross_client_body = QByteArrayLiteral ("{\"request_id\":\"browser-two\",\"server_epoch\":\"")
+      + server.server_epoch ().toUtf8 () + QByteArrayLiteral ("\",\"state_revision\":")
+      + QByteArray::number (observed.state_revision) + QByteArrayLiteral (",\"frequency_hz\":\"14078000\"}");
+  QByteArray const cross_client_response = post_frequency (
+      port, token, cross_client_body,
+      QByteArrayLiteral ("http://127.0.0.1:") + QByteArray::number (port));
+  QJsonDocument cross_client_json = QJsonDocument::fromJson (
+      cross_client_response.mid (cross_client_response.indexOf ("\r\n\r\n") + 4));
+  check (status (cross_client_response) == 409
+             && cross_client_json.object ().value (QStringLiteral ("reason")).toString ()
+                    == QStringLiteral ("unconfirmed_feedback"),
+         "a second browser cannot replay frequency control after an unconfirmed timeout");
   {
     JtdxWebServer no_control {&state};
     auto no_control_config = config;
