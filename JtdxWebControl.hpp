@@ -196,7 +196,7 @@ private:
 
   static bool printable_ascii (QString const& value, int max_length);
   static QString canonical_payload (Request const& request);
-  static bool safe_to_dispatch (SafetySnapshot const& safety, QString * reason);
+  static bool safe_to_dispatch (SafetySnapshot const& safety, Operation operation, QString * reason);
   void mark_operations_changed ();
 
   qint64 now () const;

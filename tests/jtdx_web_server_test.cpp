@@ -289,6 +289,76 @@ int main (int argc, char ** argv)
   config.enable_frequency_control = true;
   config.enable_dx_control = true;
   config.enable_automation_control = true;
+  bool const browser_automation_fixture = app.arguments ().contains (
+      QStringLiteral ("--serve-browser-automation"));
+  if (browser_automation_fixture)
+    {
+      // Loopback-only browser fixture.  It drives the production HTTP,
+      // Control and State objects with an in-memory business adapter; no
+      // MainWindow, CAT, PTT, UDP or audio path is created.
+      state.set_clock_for_test (0);
+      state.observe_status (14074000, QStringLiteral ("FT8"), {}, QStringLiteral ("-10"),
+                            QStringLiteral ("FT8"), false, false, true, -100, 150,
+                            QStringLiteral ("N0CALL"), QStringLiteral ("AA00"), {}, false, {}, false, false);
+      state.observe_rig (true, 14074000, 14074000, false);
+      state.observe_business_state (false, QStringLiteral ("idle"), QStringLiteral ("idle"), {});
+      state.set_frequency_candidates (
+          QStringLiteral ("FT8"), QStringLiteral ("All"),
+          {{7074000u, QStringLiteral ("40m"), QStringLiteral ("FT8"), QStringLiteral ("All"), true},
+           {14074000u, QStringLiteral ("20m"), QStringLiteral ("FT8"), QStringLiteral ("All"), true}});
+      control.set_observation_provider ([&state] {
+          QJsonObject const snapshot = state.json_snapshot ();
+          JtdxWebControl::ObservedState current;
+          current.safety.known = snapshot.value (QStringLiteral ("freshness")).toString () == QStringLiteral ("fresh");
+          current.safety.fresh = current.safety.known;
+          current.safety.rig_online = snapshot.value (QStringLiteral ("rig_online")).toBool ();
+          current.safety.monitoring = true;
+          current.safety.tx_enabled = snapshot.value (QStringLiteral ("tx_enabled")).toBool ();
+          current.safety.transmitting = snapshot.value (QStringLiteral ("transmitting")).toBool ();
+          current.safety.ptt = snapshot.value (QStringLiteral ("ptt")).toBool ();
+          current.safety.watchdog_timeout = snapshot.value (QStringLiteral ("watchdog_timeout")).toBool ();
+          current.safety.business_state_known = snapshot.value (QStringLiteral ("auto_sequence_state")).isString ();
+          current.state_revision = state.revision ();
+          current.business_generation = snapshot.value (QStringLiteral ("business_generation")).toVariant ().toULongLong ();
+          current.business_state_known = current.safety.business_state_known;
+          current.auto_sequence_enabled = snapshot.value (QStringLiteral ("auto_sequence_state")).toString () == QStringLiteral ("enabled");
+          current.cq_state = snapshot.value (QStringLiteral ("cq_state")).toString ();
+          current.frequency_generation = state.rig_generation ();
+          current.frequency_known = snapshot.value (QStringLiteral ("frequency")).isDouble ();
+          current.actual_frequency_hz = snapshot.value (QStringLiteral ("frequency")).toVariant ().toLongLong ();
+          return current;
+        });
+      control.set_business_dispatcher ([&state, &control] (JtdxWebControl::Dispatch const& dispatch) {
+          JtdxWebControl::Dispatch prepared;
+          if (!control.prepare_dispatch (dispatch.request_id, dispatch.server_epoch, &prepared)
+              || !control.begin_dispatch (prepared)) return;
+          QTimer::singleShot (250, &state, [&state, &control, prepared] {
+              if (prepared.operation == JtdxWebControl::Operation::StartCq)
+                state.observe_business_state (false, QStringLiteral ("calling"), QStringLiteral ("armed"),
+                                              QStringLiteral ("CQ N0CALL FN31"));
+              else if (prepared.operation == JtdxWebControl::Operation::StartAutoCall)
+                state.observe_business_state (true, QStringLiteral ("calling"), QStringLiteral ("armed"),
+                                              QStringLiteral ("CQ N0CALL FN31"));
+              else
+                state.observe_business_state (false, QStringLiteral ("idle"), QStringLiteral ("idle"), {});
+              auto const snapshot = state.json_snapshot ();
+              control.feedback_business (prepared.request_id, prepared.server_epoch,
+                                         snapshot.value (QStringLiteral ("business_generation")).toVariant ().toULongLong (),
+                                         snapshot.value (QStringLiteral ("cq_state")).toString (),
+                                         snapshot.value (QStringLiteral ("auto_sequence_state")).toString () == QStringLiteral ("enabled"),
+                                         state.revision ());
+            });
+        });
+      config.automatic_port = true;
+      if (!server.start (config)) return 2;
+      control.bind_server_epoch (server.server_epoch ());
+      QByteArray const fixture_url = server.url ().toUtf8 () + QByteArrayLiteral ("/#fixture");
+      std::fprintf (stdout, "WEB_UI_FIXTURE_URL=%s\nWEB_UI_FIXTURE_TOKEN=%s\n",
+                    fixture_url.constData (), token.constData ());
+      std::fflush (stdout);
+      QTimer::singleShot (300000, &app, &QCoreApplication::quit);
+      return app.exec ();
+    }
   bool const browser_frequency_fixture = app.arguments ().contains (
       QStringLiteral ("--serve-browser-frequency"))
       || app.arguments ().contains (QStringLiteral ("--serve-browser-frequency-empty"))
@@ -602,6 +672,37 @@ int main (int argc, char ** argv)
              && completed_cq.value (QStringLiteral ("readback")).toObject ().value (QStringLiteral ("cq_state")).toString ()
                     == QStringLiteral ("armed"),
          "completed CQ result exposes confirmed business readback");
+
+  auto active_business = observed;
+  active_business.state_revision += 2;
+  active_business.business_generation = 4;
+  active_business.business_state_known = true;
+  active_business.auto_sequence_enabled = true;
+  active_business.cq_state = QStringLiteral ("transmitting");
+  active_business.safety.tx_enabled = true;
+  active_business.safety.transmitting = true;
+  active_business.safety.ptt = true;
+  active_business.safety.watchdog_timeout = true;
+  control.set_observed_state (active_business);
+  QByteArray const stop_body = QByteArrayLiteral ("{\"request_id\":\"tcp-stop-active\",\"server_epoch\":\"")
+      + server.server_epoch ().toUtf8 () + QByteArrayLiteral ("\",\"state_revision\":")
+      + QByteArray::number (active_business.state_revision) + QByteArrayLiteral (",\"confirm\":true}");
+  QJsonObject const stop_response = response_json (post_business (
+      port, token, QByteArrayLiteral ("stop-auto-call"), stop_body,
+      QByteArrayLiteral ("http://127.0.0.1:") + QByteArray::number (port)));
+  check (stop_response.value (QStringLiteral ("status")).toString () == QStringLiteral ("pending")
+             && captured_business.operation == JtdxWebControl::Operation::StopAutoCall,
+         "active TX/PTT does not block the high-priority stop route");
+  check (control.feedback_business (captured_business.request_id, captured_business.server_epoch,
+                                    active_business.business_generation + 1, QStringLiteral ("idle"), false,
+                                    active_business.state_revision + 1),
+         "active stop completes only after safe idle business readback");
+  QJsonObject const completed_stop = response_json (post_business (
+      port, token, QByteArrayLiteral ("stop-auto-call"), stop_body,
+      QByteArrayLiteral ("http://127.0.0.1:") + QByteArray::number (port)));
+  check (completed_stop.value (QStringLiteral ("status")).toString () == QStringLiteral ("completed")
+             && completed_stop.value (QStringLiteral ("reason")).toString () == QStringLiteral ("automation_stopped"),
+         "active stop exposes an explicit automation-stopped result");
   control.set_observed_state (observed);
 
   // A live SSE peer must receive a new snapshot when only the Control result changes.

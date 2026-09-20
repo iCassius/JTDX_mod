@@ -417,7 +417,7 @@ private:
   void dispatchWebFrequency (JtdxWebControl::Dispatch);
   void dispatchWebDx (JtdxWebControl::Dispatch);
   void dispatchWebBusiness (JtdxWebControl::Dispatch);
-  void applyWebStartCq ();
+  void applyWebStartCq (bool arm_tx = false);
   void applyWebStartAutoCall ();
   void applyWebStopAutoCall ();
 

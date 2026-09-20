@@ -56,7 +56,7 @@ int main ()
   check (prepare >= 0 && begin > prepare && band_change > begin,
          "MainWindow dispatch prepares, begins, then reuses band_changed");
   auto const dispatch = source.indexOf ("void MainWindow::dispatchWebFrequency");
-  auto const next_function = source.indexOf ("void MainWindow::on_actionOpenWebUi_triggered", dispatch);
+  auto const next_function = source.indexOf ("void MainWindow::dispatchWebDx", dispatch);
   QByteArray const dispatch_body = source.mid (dispatch, next_function - dispatch);
   check (!dispatch_body.contains ("on_enableTxButton_clicked")
              && !dispatch_body.contains ("enableTx_mode")
@@ -82,6 +82,25 @@ int main ()
              && source.contains ("void MainWindow::dispatchWebBusiness")
              && source.contains ("m_webControl->feedback_business"),
          "MainWindow forwards CQ/AutoSeq commands through a separate business-state readback adapter");
+  auto const cq_apply = source.indexOf ("void MainWindow::applyWebStartCq");
+  auto const cq_next = source.indexOf ("void MainWindow::applyWebStartAutoCall", cq_apply);
+  auto const cq_body = source.mid (cq_apply, cq_next - cq_apply);
+  check (cq_apply >= 0 && cq_next > cq_apply
+             && cq_body.contains ("on_txb6_clicked ()")
+             && cq_body.contains ("enableTx_mode (true)"),
+         "Web CQ reuses the existing CQ entry and then arms Enable Tx through its safety entry");
+  auto const stop_apply = source.indexOf ("void MainWindow::applyWebStopAutoCall");
+  auto const business_dispatch = source.indexOf ("void MainWindow::dispatchWebBusiness", stop_apply);
+  auto const stop_body = source.mid (stop_apply, business_dispatch - stop_apply);
+  check (stop_apply >= 0 && business_dispatch > stop_apply
+             && stop_body.indexOf ("on_stopTxButton_clicked ()")
+                    < stop_body.indexOf ("on_AutoSeqButton_clicked (false)"),
+         "Web stop halts TX first and disables AutoSeq so later decodes cannot resume scheduling");
+  auto const auto_start = source.indexOf ("void MainWindow::applyWebStartAutoCall");
+  check (source.contains ("AutoSeq is decode-driven in JTDX")
+             && auto_start >= 0
+             && !source.mid (auto_start, stop_apply - auto_start).contains ("process_Auto ("),
+         "Web auto-call is explicitly an AutoSeq arm, not an invented immediate decode call");
 
   JtdxWebControl control {100};
   control.set_clock_for_test (0);

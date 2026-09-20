@@ -22,11 +22,11 @@
 | --- | --- | --- |
 | `frequency` | 现有频率校验、模式/频段、退出和 TX 安全门 | 后续实际状态/CAT 回读匹配目标；写入目标变量不算完成 |
 | `select-dx` | 当前有效 `decode_id`/revision、Call/Grid/报告校验 | 状态回读显示目标 DX；不得启动 CQ/AutoSeq，不拼接 TX 消息 |
-| `start-cq` | 在线、模式、TX Enabled/AutoSeq 安全门、二次确认 | 状态回读进入 CQ 状态；不表示已经发射 |
-| `start-auto-call` | 与 CQ 相同，并检查 AutoSeq 当前允许状态 | 状态回读进入自动流程；不自行调度 TX |
-| `stop-auto-call` | 退出/鉴权/幂等检查，停止请求有优先级 | 既有 Halt/AutoSeq 回读为停止/安全；不直接强切 PTT |
+| `start-cq` | 在线、模式、TX Enabled/AutoSeq 安全门、二次确认；复用既有 CQ 业务入口 | `cq_state` 回读为 armed/calling；Web 适配可打开既有 Enable Tx，但不表示已经发射 |
+| `start-auto-call` | 与 CQ 相同，并检查 AutoSeq 当前允许状态 | 回读确认 AutoSeq 已启用并等待下一批实时解码；不凭空生成目标、不自行调度 TX |
+| `stop-auto-call` | 退出/鉴权/幂等检查，停止请求有优先级；可优先取消在途启动 | 先复用既有 Halt/停止入口，再关闭 AutoSeq，并以 idle/disabled 回读完成；不直接强切 PTT |
 
-开始类请求必须携带客户端看到的 `server_epoch` 和 `state_revision`；服务端登记后仍须在实际调用前重新读取并复检当前 epoch、revision、退出状态和安全门。超时不自动重试；迟到的业务反馈必须标为 `unknown`/迟到反馈并附实际最新状态，不能追溯性地改写为已完成。停止不能被普通队列无限阻塞，但仍不能绕过 TX watchdog 和安全门。控制响应应同时返回状态快照和 `request_id`。
+开始类请求必须携带客户端看到的 `server_epoch` 和 `state_revision`；服务端登记后仍须在实际调用前重新读取并复检当前 epoch、revision、退出状态和安全门。超时不自动重试；迟到的业务反馈必须标为 `unknown`/迟到反馈并附实际最新状态，不能追溯性地改写为已完成。停止不能被普通队列无限阻塞；它可以绕过“当前正在 TX/PTT”这一启动类安全门以执行既有停止入口，但仍不能绕过鉴权、epoch/revision 和服务生命周期校验。控制响应应同时返回状态快照和 `request_id`。
 
 不新增结果查询 API。操作进展通过 SSE 的有限 `operation` 事件和 `/api/v1/state` 中的有限 `operations` 摘要恢复；摘要有数量、大小和保留时间上限，服务重启后旧操作失效，不保留无限日志。
 

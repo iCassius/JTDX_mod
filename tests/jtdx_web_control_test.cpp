@@ -193,6 +193,40 @@ int main ()
          "CQ command requires a later matching business-state readback");
   control.set_observed_state (safe_state (1));
 
+  Control stop_control {100};
+  bind_fixture_epoch (stop_control);
+  stop_control.set_clock_for_test (0);
+  auto active = safe_state (10);
+  active.safety.tx_enabled = true;
+  active.safety.transmitting = true;
+  active.safety.ptt = true;
+  active.safety.watchdog_timeout = true;
+  active.business_generation = 4;
+  active.auto_sequence_enabled = true;
+  active.cq_state = QStringLiteral ("transmitting");
+  stop_control.set_observed_state (active);
+  Control::Request stop_request;
+  stop_request.request_id = QStringLiteral ("stop-active");
+  stop_request.operation = Control::Operation::StopAutoCall;
+  stop_request.server_epoch = stop_control.server_epoch ();
+  stop_request.state_revision = active.state_revision;
+  Control::Dispatch stop_dispatch;
+  stop_control.set_business_dispatcher ([&] (Control::Dispatch const& dispatch) {
+      stop_dispatch = dispatch;
+      Control::Dispatch prepared;
+      check (stop_control.prepare_dispatch (dispatch.request_id, dispatch.server_epoch, &prepared),
+             "stop remains dispatchable while TX/PTT is active");
+      check (stop_control.begin_dispatch (prepared), "active stop begins through the existing stop path");
+    });
+  check (stop_control.submit (stop_request).status == Control::Status::Pending,
+         "stop has priority over active TX/PTT safety flags");
+  check (stop_control.feedback_business (stop_dispatch.request_id, stop_dispatch.server_epoch,
+                                        active.business_generation + 1, QStringLiteral ("idle"), false,
+                                        active.state_revision + 1),
+         "stop completes only after the disabled AutoSeq/idle business readback");
+  check (stop_control.result (stop_request.request_id).reason == QStringLiteral ("automation_stopped"),
+         "stop result names the quiesced automation state");
+
   auto busy_a = frequency_request (control, QStringLiteral ("busy-a"), 14076000);
   auto busy_b = frequency_request (control, QStringLiteral ("busy-b"), 14077000);
   control.set_frequency_dispatcher ({ });

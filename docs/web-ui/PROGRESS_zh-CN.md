@@ -1,5 +1,13 @@
 # JTDX 内置 Web UI：进度与中断恢复日志
 
+### 2026-09-21 P5 启停语义审查、修复与隔离回归
+
+- 基线：`main/bfa0c34`，工作树开始时干净；本批只处理 CQ/AutoSeq 请求到 MainWindow 业务入口的语义，不启动真实 `jtdx.exe`，不连接 CAT/PTT/TX，不改 UDP、不新增 Web 线程/进程。
+- 源码复核确认并修正：`start-cq` 复用 `on_txb6_clicked()` 并在 Web 安全门之后进入既有 `enableTx_mode(true)`；`start-auto-call` 只启用既有 decode-driven AutoSeq，并显式提示等待下一批实时解码；`stop-auto-call` 先调用既有停止入口、再关闭 `m_autoseq`，且可优先处理活动 TX/PTT 状态。停止也能安全取代尚未完成的启动请求。
+- 前端：启动/停止分别使用操作安全门；停止在活动 TX/PTT 时仍可用；AutoSeq 文案不再暗示已经生成具体呼叫或发射。顶部能力提示按 frequency/DX/CQ/AutoSeq 实际开关显示。
+- 自动验证：`jtdx_web_control_test`、`mainwindow_web_frequency_contract_test` 定向为 `2/2`；`jtdx_web_server_test`（含 loopback API 的活动停止和浏览器夹具代码）为 `1/1`；最终清理浏览器测试页后全量 CTest 为 `22/22`、`100% tests passed`、57.76 秒。构建日志为 `C:\JTDX64\deps-webui\p5-semantic-final-build-20260921.log`，定向构建/测试日志为 `C:\JTDX64\deps-webui\p5-semantic-gate-build-20260921-r3.log`、`C:\JTDX64\deps-webui\p5-semantic-browser-build-20260921.log`、`C:\JTDX64\deps-webui\p5-semantic-gate-focused-20260921-r3.log`、`C:\JTDX64\deps-webui\p5-semantic-browser-focused-20260921.log`，最终全量日志为 `C:\JTDX64\deps-webui\p5-semantic-final-ctest-clean-20260921.log`。
+- 浏览器隔离夹具已确认连接后 CQ/AutoSeq 控件可用并出现启动二次确认文本；原生确认框阻塞了本次自动化会话，未把取消后“无 POST”写成已验证事实，需后续可控会话补验。未做完整 MainWindow 窗口、真实 CAT/DX/CQ 回读、PTT/TX/HIL、部署或生产启用验证。
+
 ### 2026-09-21 P5 CQ/AutoSeq 启停软件链路批次
 
 - 新增独立 `WebUiAutomationControlEnabled` 配置，默认关闭；新增 `start-cq`、`start-auto-call`、`stop-auto-call` 三个 POST 命令，命令体必须带 `confirm: true`，前端每次提交前再做二次确认。

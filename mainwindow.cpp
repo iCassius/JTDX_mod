@@ -2393,8 +2393,10 @@ void MainWindow::dispatchWebDx (JtdxWebControl::Dispatch dispatch)
                                     dispatch.dx_selection_source, dispatch.dx_source_decode_id);
 }
 
-void MainWindow::applyWebStartCq ()
+void MainWindow::applyWebStartCq (bool arm_tx)
 {
+  // Reuse the desktop CQ business entry without simulating a widget click.
+  on_txb6_clicked ();
   genStdMsgs (m_rpt);
   ui->genMsg->setText (ui->tx6->text ());
   m_curMsgTx = ui->genMsg->text ();
@@ -2403,16 +2405,20 @@ void MainWindow::applyWebStartCq ()
   m_nlasttx = 6;
   ui->rbGenMsg->setChecked (true);
   if (m_transmitting) m_restart = true;
+  if (arm_tx && !m_enableTx) enableTx_mode (true);
 }
 
 void MainWindow::applyWebStartAutoCall ()
 {
+  // AutoSeq is decode-driven in JTDX.  This arms the existing engine; it does
+  // not invent a target or call process_Auto without a fresh decode batch.
   if (!m_autoseq) on_AutoSeqButton_clicked (true);
 }
 
 void MainWindow::applyWebStopAutoCall ()
 {
   on_stopTxButton_clicked ();
+  if (m_autoseq) on_AutoSeqButton_clicked (false);
 }
 
 void MainWindow::dispatchWebBusiness (JtdxWebControl::Dispatch dispatch)
@@ -2424,7 +2430,7 @@ void MainWindow::dispatchWebBusiness (JtdxWebControl::Dispatch dispatch)
   dispatch = std::move (prepared);
   switch (dispatch.operation)
     {
-    case JtdxWebControl::Operation::StartCq: applyWebStartCq (); break;
+    case JtdxWebControl::Operation::StartCq: applyWebStartCq (true); break;
     case JtdxWebControl::Operation::StartAutoCall: applyWebStartAutoCall (); break;
     case JtdxWebControl::Operation::StopAutoCall: applyWebStopAutoCall (); break;
     default: m_webControl->fail (dispatch.request_id, dispatch.server_epoch, QStringLiteral ("invalid_business_operation")); return;
@@ -7567,8 +7573,6 @@ void MainWindow::enable_DXCC_entity ()
 
 void MainWindow::on_pbCallCQ_clicked()
 {
-//  clearDXfields(" field cleared, SLOT on_pbCallCQ_clicked()"); // this line is duplicated in SLOT on_txb6_clicked()
-  ui->txb6->click ();
   applyWebStartCq ();
 }
 

@@ -1,6 +1,6 @@
 # JTDX 内置 Web UI：阶段入口与恢复说明
 
-本目录记录 JTDX 内置轻量 Web UI 的需求、边界、设计和阶段证据。当前 P3 生产 service/QAction、P4 普通控制和 P5 CQ/AutoSeq 软件控制链路已完成；完整 MainWindow 窗口人工验收留到 P6，仍不代表已经启动 JTDX、连接 JTDX 电台或完成 HIL/部署验证。频率、DX、CQ/AutoSeq 控制均可由用户在设置中分别显式开启，默认仍关闭；完成仍须实际业务/CAT 状态回读，不能把隔离夹具的 `accepted/pending` 当作硬件完成。较早 CAT `.10` 交付提交 `a89c9da` 仅作外部历史参考。
+本目录记录 JTDX 内置轻量 Web UI 的需求、边界、设计和阶段证据。P3 生产 service/QAction、P4 普通控制和 P5 CQ/AutoSeq 软件控制链路已完成本批隔离验证；完整 MainWindow 窗口人工验收留到 P6，仍不代表已经启动 JTDX、连接 JTDX 电台或完成 HIL/部署验证。频率、DX、CQ/AutoSeq 控制均可由用户在设置中分别显式开启，默认仍关闭；完成仍须实际业务/CAT 状态回读，不能把隔离夹具的 `accepted/pending` 当作硬件完成。较早 CAT `.10` 交付提交 `a89c9da` 仅作外部历史参考。
 
 ## 最新恢复结果（2026-09-21）
 
@@ -13,6 +13,12 @@
 ### P5 CQ/AutoSeq 启停软件链路批次
 
 新增默认关闭的 CQ/AutoSeq 能力开关和三类命令。页面每次要求二次确认，主程序安全门、业务 generation 和 `cq_state/auto_sequence_state` 回读共同决定完成；停止保持既有停止优先级。该批只证明软件状态机合同，不证明 CAT、PTT 或真实发射。
+
+### P5 启停语义审查与最小修复（2026-09-21）
+
+本批针对“页面请求是否真正进入主程序业务入口”做了源码链路复核并修复三处语义缺口：`start-cq` 复用既有 `on_txb6_clicked()` CQ 入口，Web 专用适配在安全门通过后再调用 `enableTx_mode(true)`；`start-auto-call` 明确命名为“启用 AutoSeq”，只打开既有、由下一批实时解码驱动的 AutoSeq，不凭空生成目标、不直接调用 `process_Auto()`；`stop-auto-call` 先复用既有停止入口，再关闭 `m_autoseq`，并允许停止优先于活动 TX/PTT 安全门。已有未完成的启动请求可被停止请求安全地标记为 `superseded_by_stop`。
+
+受影响代码、Control/Server/高层适配契约测试及 loopback 浏览器夹具已重建。`jtdx_web_control_test` 与 `mainwindow_web_frequency_contract_test` 为 `2/2`，`jtdx_web_server_test` 为 `1/1`；浏览器隔离夹具确认启用业务能力后显示 CQ/AutoSeq 控件，并实际出现启动二次确认文本。由于原生确认框在本次浏览器控制会话中阻塞了自动化控制，未把“取消确认后没有 POST”写成已证明事实；该项仍需后续可控浏览器会话补验。此次没有运行真实 `jtdx.exe`，没有 CAT/PTT/TX/HIL 或部署证据。
 
 ### P4 频率恢复边界与显式启用批次
 
@@ -52,8 +58,8 @@
 
 ## 当前状态
 
-- 阶段：`P5 CQ/AutoSeq 软件链路已接入`，P0/P1/P2/P3 已完成，P4 frequency/DX 与 P5 业务命令的 Service/Server/Control 生命周期、独立 generation 回读、MainWindow 隔离适配契约和独立显式配置开关已完成；完整 MainWindow 窗口人工验收留到 P6，真实 CAT/DX/CQ 设备回读/HIL 未验证。
-- 基线：本批从分支 `main`、HEAD `d67fb66` 开始，operations 回读结果提交为 `3f3a799`；P4 HTTP 契约见 [`docs/web-ui/P4-FREQUENCY-HTTP_契约_zh-CN.md`](docs/web-ui/P4-FREQUENCY-HTTP_契约_zh-CN.md)，当前结果与恢复点见进度日志。
+- 阶段：`P5 CQ/AutoSeq 软件链路已接入并完成语义修正`，P0/P1/P2/P3 已完成，P4 frequency/DX 与 P5 业务命令的 Service/Server/Control 生命周期、独立 generation 回读、MainWindow 隔离适配契约和独立显式配置开关已完成；完整 MainWindow 窗口人工验收留到 P6，真实 CAT/DX/CQ 设备回读/HIL 未验证。
+- 基线：本批从分支 `main`、HEAD `bfa0c34` 开始，结果尚未提交；P4 HTTP 契约见 [`docs/web-ui/P4-FREQUENCY-HTTP_契约_zh-CN.md`](docs/web-ui/P4-FREQUENCY-HTTP_契约_zh-CN.md)，当前结果与恢复点见进度日志。
 - 代码根目录：`C:\JTDX64\jtdx_sourcecode`。用户需求中的 `jtdx\_sourcecode` 按当前实际仓库路径解释。
 - P3 历史范围：增加 Web UI 配置 Tab、持久化摘要令牌、MainWindow 唯一服务生命周期、菜单入口和 Qt Resource 原生深色响应式只读页；服务仍为单进程主 Qt 事件循环，不新增 UDP/线程/进程或控制 API。
 - 已确认：主程序已有 Qt5 Network、`MessageClient`、`MessageServer` 和 `JTDX_BUILD_LOCAL_TESTS`；P1 状态模型、P2 只读服务、P3 代码/资源/测试/文档、P4 生命周期/dispatch、HTTP 隔离基础、operations/SSE 有界回读、频率/DX/CQ/AutoSeq 显式配置门均已有本地修改；完整窗口和真实 CAT/DX/CQ 回读仍未完成。

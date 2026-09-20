@@ -86,8 +86,12 @@ QString JtdxWebControl::canonical_payload (Request const& request)
       + QStringLiteral (":") + QString::number (request.dx_source_decode_id);
 }
 
-bool JtdxWebControl::safe_to_dispatch (SafetySnapshot const& safety, QString * reason)
+bool JtdxWebControl::safe_to_dispatch (SafetySnapshot const& safety, Operation operation, QString * reason)
 {
+  // Stop is a fail-safe action: it must remain admissible while TX/PTT or a
+  // watchdog path is active so the existing Halt/stop entry can quiesce it.
+  // It does not unlock or start any unsafe path.
+  if (operation == Operation::StopAutoCall) return true;
   if (!safety.known || !safety.fresh) *reason = QStringLiteral ("safety_unknown_or_stale");
   else if (!safety.rig_online) *reason = QStringLiteral ("rig_offline");
   else if (!safety.monitoring) *reason = QStringLiteral ("monitor_not_active");
@@ -280,7 +284,18 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
   if (records_.size () >= hard_record_limit_)
     return reject (request, QStringLiteral ("record_limit"), 429);
   if (!pending_request_id_.isEmpty ())
-    return reject (request, QStringLiteral ("busy"), 409);
+    {
+      auto pending = records_.find (pending_request_id_);
+      bool const business_start = pending != records_.end ()
+          && (pending.value ().result.operation == Operation::StartCq
+              || pending.value ().result.operation == Operation::StartAutoCall);
+      if (request.operation != Operation::StopAutoCall || !business_start)
+        return reject (request, QStringLiteral ("busy"), 409);
+      // A stop is the recovery path for a queued or already-started business
+      // command.  The old callback will fail its pending/epoch checks, while
+      // the existing stop entry is allowed to quiesce any side effect.
+      finish (pending.value (), Status::Rejected, QStringLiteral ("superseded_by_stop"));
+    }
 
   if (submit_in_progress_)
     return reject (request, QStringLiteral ("reentrant"), 409);
@@ -308,7 +323,7 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
   if (current.state_revision != request.state_revision)
     return reject (request, QStringLiteral ("state_revision_conflict"), 409);
   QString safety_reason;
-  if (!safe_to_dispatch (current.safety, &safety_reason))
+  if (!safe_to_dispatch (current.safety, request.operation, &safety_reason))
     return reject (request, safety_reason, 409);
 
   Record record;
@@ -476,7 +491,7 @@ bool JtdxWebControl::prepare_dispatch (QString const& request_id, QString const&
       return false;
     }
   QString safety_reason;
-  if (!safe_to_dispatch (current.safety, &safety_reason))
+  if (!safe_to_dispatch (current.safety, it.value ().result.operation, &safety_reason))
     {
       finish (it.value (), Status::Rejected, std::move (safety_reason));
       return false;
@@ -564,7 +579,7 @@ bool JtdxWebControl::begin_dispatch (Dispatch const& dispatch)
       || !it.value ().prepared || it.value ().dispatched)
     return false;
   QString safety_reason;
-  if (!safe_to_dispatch (current.safety, &safety_reason))
+  if (!safe_to_dispatch (current.safety, it.value ().result.operation, &safety_reason))
     {
       finish (it.value (), Status::Rejected, std::move (safety_reason));
       return false;
@@ -690,7 +705,14 @@ bool JtdxWebControl::feedback_select_dx (QString const& request_id, QString cons
   record.result.snapshot.dx_source_decode_id = dx_source_decode_id;
   record.result.snapshot.dx_generation = generation;
   record.result.snapshot.state_revision = state_revision;
-  finish (record, Status::Completed, QStringLiteral ("feedback_matched"), generation);
+  QString reason = QStringLiteral ("feedback_matched");
+  if (record.result.operation == Operation::StartCq)
+    reason = QStringLiteral ("cq_armed");
+  else if (record.result.operation == Operation::StartAutoCall)
+    reason = QStringLiteral ("auto_sequence_armed_waiting_for_decode");
+  else if (record.result.operation == Operation::StopAutoCall)
+    reason = QStringLiteral ("automation_stopped");
+  finish (record, Status::Completed, std::move (reason), generation);
   return true;
 }
 
@@ -730,7 +752,14 @@ bool JtdxWebControl::feedback_business (QString const& request_id, QString const
   record.result.snapshot.cq_state = cq_state;
   record.result.snapshot.auto_sequence_enabled = auto_sequence_enabled;
   record.result.snapshot.state_revision = state_revision;
-  finish (record, Status::Completed, QStringLiteral ("feedback_matched"), generation);
+  QString reason = QStringLiteral ("feedback_matched");
+  if (record.result.operation == Operation::StartCq)
+    reason = QStringLiteral ("cq_armed");
+  else if (record.result.operation == Operation::StartAutoCall)
+    reason = QStringLiteral ("auto_sequence_armed_waiting_for_decode");
+  else if (record.result.operation == Operation::StopAutoCall)
+    reason = QStringLiteral ("automation_stopped");
+  finish (record, Status::Completed, std::move (reason), generation);
   return true;
 }
 

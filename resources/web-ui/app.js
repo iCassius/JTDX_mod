@@ -339,7 +339,9 @@
     const row = operationForBusiness(snapshot);
     if (row && terminalOperation(row)) {
       if (row.status === "completed" && readbackMatchesBusiness(row, businessRequest)) {
-        businessStatus("CQ/AutoSeq 操作已由业务状态回读确认。", "success");
+        businessStatus(businessRequest.operation === "start-auto-call"
+          ? "AutoSeq 已启用，等待下一批实时解码驱动自动呼叫；未表示已开始具体呼叫。"
+          : "CQ/AutoSeq 操作已由业务状态回读确认。", "success");
         businessRequest = null;
         businessUnknown = false;
       } else if (row.status === "completed") {
@@ -386,8 +388,13 @@
     reason.textContent = disabledReason || "可以发送；服务端仍会进行最终校验";
     reason.className = "frequency-control-status " + (disabledReason ? "blocked" : "ready");
     const label = el("access_mode");
-    if (label) label.textContent = currentSnapshot && currentSnapshot.frequency_control_enabled === true
-      ? "频率控制已开放 · 其他控制未开放" : "按能力开放 · 当前仅只读";
+    if (label) {
+      const enabled = [];
+      if (currentSnapshot && currentSnapshot.frequency_control_enabled === true) enabled.push("频率");
+      if (currentSnapshot && currentSnapshot.dx_control_enabled === true) enabled.push("DX");
+      if (currentSnapshot && currentSnapshot.automation_control_enabled === true) enabled.push("CQ/AutoSeq");
+      label.textContent = enabled.length ? enabled.join("、") + "控制已开放" : "按能力开放 · 当前仅只读";
+    }
   }
 
   function dxGateReason(snapshot) {
@@ -414,10 +421,14 @@
     }
   }
 
-  function businessGateReason(snapshot) {
+  function businessGateReason(snapshot, operation) {
     if (!snapshot) return "等待新鲜状态快照";
     if (snapshot.automation_control_enabled !== true) return "桌面尚未开放 CQ/AutoSeq 控制";
     if (!connected) return "等待连接和最新状态快照";
+    if (operation === "stop-auto-call") {
+      if (integerValue(snapshot.state_revision) == null) return "缺少安全状态 revision";
+      return "";
+    }
     if (snapshot.online !== true || snapshot.rig_online !== true) return "主程序或电台未在线";
     if (snapshot.rig_fresh !== true || snapshot.freshness !== "fresh") return "状态快照陈旧";
     if (snapshot.tx_enabled !== false || snapshot.transmitting !== false || snapshot.ptt !== false
@@ -429,15 +440,20 @@
   }
 
   function updateBusinessControls() {
-    const reason = businessGateReason(currentSnapshot);
-    ["business_start_cq", "business_start_auto", "business_stop"].forEach((id) => {
+    const startReason = businessGateReason(currentSnapshot, "start-cq");
+    const stopReason = businessGateReason(currentSnapshot, "stop-auto-call");
+    ["business_start_cq", "business_start_auto"].forEach((id) => {
       const button = el(id);
-      if (button) button.disabled = !!reason;
+      if (button) button.disabled = !!startReason;
     });
+    const stop = el("business_stop");
+    if (stop) stop.disabled = !!stopReason;
     const status = el("business_control_status");
     if (status) {
-      status.textContent = reason || "每次操作都需要页面确认";
-      status.className = "frequency-control-status " + (reason ? "blocked" : "ready");
+      status.textContent = startReason
+        ? "启动受限：" + startReason + (stopReason ? "" : "；停止可用")
+        : "每次操作都需要页面确认";
+      status.className = "frequency-control-status " + (startReason ? "blocked" : "ready");
     }
   }
 
@@ -881,10 +897,13 @@
   }
 
   async function sendBusiness(operation) {
-    const gate = businessGateReason(currentSnapshot);
+    const gate = businessGateReason(currentSnapshot, operation);
     if (gate || !currentSnapshot) { updateBusinessControls(); return; }
-    const labels = {"start-cq": "启动 CQ", "start-auto-call": "启动 AutoSeq", "stop-auto-call": "停止 CQ/AutoSeq"};
-    if (!globalThis.confirm("确认" + labels[operation] + "？页面只提交命令，完成必须等待主程序业务状态回读。")) return;
+    const labels = {"start-cq": "启动 CQ", "start-auto-call": "启用 AutoSeq", "stop-auto-call": "停止 CQ/AutoSeq"};
+    const confirmation = operation === "start-auto-call"
+      ? "确认启用 AutoSeq？它会等待现有实时解码驱动自动呼叫，不会凭空生成目标或立即证明已呼叫。"
+      : "确认" + labels[operation] + "？页面只提交命令，完成必须等待主程序业务状态回读。";
+    if (!globalThis.confirm(confirmation)) return;
     let requestId;
     try { requestId = secureRequestId(); } catch (_) {
       businessStatus("浏览器没有可用的安全随机源，无法发送命令。", "error");
@@ -917,7 +936,9 @@
       } else if (payload.status === "completed" && response.ok && readbackMatchesBusiness(payload, request)) {
         businessRequest = null;
         businessUnknown = false;
-        businessStatus("操作已由业务状态回读确认。", "success");
+        businessStatus(request.operation === "start-auto-call"
+          ? "AutoSeq 已启用，等待实时解码驱动自动呼叫；未表示已开始具体呼叫。"
+          : "操作已由业务状态回读确认。", "success");
       } else if (payload.status === "failed" || payload.status === "rejected" || payload.status === "timeout") {
         businessRequest = null;
         businessUnknown = false;
