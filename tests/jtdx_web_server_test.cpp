@@ -226,6 +226,7 @@ int main (int argc, char ** argv)
   QByteArray const token = QByteArrayLiteral ("p3-test-token-0123456789-abcdefghijklmnopqrstuvwxyz");
   config.bearer_token_sha256 = QString::fromLatin1 (QCryptographicHash::hash (token, QCryptographicHash::Sha256).toHex ());
   JtdxWebControl control {1000};
+  control.set_clock_for_test (0);
   JtdxWebControl::ObservedState observed;
   observed.safety.known = true;
   observed.safety.fresh = true;
@@ -289,6 +290,48 @@ int main (int argc, char ** argv)
          "TCP frequency POST reaches the production Control dispatch payload");
   check (control.result ("tcp-frequency-1").status == JtdxWebControl::Status::Pending,
          "accepted/pending does not claim completed before CAT feedback");
+  JtdxWebControl::Dispatch const dispatch_before_rejections = captured_dispatch;
+  auto response_json = [] (QByteArray const& raw) {
+    return QJsonDocument::fromJson (raw.mid (raw.indexOf ("\r\n\r\n") + 4)).object ();
+  };
+  QByteArray invalid_frequency_body = QByteArrayLiteral ("{\"request_id\":\"  invalid-frequency  \",\"server_epoch\":\"")
+      + server.server_epoch ().toUtf8 () + QByteArrayLiteral ("\",\"state_revision\":1,\"frequency_hz\":\"not-a-frequency\"}");
+  QJsonObject invalid_frequency_response = response_json (post_frequency (port, token, invalid_frequency_body,
+                                                                            QByteArrayLiteral ("http://127.0.0.1:")
+                                                                              + QByteArray::number (port)));
+  check (invalid_frequency_response.value ("reason").toString () == "invalid_frequency_hz"
+             && invalid_frequency_response.value ("request_id").toString () == "invalid-frequency",
+         "invalid frequency rejection preserves the trimmed request id");
+  QByteArray invalid_revision_body = QByteArrayLiteral ("{\"request_id\":\"  invalid-revision  \",\"server_epoch\":\"")
+      + server.server_epoch ().toUtf8 () + QByteArrayLiteral ("\",\"state_revision\":1.5,\"frequency_hz\":\"14075000\"}");
+  QJsonObject invalid_revision_response = response_json (post_frequency (port, token, invalid_revision_body,
+                                                                           QByteArrayLiteral ("http://127.0.0.1:")
+                                                                             + QByteArray::number (port)));
+  check (invalid_revision_response.value ("reason").toString () == "invalid_state_revision"
+             && invalid_revision_response.value ("request_id").toString () == "invalid-revision",
+         "invalid state revision rejection preserves the trimmed request id");
+  QByteArray unknown_field_body = QByteArrayLiteral ("{\"request_id\":\"  unknown-field  \",\"server_epoch\":\"")
+      + server.server_epoch ().toUtf8 () + QByteArrayLiteral ("\",\"state_revision\":1,\"frequency_hz\":\"14075000\",\"extra\":true}");
+  QJsonObject unknown_field_response = response_json (post_frequency (port, token, unknown_field_body,
+                                                                        QByteArrayLiteral ("http://127.0.0.1:")
+                                                                          + QByteArray::number (port)));
+  check (unknown_field_response.value ("reason").toString () == "unknown_json_field"
+             && unknown_field_response.value ("request_id").toString () == "unknown-field",
+         "unknown field rejection preserves the trimmed request id");
+  QByteArray invalid_id_body = QByteArrayLiteral ("{\"request_id\":\"bad\\nid\",\"server_epoch\":\"")
+      + server.server_epoch ().toUtf8 () + QByteArrayLiteral ("\",\"state_revision\":1,\"frequency_hz\":\"14075000\"}");
+  QJsonObject invalid_id_response = response_json (post_frequency (port, token, invalid_id_body,
+                                                                     QByteArrayLiteral ("http://127.0.0.1:")
+                                                                       + QByteArray::number (port)));
+  QString const generated_request_id = invalid_id_response.value ("request_id").toString ();
+  check (invalid_id_response.value ("reason").toString () == "invalid_request_id"
+             && !generated_request_id.isEmpty ()
+             && generated_request_id != QStringLiteral ("bad\nid")
+             && JtdxWebControl::normalize_request_id (generated_request_id) == generated_request_id,
+         "invalid request id rejection generates a fresh normalized id");
+  check (captured_dispatch.request_id == dispatch_before_rejections.request_id
+             && captured_dispatch.frequency_hz == dispatch_before_rejections.frequency_hz,
+         "business rejections do not invoke the frequency dispatcher");
   QByteArray conflict_body = frequency_body;
   conflict_body.replace ("14075000", "14076000");
   check (status (post_frequency (port, token, conflict_body,
@@ -482,26 +525,28 @@ int main (int argc, char ** argv)
         return JtdxWebFrequency::parse_and_validate_hz (input, bands);
       });
     check (no_control.start (no_control_config), "no-Control fixture starts");
-    QByteArray no_control_body = QByteArrayLiteral ("{\"request_id\":\"no-control\",\"server_epoch\":\"")
+    QByteArray no_control_body = QByteArrayLiteral ("{\"request_id\":\"  no-control  \",\"server_epoch\":\"")
         + no_control.server_epoch ().toUtf8 () + QByteArrayLiteral ("\",\"state_revision\":1,\"frequency_hz\":\"14075000\"}");
     QByteArray no_control_response = post_frequency (no_control.actual_port (), token, no_control_body,
                                                      QByteArrayLiteral ("http://127.0.0.1:")
                                                        + QByteArray::number (no_control.actual_port ()));
     QJsonDocument no_control_json = QJsonDocument::fromJson (no_control_response.mid (no_control_response.indexOf ("\r\n\r\n") + 4));
     check (status (no_control_response) == 409
-               && no_control_json.object ().value ("reason").toString () == "control_unavailable",
+               && no_control_json.object ().value ("reason").toString () == "control_unavailable"
+               && no_control_json.object ().value ("request_id").toString () == "no-control",
            "frequency control without a bound Control is rejected by default");
     no_control.stop ();
     no_control_config.enable_frequency_control = false;
     check (no_control.start (no_control_config), "disabled frequency gate fixture starts");
-    no_control_body.replace ("no-control", "disabled-control");
-    no_control_body.replace (server.server_epoch ().toUtf8 (), no_control.server_epoch ().toUtf8 ());
+    no_control_body = QByteArrayLiteral ("{\"request_id\":\"  disabled-control  \",\"server_epoch\":\"")
+        + no_control.server_epoch ().toUtf8 () + QByteArrayLiteral ("\",\"state_revision\":1,\"frequency_hz\":\"14075000\"}");
     no_control_response = post_frequency (no_control.actual_port (), token, no_control_body,
                                            QByteArrayLiteral ("http://127.0.0.1:")
                                              + QByteArray::number (no_control.actual_port ()));
     no_control_json = QJsonDocument::fromJson (no_control_response.mid (no_control_response.indexOf ("\r\n\r\n") + 4));
     check (status (no_control_response) == 409
-               && no_control_json.object ().value ("reason").toString () == "frequency_control_disabled",
+               && no_control_json.object ().value ("reason").toString () == "frequency_control_disabled"
+               && no_control_json.object ().value ("request_id").toString () == "disabled-control",
            "frequency control remains closed when its explicit gate is disabled");
     no_control.stop ();
   }

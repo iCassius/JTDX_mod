@@ -4,7 +4,7 @@
 
 频率控制必须同时满足三个门：Web 服务启用、设置中的“允许频率控制”显式开关开启、请求通过 Bearer 鉴权和严格同源 Origin。开关默认关闭；只读 Web UI 的既有令牌不会因此获得写权限。关闭时返回 `409 frequency_control_disabled`。配置使用专用 `WebUiFrequencyControlEnabled` 键，开关变化进入服务签名并触发安全重启。
 
-请求体上限 4 KiB，头上限 16 KiB，仍使用 5 秒头超时。拒绝 Transfer-Encoding、Expect、重复 Content-Length、管线请求、畸形 UTF-8 或畸形 JSON。相同 `request_id` 和规范化 payload 返回首次结果并保持幂等；相同 ID 携带不同 payload 返回 `409 request_id_conflict`。JSON 仅接受 `request_id`、`server_epoch`、`state_revision`、`frequency_hz` 四个字段；`frequency_hz` 必须是 ASCII 十进制整 Hz 字符串，随后仍由 `JtdxWebFrequency`/Bands 和生产 MainWindow 适配复核。
+请求体上限 4 KiB，头上限 16 KiB，仍使用 5 秒头超时。拒绝 Transfer-Encoding、Expect、重复 Content-Length、管线请求、畸形 UTF-8 或畸形 JSON。相同 `request_id` 和规范化 payload 返回首次结果并保持幂等；相同 ID 携带不同 payload 返回 `409 request_id_conflict`。JSON 仅接受 `request_id`、`server_epoch`、`state_revision`、`frequency_hz` 四个字段；`frequency_hz` 必须是 ASCII 十进制整 Hz 字符串，随后仍由 `JtdxWebFrequency`/Bands 和生产 MainWindow 适配复核。业务拒绝若已解析出 JSON 对象且 `request_id` 是可规范化的可打印 ASCII 字符串，错误 JSON 保留去首尾空白后的可信 ID；缺失或非字符串的 ID 使用新生成的规范化 UUID，并返回 `invalid_control_fields`；字符串不可规范化时使用新 UUID，并返回 `invalid_request_id`。
 
 成功进入 Control 的响应保留 `request_id`、`operation`、`server_epoch`、`state_revision`、`frequency_hz`、`status`、`reason`、接收/截止/完成时间与当前有限状态快照。`202 accepted/pending` 只代表登记和排队，`completed` 仅由真实频率回读反馈产生；HTTP 200 不代表发射。既有 `/api/v1/state` 的 `operations` 数组提供最多 128 条稳定排序的结果摘要，每条含时间字段和 `readback.confirmed`、generation、有限频率/DX 回读；摘要不嵌套 `current_state`，也不包含凭据。
 

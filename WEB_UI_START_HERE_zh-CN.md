@@ -2,6 +2,10 @@
 
 本目录记录 JTDX 内置轻量 Web UI 的需求、边界、设计和阶段证据。当前 P3 生产 service/QAction、P4 生命周期/dispatch 基础、频率 HTTP 隔离入口和有限 operations/SSE 完成回读已完成；完整 MainWindow 窗口人工验收留到 P6，仍不代表已经启动 JTDX、连接 JTDX 电台或完成 HIL/部署验证。频率 HTTP 生产写入口仍强制关闭，不能把隔离夹具的 `accepted/pending` 当作 CAT 完成。较早 CAT `.10` 交付提交 `a89c9da` 仅作外部历史参考。
 
+## 最新恢复结果（2026-09-20）
+
+额度中止后续的 `request_id` 拒绝响应小片已完成有界回归：业务拒绝在可取得可信 ID 时保留规范化 `request_id`，无可信 ID 时生成新的规范化 UUID；生产频率 gate 仍为 `false`。受影响目标构建退出码为 `0`，定向 Web 回归 `3/3`、全量 CTest `19/19` 通过。独立证据分别见 `C:\JTDX64\deps-webui\p4-request-id-final-build-20260920-retry.log`、`C:\JTDX64\deps-webui\p4-request-id-focused-ctest-20260920-retry.log` 和 `C:\JTDX64\deps-webui\p4-request-id-final-ctest-20260920-retry.log`。此前失败日志 `p4-request-id-final-ctest-20260920.log` 的 6 项连锁失败来自 completion 夹具真实时钟脆弱性，不能作为最终结论。本次未启动 JTDX，未连接 CAT/PTT/TX，未做 HIL、浏览器或部署验证；详见 [`docs/web-ui/PROGRESS_zh-CN.md`](docs/web-ui/PROGRESS_zh-CN.md) 与 [`docs/web-ui/P4-FREQUENCY-HTTP_契约_zh-CN.md`](docs/web-ui/P4-FREQUENCY-HTTP_契约_zh-CN.md)。
+
 ## 当前状态
 
 - 阶段：`P4 频率 HTTP 基础切片（生产 fail-closed）`，P0/P1/P2/P3 已完成，P4 Service/Server/Control 生命周期、frequency dispatch 基础和有限 operations 摘要/SSE 回读已完成；完整 MainWindow 窗口人工验收留到 P6，生产频率 POST 保持关闭。

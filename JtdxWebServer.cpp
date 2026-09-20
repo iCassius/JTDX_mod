@@ -960,9 +960,29 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
     }
   if (method == QByteArrayLiteral ("POST") && path == QByteArrayLiteral ("/api/v1/control/frequency"))
     {
+      bool const valid_utf8_body = !body.isEmpty () && body.size () <= 4096
+          && QString::fromUtf8 (body).toUtf8 () == body;
+      QJsonDocument document;
+      QJsonParseError parse_error {};
+      bool parsed_object = false;
+      QString trusted_request_id;
+      if (valid_utf8_body)
+        {
+          document = QJsonDocument::fromJson (body, &parse_error);
+          parsed_object = parse_error.error == QJsonParseError::NoError && document.isObject ();
+          if (parsed_object)
+            {
+              QJsonValue const candidate = document.object ().value (QStringLiteral ("request_id"));
+              if (candidate.isString ())
+                trusted_request_id = JtdxWebControl::normalize_request_id (candidate.toString ());
+            }
+        }
       auto reject_control = [&] (int status, QString reason, QString request_id = QString {}) {
+        QString effective_request_id = request_id.isEmpty ()
+            ? trusted_request_id : JtdxWebControl::normalize_request_id (request_id);
         send_http (socket, status, status_reason (status), QByteArrayLiteral ("application/json"),
-                   json_response (control_error_response (status, std::move (reason), std::move (request_id))));
+                   json_response (control_error_response (status, std::move (reason),
+                                                         std::move (effective_request_id))));
       };
       if (!configuration_.enable_frequency_control)
         {
@@ -979,15 +999,12 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
           reject_control (409, QStringLiteral ("frequency_validator_unavailable"));
           return;
         }
-      if (body.isEmpty () || body.size () > 4096
-          || QString::fromUtf8 (body).toUtf8 () != body)
+      if (!valid_utf8_body)
         {
           reject_control (400, QStringLiteral ("invalid_utf8_body"));
           return;
         }
-      QJsonParseError parse_error;
-      QJsonDocument document = QJsonDocument::fromJson (body, &parse_error);
-      if (parse_error.error != QJsonParseError::NoError || !document.isObject ())
+      if (!parsed_object)
         {
           reject_control (400, QStringLiteral ("invalid_json"));
           return;
@@ -1008,6 +1025,11 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
           || !input.value (QStringLiteral ("state_revision")).isDouble ())
         {
           reject_control (400, QStringLiteral ("invalid_control_fields"));
+          return;
+        }
+      if (trusted_request_id.isEmpty ())
+        {
+          reject_control (400, QStringLiteral ("invalid_request_id"));
           return;
         }
       double const revision_number = input.value (QStringLiteral ("state_revision")).toDouble ();

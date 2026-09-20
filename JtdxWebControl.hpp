@@ -142,6 +142,7 @@ public:
 
   static QString operation_name (Operation operation);
   static QString status_name (Status status);
+  static QString normalize_request_id (QString const& request_id);
 
 private:
   struct Record
@@ -160,7 +161,6 @@ private:
     bool dispatched {false};
   };
 
-  static QString normalize_request_id (QString const& request_id);
   static bool printable_ascii (QString const& value, int max_length);
   static QString canonical_payload (Request const& request);
   static bool safe_to_dispatch (SafetySnapshot const& safety, QString * reason);

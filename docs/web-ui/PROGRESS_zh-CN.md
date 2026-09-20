@@ -1,5 +1,21 @@
 # JTDX 内置 Web UI：进度与中断恢复日志
 
+### 2026-09-20 P4 频率 POST 拒绝响应 request_id 修复批次开始检查点
+
+- 开始额度：五小时剩余 `44%`、周剩余 `91%`；重启后的工作权限已恢复。本批五小时剩余低于 `30%` 时停止实现，仅做有界验证、文档、精确提交和交接。
+- 基线：仓库 `C:\JTDX64\jtdx_sourcecode`，分支 `main`，HEAD `758fad2`，工作树干净。
+- 目标：公开 `JtdxWebControl::normalize_request_id` 纯函数供 WebServer 复用，使频率 POST 业务拒绝在完整 JSON 可取得可信 ID 时返回原样规范化 ID；无可信 ID 仍由现有错误响应生成 UUID。
+- 范围：仅涉及频率 POST 业务拒绝响应和真实 TCP 最小测试；不改 401/Origin/传输层 text，不启用生产 gate，不碰前端、DX/CQ、UDP 或 CAT，不运行真实 JTDX/HIL。
+
+### 2026-09-20 P4 频率 POST 拒绝响应 request_id 修复批次收尾
+
+- 已完成：`JtdxWebControl::normalize_request_id` 对 WebServer 公开；有效 JSON 对象中可规范化的 `request_id` 会在业务拒绝 JSON 中保留去首尾空白后的可信 ID；缺失、非字符串或不可打印 ASCII 的 ID 继续生成新的规范化 UUID，字段类型错误返回 `invalid_control_fields`，字符串不可规范化返回 `invalid_request_id`。401、Origin 和传输层拒绝仍保持既有 text 响应。
+- 先前失败证据：`C:\JTDX64\deps-webui\p4-request-id-final-ctest-20260920.log` 中旧 `jtdx_web_server_test` 为 `6` 项失败，根因是 completion 夹具 `Control{1000}` 使用真实时间，导致 pending/completed/SSE 断言连锁失败；不是生产 CAT 失败。额度中止前已加入首个 Control 的 `set_clock_for_test(0)`，本次仅做回归收尾。
+- 最终构建：在 `C:\JTDX64\build-webui-dev-msys2` 以 `C:\msys64\mingw64\bin` 优先、`C:\JTDX64\159\bin` 补 Hamlib，目标 `jtdx`、`jtdx_web_control_test`、`jtdx_web_server_test`、`jtdx_web_service_test`，退出码 `0`；日志：`C:\JTDX64\deps-webui\p4-request-id-final-build-20260920-retry.log`。
+- 定向回归：`jtdx_web_control_test`、`jtdx_web_server_test`、`jtdx_web_service_test` 为 `3/3` 通过；日志：`C:\JTDX64\deps-webui\p4-request-id-focused-ctest-20260920-retry.log`。
+- 全量回归：CTest `19/19`、`100% tests passed`，总耗时 `58.39s`；日志：`C:\JTDX64\deps-webui\p4-request-id-final-ctest-20260920-retry.log`。本次未启动 `jtdx.exe`，未连接 CAT/PTT/TX，未做 HIL、浏览器或部署验证；生产 `frequency gate` 仍为 `false`。
+- 当前状态：源码、测试和三份中文文档待精确本地中文 commit；不 push、不 amend、不 reset。此前因额度中止而未完成的回归现已由上述独立日志补齐。
+
 ### 额度检查点（2026-09-14 18:50，北京时间）
 
 五小时剩余 `88%`、周剩余 `1%`；因周额度不足暂停实现，未触发五小时剩余 `30%` 阈值。基线：`main/19453a8`；生产 `frequency gate` 仍为 `false`。下一片：固定有效 `request_id` 拒绝响应一致性及错误 JSON 边界，之后进行前端与隔离浏览器验收。本次未编译、未重测、未做 HIL、未启动 JTDX、未部署。
