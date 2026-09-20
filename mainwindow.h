@@ -44,6 +44,7 @@
 #include "JtdxWebState.hpp"
 #include "JtdxWebControl.hpp"
 #include "JtdxWebFrequency.hpp"
+#include "JtdxWebDx.hpp"
 #include "JtdxWebService.hpp"
 
 
@@ -414,6 +415,7 @@ private:
   void refreshWebFrequencyCandidates () const;
   JtdxWebControl::ObservedState webControlObservation () const;
   void dispatchWebFrequency (JtdxWebControl::Dispatch);
+  void dispatchWebDx (JtdxWebControl::Dispatch);
 
   JTDXDateTime * m_jtdxtime;
   QProcessEnvironment const& m_env;

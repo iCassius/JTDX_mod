@@ -907,6 +907,7 @@ private:
   QString web_ui_token_sha256_;
   QString web_ui_allowed_origin_;
   bool web_ui_frequency_control_enabled_;
+  bool web_ui_dx_control_enabled_;
   bool enable_udp2_broadcast_;
   bool write_decoded_;
   bool write_decoded_debug_;
@@ -956,6 +957,7 @@ bool Configuration::web_ui_allow_lan () const {return m_->web_ui_allow_lan_;}
 QString Configuration::web_ui_token_sha256 () const {return m_->web_ui_token_sha256_;}
 QString Configuration::web_ui_allowed_origin () const {return m_->web_ui_allowed_origin_;}
 bool Configuration::web_ui_frequency_control_enabled () const {return m_->web_ui_frequency_control_enabled_;}
+bool Configuration::web_ui_dx_control_enabled () const {return m_->web_ui_dx_control_enabled_;}
 void Configuration::set_web_ui_status (QString const& state, QString const& detail)
 {
   if (m_->ui_)
@@ -2286,6 +2288,7 @@ Radio::convert_dark("#fafbfe",useDarkStyle_),Radio::convert_dark("#dcdef1",useDa
   ui_->TCP_checkBox->setChecked (enable_tcp_connection_);
   ui_->web_ui_enabled_check_box->setChecked (web_ui_enabled_);
   ui_->web_ui_frequency_control_check_box->setChecked (web_ui_frequency_control_enabled_);
+  ui_->web_ui_dx_control_check_box->setChecked (web_ui_dx_control_enabled_);
   ui_->web_ui_frequency_control_check_box->setToolTip (
       tr ("默认关闭；仅在确认 CAT 实际频率回读后允许 Web 客户端切换频率。"));
   ui_->web_ui_bind_combo_box->setCurrentIndex (web_ui_allow_lan_ ? 1 : 0);
@@ -2798,6 +2801,7 @@ void Configuration::impl::read_settings ()
   web_ui_bind_address_ = settings_->value ("WebUiBindAddress", "127.0.0.1").toString ();
   web_ui_allow_lan_ = settings_->value ("WebUiAllowLan", false).toBool ();
   web_ui_frequency_control_enabled_ = settings_->value ("WebUiFrequencyControlEnabled", false).toBool ();
+  web_ui_dx_control_enabled_ = settings_->value ("WebUiDxControlEnabled", false).toBool ();
   web_ui_token_sha256_ = settings_->value ("WebUiTokenSha256").toString ().trimmed ();
   web_ui_allowed_origin_ = settings_->value ("WebUiAllowedOrigin").toString ().trimmed ();
 
@@ -3098,6 +3102,7 @@ void Configuration::impl::write_settings ()
   settings_->setValue ("WebUiBindAddress", web_ui_bind_address_);
   settings_->setValue ("WebUiAllowLan", web_ui_allow_lan_);
   settings_->setValue ("WebUiFrequencyControlEnabled", web_ui_frequency_control_enabled_);
+  settings_->setValue ("WebUiDxControlEnabled", web_ui_dx_control_enabled_);
   settings_->setValue ("WebUiTokenSha256", web_ui_token_sha256_);
   settings_->setValue ("WebUiAllowedOrigin", web_ui_allowed_origin_);
   settings_->setValue ("WriteDecodedALLTXT", write_decoded_);
@@ -3803,6 +3808,7 @@ void Configuration::impl::accept ()
   enable_tcp_connection_ = ui_->TCP_checkBox->isChecked ();
   web_ui_enabled_ = ui_->web_ui_enabled_check_box->isChecked ();
   web_ui_frequency_control_enabled_ = ui_->web_ui_frequency_control_check_box->isChecked ();
+  web_ui_dx_control_enabled_ = ui_->web_ui_dx_control_check_box->isChecked ();
   web_ui_automatic_port_ = ui_->web_ui_automatic_port_check_box->isChecked ();
   web_ui_port_ = static_cast<port_type> (ui_->web_ui_port_spin_box->value ());
   web_ui_allow_lan_ = ui_->web_ui_bind_combo_box->currentIndex () == 1;

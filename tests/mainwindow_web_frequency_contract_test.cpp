@@ -40,6 +40,8 @@ int main ()
   QByteArray const source = main_window.readAll ();
   check (source.contains ("configuration.enable_frequency_control = m_config.web_ui_frequency_control_enabled ()"),
          "MainWindow forwards the explicit frequency-control setting");
+  check (source.contains ("configuration.enable_dx_control = m_config.web_ui_dx_control_enabled ()"),
+         "MainWindow forwards the explicit DX-control setting");
   check (source.contains ("result.safety.rig_online = m_rigOk && m_config.is_transceiver_online ()"),
          "MainWindow adapter requires both CAT observation and configuration online state");
   check (source.contains ("result.safety.monitoring = m_monitoring")
@@ -63,6 +65,19 @@ int main ()
   check (source.contains ("m_webState->observe_rig (s.online (), s.frequency (), s.tx_frequency (), s.ptt ())")
              && source.contains ("m_webControl->feedback_frequency"),
          "MainWindow completes frequency only from rig observation feedback");
+  check (source.contains ("m_webState->observe_web_dx_selection")
+             && source.contains ("m_webControl->feedback_select_dx"),
+         "MainWindow completes DX only from the independent selection observation");
+  auto const dx_dispatch = source.indexOf ("void MainWindow::dispatchWebDx");
+  auto const dx_next_function = source.indexOf ("void MainWindow::on_actionOpenWebUi_triggered", dx_dispatch);
+  QByteArray const dx_dispatch_body = source.mid (dx_dispatch, dx_next_function - dx_dispatch);
+  check (dx_dispatch >= 0 && dx_next_function > dx_dispatch
+             && !dx_dispatch_body.contains ("processMessage")
+             && !dx_dispatch_body.contains ("clearDX")
+             && !dx_dispatch_body.contains ("genStdMsgs")
+             && !dx_dispatch_body.contains ("enableTx_mode")
+             && !dx_dispatch_body.contains ("haltTx"),
+         "DX adapter only updates the input projection and cannot enter QSO or TX paths");
 
   JtdxWebControl control {100};
   control.set_clock_for_test (0);

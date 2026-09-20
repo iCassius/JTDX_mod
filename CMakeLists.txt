@@ -203,6 +203,7 @@ set (wsjt_qt_CXXSRCS
   MessageClient.cpp
   JtdxWebFrequency.cpp
   JtdxWebFrequencyCandidates.cpp
+  JtdxWebDx.cpp
   JtdxWebControl.cpp
   JtdxWebState.cpp
   JtdxWebServer.cpp
@@ -1629,15 +1630,26 @@ if (JTDX_BUILD_LOCAL_TESTS)
   target_include_directories (jtdx_web_state_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   target_link_libraries (jtdx_web_state_test Qt5::Core)
   add_test (NAME jtdx_web_state_test COMMAND jtdx_web_state_test)
+  add_executable (jtdx_web_dx_test
+    tests/jtdx_web_dx_test.cpp
+    JtdxWebDx.cpp
+    Radio.cpp)
+  target_include_directories (jtdx_web_dx_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_link_libraries (jtdx_web_dx_test Qt5::Core)
+  add_test (NAME jtdx_web_dx_test COMMAND jtdx_web_dx_test)
   add_executable (jtdx_web_control_test
     tests/jtdx_web_control_test.cpp
-    JtdxWebControl.cpp)
+    JtdxWebControl.cpp
+    JtdxWebDx.cpp
+    Radio.cpp)
   target_include_directories (jtdx_web_control_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   target_link_libraries (jtdx_web_control_test Qt5::Core)
   add_test (NAME jtdx_web_control_test COMMAND jtdx_web_control_test)
   add_executable (mainwindow_web_frequency_contract_test
     tests/mainwindow_web_frequency_contract_test.cpp
-    JtdxWebControl.cpp)
+    JtdxWebControl.cpp
+    JtdxWebDx.cpp
+    Radio.cpp)
   target_compile_definitions (mainwindow_web_frequency_contract_test PRIVATE
     JTDX_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
   target_include_directories (mainwindow_web_frequency_contract_test PRIVATE
@@ -1687,6 +1699,8 @@ if (JTDX_BUILD_LOCAL_TESTS)
     tests/jtdx_web_server_test.cpp
     JtdxWebServer.cpp
     JtdxWebControl.cpp
+    JtdxWebDx.cpp
+    Radio.cpp
     JtdxWebFrequency.cpp
     Bands.cpp
     JtdxWebState.cpp
@@ -1697,6 +1711,8 @@ if (JTDX_BUILD_LOCAL_TESTS)
   add_executable (jtdx_web_service_test
     tests/jtdx_web_service_test.cpp
     JtdxWebControl.cpp
+    JtdxWebDx.cpp
+    Radio.cpp
     JtdxWebService.cpp
     JtdxWebServer.cpp
     JtdxWebFrequency.cpp

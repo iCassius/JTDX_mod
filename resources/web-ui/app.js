@@ -15,6 +15,9 @@
   let frequencyRequest = null;
   let frequencyUnknown = false;
   let frequencyAbort = null;
+  let dxRequest = null;
+  let dxUnknown = false;
+  let dxAbort = null;
   let connectionSession = 0;
   let connected = false;
   let frequencyCandidates = [];
@@ -52,6 +55,7 @@
       }
     }
     updateFrequencyForm();
+    updateDxControls();
   }
 
   function bool(value) {
@@ -199,6 +203,13 @@
     node.className = "frequency-result " + (kind || "");
   }
 
+  function dxStatus(message, kind) {
+    const node = el("dx_selection_result");
+    if (!node) return;
+    node.textContent = message;
+    node.className = "frequency-result " + (kind || "");
+  }
+
   function operationForRequest(snapshot) {
     if (!frequencyRequest || !snapshot || !Array.isArray(snapshot.operations)) return null;
     return snapshot.operations.find((row) => row && typeof row === "object"
@@ -207,10 +218,26 @@
       && row.server_epoch === frequencyRequest.epoch) || null;
   }
 
+  function operationForDx(snapshot) {
+    if (!dxRequest || !snapshot || !Array.isArray(snapshot.operations)) return null;
+    return snapshot.operations.find((row) => row && typeof row === "object"
+      && row.operation === "select-dx"
+      && row.request_id === dxRequest.requestId
+      && row.server_epoch === dxRequest.epoch) || null;
+  }
+
   function readbackMatches(row, targetHz) {
     const readback = row && row.readback && typeof row.readback === "object" ? row.readback : null;
     return !!(readback && readback.confirmed === true
       && canonicalHz(readback.frequency_hz) === targetHz);
+  }
+
+  function readbackMatchesDx(row, request) {
+    const readback = row && row.readback && typeof row.readback === "object" ? row.readback : null;
+    return !!(readback && readback.confirmed === true
+      && readback.dx_call === request.call && (readback.dx_grid || "") === (request.grid || "")
+      && readback.dx_selection_source === "decode"
+      && integerValue(readback.dx_source_decode_id) === request.decodeId);
   }
 
   function terminalOperation(row) {
@@ -243,6 +270,33 @@
       return;
     }
     updateFrequencyForm();
+  }
+
+  function reconcileDx(snapshot) {
+    if (!dxRequest || !snapshot) return;
+    const epoch = typeof snapshot.server_epoch === "string" ? snapshot.server_epoch : "";
+    if (epoch && epoch !== dxRequest.epoch) {
+      dxRequest = null;
+      dxUnknown = false;
+      dxStatus("服务 epoch 已变化，旧 DX 选择已失效；请以新快照为准。", "warning");
+      return;
+    }
+    const row = operationForDx(snapshot);
+    if (row && terminalOperation(row)) {
+      if (row.status === "completed" && readbackMatchesDx(row, dxRequest)) {
+        dxStatus("DX 已完成，并已由匹配回读确认。", "success");
+        dxUnknown = false;
+        dxRequest = null;
+      } else if (row.status === "completed") {
+        dxUnknown = true;
+        dxStatus("服务报告 DX 完成，但回读不匹配，结果未知。", "warning");
+      } else {
+        dxUnknown = false;
+        dxStatus("DX 请求未完成：" + boundedString(row.reason || "服务未提供原因", 180), "error");
+        dxRequest = null;
+      }
+    }
+    updateDxControls();
   }
 
   function frequencyGateReason(snapshot) {
@@ -281,6 +335,30 @@
       ? "频率控制已开放 · 其他控制未开放" : "按能力开放 · 当前仅只读";
   }
 
+  function dxGateReason(snapshot) {
+    if (!snapshot) return "等待新鲜状态快照";
+    if (snapshot.dx_control_enabled !== true) return "桌面尚未开放 DX 选择";
+    if (!connected) return "等待连接和最新状态快照";
+    if (snapshot.online !== true || snapshot.rig_online !== true) return "主程序或电台未在线";
+    if (snapshot.rig_fresh !== true || snapshot.freshness !== "fresh") return "状态快照陈旧";
+    if (snapshot.tx_enabled !== false || snapshot.transmitting !== false || snapshot.ptt !== false
+        || snapshot.watchdog_timeout !== false) return "当前 TX/PTT 状态不是明确安全值";
+    if (integerValue(snapshot.state_revision) == null || integerValue(snapshot.state_revision) < 0) return "缺少安全状态 revision";
+    if (!lastUpdate || Date.now() - lastUpdate > 15000) return "状态快照已超时";
+    if (dxUnknown) return "上一次 DX 选择结果未知，等待明确回读或新 epoch";
+    if (dxRequest) return "已有 DX 选择处理中";
+    return "";
+  }
+
+  function updateDxControls() {
+    const reason = dxGateReason(currentSnapshot);
+    const status = el("dx_selection_status");
+    if (status) {
+      status.textContent = reason || "可选择新鲜实时解码";
+      status.className = "frequency-control-status " + (reason ? "blocked" : "ready");
+    }
+  }
+
   function clearRenderedSnapshot(message) {
     currentSnapshot = null;
     frequencyCandidates = [];
@@ -291,13 +369,15 @@
     ["web_server_state", "application_name", "mode_band", "instance_id", "online", "frequency",
       "freshness", "frequency_freshness", "last_status_update", "last_decode_update", "decode_age",
       "dx_call", "dx_grid", "report", "df", "tx_mode", "tx_enabled", "transmitting", "decoding",
-      "tx_first", "watchdog_timeout", "cq_qso", "auto_sequence_state", "current_tx_text", "decode_count"]
+      "tx_first", "watchdog_timeout", "cq_qso", "auto_sequence_state", "current_tx_text", "decode_count",
+      "dx_selection_status", "dx_selection_result"]
       .forEach((id) => text(id, null));
     const box = el("decodes");
     if (box) box.replaceChildren();
     renderOperations("unknown", message || "等待新令牌对应的状态快照");
     updateFrequencyChoices(null);
     updateFrequencyForm();
+    updateDxControls();
   }
 
   function operationLabel(value) {
@@ -417,6 +497,7 @@
         + Math.min(operationRows.length, DISPLAY_OPERATION_ROWS) + " 条";
     renderOperations(freshness, message);
     reconcileFrequency(snapshot);
+    reconcileDx(snapshot);
   }
 
   function render(snapshot) {
@@ -461,7 +542,7 @@
     text("decode_count", rows.length);
     const box = el("decodes");
     box.replaceChildren();
-    rows.slice().reverse().forEach((decode) => {
+      rows.slice().reverse().forEach((decode) => {
       const row = document.createElement("div");
       row.className = "decode";
       [[decode.time, ""], [decode.snr, ""], [decode.delta_frequency, ""], [decode.mode, ""],
@@ -472,11 +553,21 @@
         node.textContent = value == null ? "未知" : String(value);
         row.appendChild(node);
       });
+      if (decode.is_new === true && decode.fresh === true && typeof decode.callsign === "string"
+          && decode.callsign.length > 0) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = "选择 DX";
+        button.disabled = !!dxGateReason(snapshot);
+        button.addEventListener("click", () => sendSelectDx(decode));
+        row.appendChild(button);
+      }
       box.appendChild(row);
     });
     updateFrequencyChoices(snapshot);
     updateOperations(snapshot);
     updateFrequencyForm();
+    updateDxControls();
   }
 
   function auth() {
@@ -606,6 +697,104 @@
     }
   }
 
+  function settleDxResponse(payload, request, httpOk) {
+    if (!responseIdentityMatches(payload, request)) {
+      dxUnknown = true;
+      dxStatus("响应无法与本次 DX 请求安全匹配，结果未知。", "warning");
+      updateDxControls();
+      return;
+    }
+    const status = typeof payload.status === "string" ? payload.status : "";
+    if (["accepted", "pending", "received"].includes(status)) {
+      dxStatus("DX 请求已登记，等待桌面状态回读；HTTP 响应不代表完成。", "processing");
+    } else if (status === "completed") {
+      if (!httpOk || !readbackMatchesDx(payload, request)) {
+        dxUnknown = true;
+        dxStatus("服务报告 DX 完成，但缺少匹配回读，结果未知。", "warning");
+      } else {
+        dxUnknown = false;
+        dxStatus("DX 已完成，并已由匹配回读确认。", "success");
+        dxRequest = null;
+      }
+    } else if (["failed", "rejected", "timeout"].includes(status)) {
+      dxUnknown = false;
+      dxRequest = null;
+      dxStatus("DX 请求未完成：" + responseReason(payload, "服务未提供原因"), "error");
+    } else {
+      dxUnknown = true;
+      dxStatus("响应状态未知，等待回读或新 epoch。", "warning");
+    }
+    updateDxControls();
+  }
+
+  async function sendSelectDx(decode) {
+    const gate = dxGateReason(currentSnapshot);
+    const decodeId = integerValue(decode && decode.decode_id);
+    if (gate || decodeId == null || !currentSnapshot) {
+      updateDxControls();
+      return;
+    }
+    let requestId;
+    try { requestId = secureRequestId(); } catch (_) {
+      dxStatus("浏览器没有可用的安全随机源，无法发送 DX 请求。", "error");
+      return;
+    }
+    const request = {
+      requestId,
+      epoch: currentSnapshot.server_epoch,
+      decodeId,
+      call: String(decode.callsign || "").toUpperCase(),
+      grid: String(decode.grid || "").toUpperCase(),
+      session: connectionSession,
+      state: "sending"
+    };
+    dxRequest = request;
+    dxUnknown = false;
+    dxStatus("正在发送 DX 选择请求…", "processing");
+    updateDxControls();
+    const local = new AbortController();
+    dxAbort = local;
+    const timer = setTimeout(() => local.abort(), 5000);
+    try {
+      const response = await fetch("/api/v1/control/select-dx", {
+        method: "POST",
+        headers: Object.assign({ "Content-Type": "application/json", "Accept": "application/json" }, auth()),
+        body: JSON.stringify({
+          request_id: request.requestId,
+          server_epoch: request.epoch,
+          state_revision: integerValue(currentSnapshot.state_revision),
+          decode_id: request.decodeId
+        }),
+        cache: "no-store",
+        signal: local.signal
+      });
+      if (request.session !== connectionSession || dxRequest !== request) return;
+      let payload = null;
+      try { payload = await response.json(); } catch (_) { payload = null; }
+      if (request.session !== connectionSession || dxRequest !== request) return;
+      if (!payload || typeof payload !== "object") {
+        dxUnknown = true;
+        dxStatus("服务响应无法解析，结果未知。", "warning");
+      } else settleDxResponse(payload, request, response.ok);
+      if (!response.ok && responseIdentityMatches(payload, request)
+          && !["failed", "rejected", "timeout"].includes(payload.status)) {
+        dxUnknown = true;
+        dxStatus("服务拒绝 DX 请求：" + responseReason(payload, "HTTP " + response.status), "error");
+      }
+      updateDxControls();
+    } catch (error) {
+      if (request.session !== connectionSession || dxRequest !== request) return;
+      dxUnknown = true;
+      dxStatus(error && error.name === "AbortError"
+        ? "DX 请求超时，结果未知；等待明确回读或新 epoch。"
+        : "DX 请求传输异常，结果未知；等待明确回读或新 epoch。", "warning");
+      updateDxControls();
+    } finally {
+      clearTimeout(timer);
+      if (dxAbort === local) dxAbort = null;
+    }
+  }
+
   function timedRead(reader, run) {
     let timer;
     const timeout = new Promise((_, reject) => {
@@ -678,11 +867,18 @@
     running = false;
     if (controller) controller.abort();
     if (frequencyAbort) frequencyAbort.abort();
+    if (dxAbort) dxAbort.abort();
     if (frequencyRequest) {
       frequencyUnknown = true;
       frequencyStatus("会话已更换，旧频率请求结果未知；等待匹配回读或新 epoch。", "warning");
     } else {
       frequencyUnknown = false;
+    }
+    if (dxRequest) {
+      dxUnknown = true;
+      dxStatus("会话已更换，旧 DX 请求结果未知；等待匹配回读或新 epoch。", "warning");
+    } else {
+      dxUnknown = false;
     }
     token = el("token_input").value;
     el("auth_error").textContent = "";

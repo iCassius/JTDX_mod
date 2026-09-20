@@ -1,5 +1,14 @@
 # JTDX 内置 Web UI：进度与中断恢复日志
 
+### 2026-09-21 P4 DX 选择软件链路批次
+
+- 基线：`main/ced90ea`；继续保持默认关闭、loopback/令牌/同源与主 Qt 事件循环边界。新增独立 `WebUiDxControlEnabled` 配置，不与频率控制开关隐式耦合。
+- 已实现：`JtdxWebDx` 纯校验覆盖规范化呼号、协议字段、复合呼号和 4/6/8/10 位 Grid；`JtdxWebState` 按有界新鲜实时 `decode_id` 提供选择快照，并维护独立 `dx_generation`、来源和 DF/时间元数据。
+- 已实现：`POST /api/v1/control/select-dx` 只接受 `request_id/server_epoch/state_revision/decode_id`，服务端重新检查解码新鲜度与纯校验；MainWindow 只更新 DX 输入投影并产生 DX 业务观测，不调用桌面双击、QSO 历史、标准消息、AutoSeq、Enable TX、PTT 或 TX 路径。完成只接受独立 DX generation 与目标/来源回读匹配。
+- 前端：新鲜实时解码行提供“选择 DX”按钮；请求身份、epoch、超时和未知结果沿用频率控制的锁定语义，只有 `confirmed` 且 call/grid/source/decode_id 全匹配才显示完成。
+- 自动验证：纯校验、状态选择/代际、Control、Server HTTP/SSE、Service、配置持久化、MainWindow 静态副作用契约与 `node --check`；日志待本片最终回归后补写。
+- 未验证：未启动真实 `jtdx.exe`，未连接真实 CAT/PTT/TX，未做 HIL、完整 MainWindow 人工窗口、浏览器人工验收或部署；本批 DX 软件回读不能证明真实电台动作。
+
 ### 2026-09-21 P4 频率恢复边界与显式启用批次
 
 - 基线：`main/961706e`，开始时工作树干净；五小时额度开始约 `87%`，本批按低于 `30%` 停止新实现。范围限定为频率恢复边界、高层 MainWindow 适配隔离契约、配置/菜单流程和跨客户端未确认锁；不进入 DX/CQ/AutoSeq。

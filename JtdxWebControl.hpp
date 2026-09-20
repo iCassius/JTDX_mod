@@ -50,6 +50,11 @@ public:
     bool dx_known {false};
     QString dx_call;
     QString dx_grid;
+    QString dx_report;
+    qint32 dx_frequency_offset {0};
+    QString dx_time;
+    QString dx_selection_source;
+    quint64 dx_source_decode_id {0};
   };
 
   struct Request
@@ -61,6 +66,11 @@ public:
     qint64 frequency_hz {0};
     QString dx_call;
     QString dx_grid;
+    QString dx_report;
+    qint32 dx_frequency_offset {0};
+    QString dx_time;
+    QString dx_selection_source;
+    quint64 dx_source_decode_id {0};
   };
 
   struct Dispatch
@@ -72,6 +82,11 @@ public:
     qint64 frequency_hz {0};
     QString dx_call;
     QString dx_grid;
+    QString dx_report;
+    qint32 dx_frequency_offset {0};
+    QString dx_time;
+    QString dx_selection_source;
+    quint64 dx_source_decode_id {0};
   };
 
   struct Result
@@ -130,7 +145,9 @@ public:
                            quint64 state_revision);
   bool feedback_select_dx (QString const& request_id, QString const& server_epoch,
                            quint64 generation, QString dx_call, QString dx_grid,
-                           quint64 state_revision);
+                           quint64 state_revision, QString dx_report = {},
+                           qint32 dx_frequency_offset = 0, QString dx_time = {},
+                           QString dx_selection_source = {}, quint64 dx_source_decode_id = 0);
   bool fail (QString const& request_id, QString const& server_epoch, QString reason);
   bool expire ();
   bool rotate_epoch ();
@@ -156,6 +173,11 @@ private:
     qint64 frequency_hz {0};
     QString dx_call;
     QString dx_grid;
+    QString dx_report;
+    qint32 dx_frequency_offset {0};
+    QString dx_time;
+    QString dx_selection_source;
+    quint64 dx_source_decode_id {0};
     bool timed_out {false};
     bool prepared {false};
     bool dispatched {false};

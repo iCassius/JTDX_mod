@@ -7602,7 +7602,8 @@ AA1AAA,BB1BB,CC1CC&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
           <item row="3" column="1" colspan="2"><widget class="QLineEdit" name="web_ui_token_line_edit"><property name="echoMode"><enum>QLineEdit::Password</enum></property><property name="placeholderText"><string>仅临时显示；配置只保存 SHA-256 摘要</string></property></widget></item>
           <item row="3" column="3"><widget class="QPushButton" name="web_ui_generate_token_push_button"><property name="text"><string>生成令牌</string></property></widget></item>
           <item row="4" column="0" colspan="4"><widget class="QCheckBox" name="web_ui_frequency_control_check_box"><property name="text"><string>允许 Web 频率控制</string></property><property name="toolTip"><string>默认关闭；开启后，持有访问令牌的客户端可切换频率，仍须通过同源和安全状态检查。</string></property></widget></item>
-          <item row="5" column="0" colspan="4"><widget class="QLabel" name="web_ui_help_label"><property name="wordWrap"><bool>true</bool></property><property name="text"><string>令牌原文只在此处和浏览器内存中出现，不写入 URL、日志或 HTML。LAN 绑定必须使用具体地址、令牌和精确 Origin。频率控制默认关闭；开启后持访问令牌的客户端可切换频率。</string></property></widget></item>
+          <item row="5" column="0" colspan="4"><widget class="QCheckBox" name="web_ui_dx_control_check_box"><property name="text"><string>允许 Web 选择 DX</string></property><property name="toolTip"><string>默认关闭；开启后只能选择新鲜实时解码中的合法呼号，不进入双击、QSO 或 TX 流程。</string></property></widget></item>
+          <item row="6" column="0" colspan="4"><widget class="QLabel" name="web_ui_help_label"><property name="wordWrap"><bool>true</bool></property><property name="text"><string>令牌原文只在此处和浏览器内存中出现，不写入 URL、日志或 HTML。LAN 绑定必须使用具体地址、令牌和精确 Origin。频率控制和 DX 选择默认关闭；开启后仍须通过同源和安全状态检查。</string></property></widget></item>
          </layout>
         </widget>
        </item>

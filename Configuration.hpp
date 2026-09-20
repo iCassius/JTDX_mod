@@ -281,6 +281,7 @@ public:
   QString web_ui_bind_address () const;
   bool web_ui_allow_lan () const;
   bool web_ui_frequency_control_enabled () const;
+  bool web_ui_dx_control_enabled () const;
   QString web_ui_token_sha256 () const;
   QString web_ui_allowed_origin () const;
   void set_web_ui_status (QString const& state, QString const& detail);

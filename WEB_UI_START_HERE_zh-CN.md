@@ -1,8 +1,14 @@
 # JTDX 内置 Web UI：阶段入口与恢复说明
 
-本目录记录 JTDX 内置轻量 Web UI 的需求、边界、设计和阶段证据。当前 P3 生产 service/QAction、P4 生命周期/dispatch 基础、频率 HTTP 隔离入口和有限 operations/SSE 完成回读已完成；完整 MainWindow 窗口人工验收留到 P6，仍不代表已经启动 JTDX、连接 JTDX 电台或完成 HIL/部署验证。频率控制现可由用户在设置中显式开启，默认仍关闭；开启后仍须通过 MainWindow/Control 的 CAT 实际回读和 TX 安全门，不能把隔离夹具的 `accepted/pending` 当作 CAT 完成。较早 CAT `.10` 交付提交 `a89c9da` 仅作外部历史参考。
+本目录记录 JTDX 内置轻量 Web UI 的需求、边界、设计和阶段证据。当前 P3 生产 service/QAction、P4 生命周期/dispatch、频率和 DX 的软件控制链路已完成；完整 MainWindow 窗口人工验收留到 P6，仍不代表已经启动 JTDX、连接 JTDX 电台或完成 HIL/部署验证。频率与 DX 控制均可由用户在设置中分别显式开启，默认仍关闭；频率仍须 CAT 实际回读，DX 选择须独立 DX generation/source 回读，不能把隔离夹具的 `accepted/pending` 当作硬件完成。较早 CAT `.10` 交付提交 `a89c9da` 仅作外部历史参考。
 
 ## 最新恢复结果（2026-09-21）
+
+### P4 DX 选择软件链路批次
+
+新增独立 `WebUiDxControlEnabled` 配置与 `POST /api/v1/control/select-dx` 路由。请求只携带当前 `decode_id`，服务端按有界新鲜实时解码重新校验 Call/Grid；MainWindow 只更新 DX 输入投影，不进入双击、QSO、标准消息、AutoSeq 或 TX/PTT 路径。`JtdxWebState` 发布独立 `dx_generation`、来源、解码 ID、DF 和时间，完成仅接受匹配回读。新鲜解码行提供“选择 DX”按钮，未知响应保持锁定。
+
+本批自动验证覆盖纯校验、状态选择、Control、Server/Service、配置持久化、MainWindow 副作用静态契约及 `node --check`；未启动真实 JTDX，未连接 CAT/PTT/TX，未做 HIL、完整窗口人工验收、浏览器人工验收或部署。
 
 ### P4 频率恢复边界与显式启用批次
 
@@ -42,11 +48,11 @@
 
 ## 当前状态
 
-- 阶段：`P4 普通控制（频率软件门已接入，DX 待实现）`，P0/P1/P2/P3 已完成，P4 Service/Server/Control 生命周期、frequency dispatch 基础、有限 operations 摘要/SSE 回读、MainWindow 隔离适配契约和显式配置开关已完成；完整 MainWindow 窗口人工验收留到 P6，真实 CAT 回读/HIL 未验证。
+- 阶段：`P4 普通控制（频率与 DX 软件链路已接入）`，P0/P1/P2/P3 已完成，P4 Service/Server/Control 生命周期、frequency/DX dispatch 基础、有限 operations 摘要/SSE 回读、MainWindow 隔离适配契约和独立显式配置开关已完成；完整 MainWindow 窗口人工验收留到 P6，真实 CAT/DX 设备回读/HIL 未验证。
 - 基线：本批从分支 `main`、HEAD `d67fb66` 开始，operations 回读结果提交为 `3f3a799`；P4 HTTP 契约见 [`docs/web-ui/P4-FREQUENCY-HTTP_契约_zh-CN.md`](docs/web-ui/P4-FREQUENCY-HTTP_契约_zh-CN.md)，当前结果与恢复点见进度日志。
 - 代码根目录：`C:\JTDX64\jtdx_sourcecode`。用户需求中的 `jtdx\_sourcecode` 按当前实际仓库路径解释。
 - P3 历史范围：增加 Web UI 配置 Tab、持久化摘要令牌、MainWindow 唯一服务生命周期、菜单入口和 Qt Resource 原生深色响应式只读页；服务仍为单进程主 Qt 事件循环，不新增 UDP/线程/进程或控制 API。
-- 已确认：主程序已有 Qt5 Network、`MessageClient`、`MessageServer` 和 `JTDX_BUILD_LOCAL_TESTS`；P1 状态模型、P2 只读服务、P3 代码/资源/测试/文档、P4 生命周期/dispatch、HTTP 隔离基础、operations/SSE 有界回读和频率显式配置门均已有本地修改；DX、CQ/AutoSeq、完整窗口和真实 CAT 回读仍未完成。
+- 已确认：主程序已有 Qt5 Network、`MessageClient`、`MessageServer` 和 `JTDX_BUILD_LOCAL_TESTS`；P1 状态模型、P2 只读服务、P3 代码/资源/测试/文档、P4 生命周期/dispatch、HTTP 隔离基础、operations/SSE 有界回读、频率与 DX 显式配置门均已有本地修改；CQ/AutoSeq、完整窗口和真实 CAT/DX 回读仍未完成。
 - CAT 交付基线：代码提交 `328cc7a` 的错序检测及后续 artifact code HEAD `9984c38` 已由 `a89c9da` 记录最终 Release、完整 CTest `19/19`（含既有 `ftx1_cat_policy_test`）；该测试并非本 Web 文档批次新增。Web 仍只呈现实际状态，不把 CAT 构建证据或 HTTP `accepted` 当成设备回读或通联完成。
 - 进程边界：Web 功能必须零新增进程、零新增常驻线程，优先使用 JTDX 主 Qt 事件循环。当前程序已有 `proc_jtdxjt9` 解码子进程，Web 任务不得把它误写成 Web 新增进程，也不得为了 Web 重构或删除它。
 
@@ -66,7 +72,7 @@
 | P1 | 状态模型 | `JtdxWebState`、状态新鲜度、解码上限、事件循环安全读接口；只读数据接入 | 已通过（独立构建/14 项 CTest；未启动 JTDX/HIL） |
 | P2 | 只读服务器 | `JtdxWebServer`、TCP 端口生命周期、`/`、`/healthz`、`/api/v1/state`、`/api/v1/decodes`、SSE | 已通过（loopback/API/CTest；未启动 JTDX/HIL） |
 | P3 | 设置/菜单/前端骨架 | Web UI 设置 Tab、端口/绑定策略、菜单入口、内置资源、响应式只读页面 | 代码/资源/CTest/浏览器夹具复验已完成；完整 MainWindow 窗口人工验收留到 P6 |
-| P4 | 普通控制 | `JtdxWebControl`、频率切换、过期解码 ID、DX 选择、状态回读 | 频率软件安全门、显式配置开关、跨客户端未确认锁和 MainWindow 隔离契约已通过；DX 入口与完整窗口/CAT 回读待后续批次 |
+| P4 | 普通控制 | `JtdxWebControl`、频率切换、过期解码 ID、DX 选择、状态回读 | 频率与 DX 软件安全门、独立显式配置、独立 generation/source 回读、跨客户端未确认锁和 MainWindow 隔离契约已通过；完整窗口/CAT 回读待后续批次 |
 | P5 | 高风险控制 | CQ/AutoSeq 启动、停止流程、二次确认、幂等/超时/冲突和状态回读 | 未开始 |
 | P6 | 整体验证 | 自动化合同、浏览器手测、异常隔离、回归和交付报告 | 未开始 |
 | HIL | 独立授权 | 真实 CAT/PTT/发射、设备反馈、长时间运行和无线电行为 | 未授权/未开始 |

@@ -11,6 +11,7 @@
 #include <QTcpServer>
 #include "JtdxWebControl.hpp"
 #include "JtdxWebFrequency.hpp"
+#include "JtdxWebDx.hpp"
 #include <functional>
 #include <utility>
 
@@ -37,6 +38,7 @@ public:
     QString bearer_token_sha256;      // 生产配置只保存 64 位十六进制摘要
     QString allowed_origin;            // LAN 时必须精确匹配；空值拒绝 Origin
     bool enable_frequency_control {false}; // 仅显式开启时允许频率 POST
+    bool enable_dx_control {false}; // 仅显式开启时允许选择 DX POST
   };
 
   static constexpr quint16 automatic_port_first = 49152;
@@ -97,7 +99,8 @@ private:
   QJsonObject operations_snapshot () const;
   QByteArray json_response (QJsonObject const& object) const;
   QJsonObject control_response (JtdxWebControl::Result const& result) const;
-  QJsonObject control_error_response (int status, QString reason, QString request_id = {}) const;
+  QJsonObject control_error_response (int status, QString reason, QString request_id = {},
+                                      JtdxWebControl::Operation operation = JtdxWebControl::Operation::Frequency) const;
   QByteArray http_response (int status, QByteArray const& reason,
                             QByteArray const& content_type, QByteArray const& body,
                             bool close = true) const;

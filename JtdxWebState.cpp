@@ -182,6 +182,41 @@ void JtdxWebState::observe_business_state (bool auto_sequence_enabled,
   current_tx_text_ = current_tx_text;
 }
 
+bool JtdxWebState::decode_selection (quint64 decode_id, DecodeSelection * selection) const
+{
+  if (!selection || decode_id == 0) return false;
+  qint64 const now = monotonic_now ();
+  constexpr qint64 stale_after_ms = 5000;
+  for (auto const& decode : decodes_)
+    if (decode.id == decode_id && decode.is_new && !decode.off_air
+        && now - decode.received_ms <= stale_after_ms && !decode.callsign.isEmpty ())
+      {
+        selection->decode_id = decode.id;
+        selection->source_revision = decode.source_revision;
+        selection->time = decode.time;
+        selection->delta_frequency = static_cast<qint32> (decode.delta_frequency);
+        selection->call = decode.callsign;
+        selection->grid = decode.grid;
+        return true;
+      }
+  return false;
+}
+
+void JtdxWebState::observe_web_dx_selection (QString const& call, QString const& grid,
+                                             QString const& source, quint64 source_decode_id,
+                                             qint32 delta_frequency, QString const& time)
+{
+  Q_ASSERT (QThread::currentThread () == thread ());
+  ++revision_;
+  ++dx_generation_;
+  dx_call_ = call;
+  dx_grid_ = grid;
+  dx_selection_source_ = source;
+  dx_source_decode_id_ = source_decode_id;
+  dx_frequency_offset_ = delta_frequency;
+  dx_time_ = time;
+}
+
 void JtdxWebState::set_frequency_candidates (QString const& mode, QString const& region,
                                               FrequencyCandidates const& candidates)
 {
@@ -334,6 +369,12 @@ QJsonObject JtdxWebState::json_snapshot () const
   object.insert (QStringLiteral ("frequency_candidate_limit"), hard_frequency_candidate_limit);
   object.insert (QStringLiteral ("dx_call"), nullable_string (dx_call_));
   object.insert (QStringLiteral ("dx_grid"), nullable_string (dx_grid_));
+  object.insert (QStringLiteral ("dx_generation"), static_cast<qint64> (dx_generation_));
+  object.insert (QStringLiteral ("dx_selection_source"), nullable_string (dx_selection_source_));
+  object.insert (QStringLiteral ("dx_source_decode_id"), dx_source_decode_id_ == 0
+                ? QJsonValue {QJsonValue::Null} : QJsonValue {static_cast<qint64> (dx_source_decode_id_)});
+  object.insert (QStringLiteral ("dx_frequency_offset"), dx_frequency_offset_);
+  object.insert (QStringLiteral ("dx_time"), nullable_string (dx_time_));
   object.insert (QStringLiteral ("report"), nullable_string (report_));
   object.insert (QStringLiteral ("tx_mode"), nullable_string (tx_mode_));
   object.insert (QStringLiteral ("tx_enabled"), nullable_bool (tx_enabled_, has_status_));

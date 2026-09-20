@@ -511,6 +511,10 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
       QMetaObject::invokeMethod (this, [this, dispatch] { dispatchWebFrequency (dispatch); },
                                   Qt::QueuedConnection);
     });
+  m_webControl->set_select_dx_dispatcher ([this] (JtdxWebControl::Dispatch const& dispatch) {
+      QMetaObject::invokeMethod (this, [this, dispatch] { dispatchWebDx (dispatch); },
+                                  Qt::QueuedConnection);
+    });
   connect (&m_config, &Configuration::web_ui_open_requested,
            this, &MainWindow::on_actionOpenWebUi_triggered);
   connect (&m_config, &Configuration::web_ui_restart_requested, this, [this] {
@@ -2231,6 +2235,7 @@ void MainWindow::applyWebUiConfiguration ()
   // 配置开关只决定是否暴露频率 POST；实际 dispatch 仍由
   // JtdxWebControl 在主线程重新读取 CAT/发送安全状态并等待实际回读。
   configuration.enable_frequency_control = m_config.web_ui_frequency_control_enabled ();
+  configuration.enable_dx_control = m_config.web_ui_dx_control_enabled ();
   configuration.udp_ports.insert (m_config.udp_server_port ());
   configuration.udp_ports.insert (m_config.udp2_server_port ());
   bool const applied = m_webService->apply (m_config.web_ui_enabled (), configuration);
@@ -2312,9 +2317,13 @@ JtdxWebControl::ObservedState MainWindow::webControlObservation () const
   result.safety.iptt = g_iptt != 0;
   result.dx_call = snapshot.value (QStringLiteral ("dx_call")).toString ();
   result.dx_grid = snapshot.value (QStringLiteral ("dx_grid")).toString ();
-  // 本批只注册 frequency；不得把全局 revision 冒充 DX 业务 generation。
-  result.dx_known = false;
-  result.dx_generation = 0;
+  result.dx_known = snapshot.value (QStringLiteral ("dx_call")).isString ();
+  result.dx_generation = snapshot.value (QStringLiteral ("dx_generation")).toVariant ().toULongLong ();
+  result.dx_report = snapshot.value (QStringLiteral ("report")).toString ();
+  result.dx_frequency_offset = snapshot.value (QStringLiteral ("dx_frequency_offset")).toInt ();
+  result.dx_time = snapshot.value (QStringLiteral ("dx_time")).toString ();
+  result.dx_selection_source = snapshot.value (QStringLiteral ("dx_selection_source")).toString ();
+  result.dx_source_decode_id = snapshot.value (QStringLiteral ("dx_source_decode_id")).toVariant ().toULongLong ();
   return result;
 }
 
@@ -2338,6 +2347,41 @@ void MainWindow::dispatchWebFrequency (JtdxWebControl::Dispatch dispatch)
   m_bandEdited = true;
   band_changed (validation.frequency_hz);
   if (m_wideGraph) m_wideGraph->setRxBand (m_config.bands ()->find (validation.frequency_hz));
+}
+
+void MainWindow::dispatchWebDx (JtdxWebControl::Dispatch dispatch)
+{
+  if (!m_webControl || m_webControl->is_shutdown ()) return;
+  auto const validation = JtdxWebDx::normalize (dispatch.dx_call, dispatch.dx_grid);
+  if (!validation.valid)
+    {
+      m_webControl->fail (dispatch.request_id, dispatch.server_epoch, validation.reason);
+      return;
+    }
+  JtdxWebControl::Dispatch prepared;
+  if (!m_webControl->prepare_dispatch (dispatch.request_id, dispatch.server_epoch, &prepared)) return;
+  if (!m_webControl->begin_dispatch (prepared)) return;
+  dispatch = std::move (prepared);
+
+  // 只更新 DX 输入投影；不进入桌面双击、QSO 历史或 TX 路径。
+  m_hisCall = validation.call;
+  m_hisGrid = validation.grid;
+  {
+    QSignalBlocker call_blocker {ui->dxCallEntry};
+    QSignalBlocker grid_blocker {ui->dxGridEntry};
+    ui->dxCallEntry->setText (validation.call);
+    ui->dxGridEntry->setText (validation.grid);
+  }
+  m_webState->observe_web_dx_selection (validation.call, validation.grid,
+                                        dispatch.dx_selection_source,
+                                        dispatch.dx_source_decode_id,
+                                        dispatch.dx_frequency_offset, dispatch.dx_time);
+  auto const observed = webControlObservation ();
+  m_webControl->feedback_select_dx (dispatch.request_id, dispatch.server_epoch,
+                                    observed.dx_generation, validation.call, validation.grid,
+                                    observed.state_revision, dispatch.dx_report,
+                                    dispatch.dx_frequency_offset, dispatch.dx_time,
+                                    dispatch.dx_selection_source, dispatch.dx_source_decode_id);
 }
 
 void MainWindow::on_actionOpenWebUi_triggered ()

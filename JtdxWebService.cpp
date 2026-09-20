@@ -35,6 +35,7 @@ QString JtdxWebService::signature (JtdxWebServer::Configuration const& configura
     configuration.bind_address.toString (), QString::number (configuration.allow_lan),
     bearer_token_digest, configuration.allowed_origin,
     QString::number (configuration.enable_frequency_control),
+    QString::number (configuration.enable_dx_control),
     udp_ports.join (QStringLiteral (","))}.join (QChar {'|'});
 }
 

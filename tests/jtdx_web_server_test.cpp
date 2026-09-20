@@ -148,6 +148,17 @@ QByteArray post_frequency (quint16 port, QByteArray const& token, QByteArray con
   return response;
 }
 
+QByteArray post_select_dx (quint16 port, QByteArray const& token, QByteArray const& body,
+                           QByteArray const& origin)
+{
+  QByteArray wire = QByteArrayLiteral ("POST /api/v1/control/select-dx HTTP/1.1\r\nHost: 127.0.0.1:")
+      + QByteArray::number (port) + QByteArrayLiteral ("\r\nAuthorization: Bearer ") + token
+      + QByteArrayLiteral ("\r\nOrigin: ") + origin
+      + QByteArrayLiteral ("\r\nContent-Type: application/json\r\nContent-Length: ")
+      + QByteArray::number (body.size ()) + QByteArrayLiteral ("\r\n\r\n") + body;
+  return raw_request (port, wire);
+}
+
 bool partial_header_times_out (quint16 port)
 {
   QTcpSocket socket;
@@ -221,6 +232,9 @@ int main (int argc, char ** argv)
   state.observe_status (14074000, QStringLiteral ("FT8"), QStringLiteral ("K1ABC"), QStringLiteral ("-10"),
                         QStringLiteral ("FT8"), true, false, true, -100, 150, QStringLiteral ("N0CALL"),
                         QStringLiteral ("AA00"), QStringLiteral ("FN31"), false, {}, false, false);
+  state.observe_decode (true, QTime {12, 34, 56}, -10, 0.1F, 1500,
+                        QStringLiteral ("FT8"), QStringLiteral ("K1ABC FN31"), false, false,
+                        QStringLiteral ("K1ABC"), QStringLiteral ("FN31"));
   JtdxWebServer server {&state};
   JtdxWebServer::Configuration config;
   QByteArray const token = QByteArrayLiteral ("p3-test-token-0123456789-abcdefghijklmnopqrstuvwxyz");
@@ -239,6 +253,7 @@ int main (int argc, char ** argv)
   observed.actual_frequency_hz = 14074000;
   control.set_observed_state (observed);
   JtdxWebControl::Dispatch captured_dispatch;
+  JtdxWebControl::Dispatch captured_dx_dispatch;
   control.set_frequency_dispatcher ([&] (JtdxWebControl::Dispatch const& dispatch) {
       captured_dispatch = dispatch;
       JtdxWebControl::Dispatch prepared;
@@ -247,12 +262,21 @@ int main (int argc, char ** argv)
       check (control.begin_dispatch (prepared),
              "TCP frequency request must reach production begin dispatcher");
     });
+  control.set_select_dx_dispatcher ([&] (JtdxWebControl::Dispatch const& dispatch) {
+      captured_dx_dispatch = dispatch;
+      JtdxWebControl::Dispatch prepared;
+      check (control.prepare_dispatch (dispatch.request_id, dispatch.server_epoch, &prepared),
+             "TCP DX request must reach production prepare dispatcher");
+      check (control.begin_dispatch (prepared),
+             "TCP DX request must reach production begin dispatcher");
+    });
   server.set_control (&control);
   Bands bands;
   server.set_frequency_validator ([&] (QString const& input) {
       return JtdxWebFrequency::parse_and_validate_hz (input, bands);
     });
   config.enable_frequency_control = true;
+  config.enable_dx_control = true;
   bool const browser_frequency_fixture = app.arguments ().contains (
       QStringLiteral ("--serve-browser-frequency"))
       || app.arguments ().contains (QStringLiteral ("--serve-browser-frequency-empty"))
@@ -492,6 +516,43 @@ int main (int argc, char ** argv)
          "state operations readback reports completed feedback with confirmation");
   check (!completed_operation.contains (QStringLiteral ("current_state")),
          "operation summary must not recursively embed current_state");
+
+  QByteArray const dx_body = QByteArrayLiteral ("{\"request_id\":\"tcp-dx-1\",\"server_epoch\":\"")
+      + server.server_epoch ().toUtf8 () + QByteArrayLiteral ("\",\"state_revision\":")
+      + QByteArray::number (observed.state_revision) + QByteArrayLiteral (",\"decode_id\":1}");
+  QJsonObject const dx_response = response_json (post_select_dx (
+      port, token, dx_body, QByteArrayLiteral ("http://127.0.0.1:") + QByteArray::number (port)));
+  check (dx_response.value (QStringLiteral ("status")).toString () == QStringLiteral ("pending")
+             && captured_dx_dispatch.dx_call == QStringLiteral ("K1ABC")
+             && captured_dx_dispatch.dx_grid == QStringLiteral ("FN31")
+             && captured_dx_dispatch.dx_selection_source == QStringLiteral ("decode")
+             && captured_dx_dispatch.dx_source_decode_id == 1,
+         "TCP DX POST resolves a fresh decode into a bounded dispatch payload");
+  check (state.json_snapshot ().value (QStringLiteral ("dx_call")).toString () == QStringLiteral ("K1ABC")
+             && state.json_snapshot ().value (QStringLiteral ("dx_grid")).toString () == QStringLiteral ("FN31"),
+         "DX selection admission does not mutate business state");
+  check (control.feedback_select_dx (captured_dx_dispatch.request_id, captured_dx_dispatch.server_epoch,
+                                     captured_dx_dispatch.expected_generation + 1,
+                                     captured_dx_dispatch.dx_call, captured_dx_dispatch.dx_grid,
+                                     observed.state_revision + 1, {},
+                                     captured_dx_dispatch.dx_frequency_offset,
+                                     captured_dx_dispatch.dx_time,
+                                     captured_dx_dispatch.dx_selection_source,
+                                     captured_dx_dispatch.dx_source_decode_id),
+         "isolated DX feedback completes the admitted selection operation");
+  QJsonObject const completed_dx = response_json (post_select_dx (
+      port, token, dx_body, QByteArrayLiteral ("http://127.0.0.1:") + QByteArray::number (port)));
+  check (completed_dx.value (QStringLiteral ("status")).toString () == QStringLiteral ("completed")
+             && completed_dx.value (QStringLiteral ("readback")).toObject ().value (QStringLiteral ("dx_call")).toString ()
+                    == QStringLiteral ("K1ABC")
+             && completed_dx.value (QStringLiteral ("readback")).toObject ().value (QStringLiteral ("dx_source_decode_id")).toInt () == 1,
+         "completed DX result exposes matching readback metadata");
+  QByteArray const stale_dx_body = QByteArrayLiteral ("{\"request_id\":\"tcp-dx-stale\",\"server_epoch\":\"")
+      + server.server_epoch ().toUtf8 () + QByteArrayLiteral ("\",\"state_revision\":")
+      + QByteArray::number (observed.state_revision) + QByteArrayLiteral (",\"decode_id\":999999}");
+  check (status (post_select_dx (port, token, stale_dx_body,
+                                QByteArrayLiteral ("http://127.0.0.1:") + QByteArray::number (port))) == 409,
+         "stale or unknown decode id is rejected before dispatch");
 
   // A live SSE peer must receive a new snapshot when only the Control result changes.
   QTcpSocket operation_sse;

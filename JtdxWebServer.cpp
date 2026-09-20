@@ -636,6 +636,16 @@ QJsonObject JtdxWebServer::operation_result (JtdxWebControl::Result const& resul
                    ? QJsonValue {result.snapshot.dx_grid} : QJsonValue {QJsonValue::Null});
   readback.insert (QStringLiteral ("dx_generation"),
                    static_cast<qint64> (result.snapshot.dx_generation));
+  readback.insert (QStringLiteral ("dx_report"), result.snapshot.dx_known
+                   ? QJsonValue {result.snapshot.dx_report} : QJsonValue {QJsonValue::Null});
+  readback.insert (QStringLiteral ("dx_frequency_offset"), result.snapshot.dx_known
+                   ? QJsonValue {result.snapshot.dx_frequency_offset} : QJsonValue {QJsonValue::Null});
+  readback.insert (QStringLiteral ("dx_time"), result.snapshot.dx_known
+                   ? QJsonValue {result.snapshot.dx_time} : QJsonValue {QJsonValue::Null});
+  readback.insert (QStringLiteral ("dx_selection_source"), result.snapshot.dx_known
+                   ? QJsonValue {result.snapshot.dx_selection_source} : QJsonValue {QJsonValue::Null});
+  readback.insert (QStringLiteral ("dx_source_decode_id"), result.snapshot.dx_known && result.snapshot.dx_source_decode_id != 0
+                   ? QJsonValue {static_cast<qint64> (result.snapshot.dx_source_decode_id)} : QJsonValue {QJsonValue::Null});
   output.insert (QStringLiteral ("readback"), readback);
   return output;
 }
@@ -667,6 +677,13 @@ QJsonObject JtdxWebServer::state_snapshot () const
                    && control_->server_epoch () == server_epoch_
                    && !control_->is_shutdown ()
                    && static_cast<bool> (frequency_validator_));
+  snapshot.insert (QStringLiteral ("dx_control_enabled"),
+                   configuration_.enable_dx_control
+                   && control_
+                   && control_->server_epoch_bound ()
+                   && control_->server_epoch () == server_epoch_
+                   && !control_->is_shutdown ()
+                   && static_cast<bool> (state_));
   QJsonObject const operations = operations_snapshot ();
   snapshot.insert (QStringLiteral ("operation_revision"), operations.value (QStringLiteral ("operation_revision")));
   snapshot.insert (QStringLiteral ("operations"), operations.value (QStringLiteral ("operations")));
@@ -690,12 +707,13 @@ QJsonObject JtdxWebServer::control_response (JtdxWebControl::Result const& resul
   return response;
 }
 
-QJsonObject JtdxWebServer::control_error_response (int status, QString reason, QString request_id) const
+QJsonObject JtdxWebServer::control_error_response (int status, QString reason, QString request_id,
+                                                   JtdxWebControl::Operation operation) const
 {
   QJsonObject response;
   response.insert (QStringLiteral ("request_id"), request_id.isEmpty ()
                    ? QUuid::createUuid ().toString (QUuid::WithoutBraces) : request_id);
-  response.insert (QStringLiteral ("operation"), QStringLiteral ("frequency"));
+  response.insert (QStringLiteral ("operation"), JtdxWebControl::operation_name (operation));
   response.insert (QStringLiteral ("server_epoch"), server_epoch_);
   response.insert (QStringLiteral ("status"), QStringLiteral ("rejected"));
   response.insert (QStringLiteral ("reason"), std::move (reason));
@@ -704,6 +722,8 @@ QJsonObject JtdxWebServer::control_error_response (int status, QString reason, Q
   response.insert (QStringLiteral ("completed_ms"), QJsonValue {QJsonValue::Null});
   response.insert (QStringLiteral ("state_revision"), static_cast<qint64> (state_ ? state_->revision () : 0));
   response.insert (QStringLiteral ("frequency_hz"), QJsonValue {QJsonValue::Null});
+  response.insert (QStringLiteral ("dx_call"), QJsonValue {QJsonValue::Null});
+  response.insert (QStringLiteral ("dx_grid"), QJsonValue {QJsonValue::Null});
   response.insert (QStringLiteral ("current_state"), state_snapshot ());
   Q_UNUSED (status);
   return response;
@@ -963,6 +983,109 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
   if (!authorized (headers))
     {
       reject_connection (socket, 401, QByteArrayLiteral ("bearer authentication required"));
+      return;
+    }
+  if (method == QByteArrayLiteral ("POST") && path == QByteArrayLiteral ("/api/v1/control/select-dx"))
+    {
+      constexpr double max_safe_json_integer = 9007199254740991.0;
+      bool const valid_utf8_body = !body.isEmpty () && body.size () <= 4096
+          && QString::fromUtf8 (body).toUtf8 () == body;
+      QJsonParseError parse_error {};
+      QJsonDocument document;
+      bool parsed_object = false;
+      QString trusted_request_id;
+      if (valid_utf8_body)
+        {
+          document = QJsonDocument::fromJson (body, &parse_error);
+          parsed_object = parse_error.error == QJsonParseError::NoError && document.isObject ();
+          if (parsed_object && document.object ().value (QStringLiteral ("request_id")).isString ())
+            trusted_request_id = JtdxWebControl::normalize_request_id (
+                document.object ().value (QStringLiteral ("request_id")).toString ());
+        }
+      auto reject_control = [&] (int status, QString reason, QString request_id = {}) {
+        QString effective_request_id = request_id.isEmpty ()
+            ? trusted_request_id : JtdxWebControl::normalize_request_id (request_id);
+        send_http (socket, status, status_reason (status), QByteArrayLiteral ("application/json"),
+                   json_response (control_error_response (status, std::move (reason),
+                                                         std::move (effective_request_id),
+                                                         JtdxWebControl::Operation::SelectDx)));
+      };
+      if (!configuration_.enable_dx_control)
+        {
+          reject_control (409, QStringLiteral ("dx_control_disabled"));
+          return;
+        }
+      if (!control_ || !state_)
+        {
+          reject_control (409, QStringLiteral ("control_unavailable"));
+          return;
+        }
+      if (!valid_utf8_body)
+        {
+          reject_control (400, QStringLiteral ("invalid_utf8_body"));
+          return;
+        }
+      if (!parsed_object)
+        {
+          reject_control (400, QStringLiteral ("invalid_json"));
+          return;
+        }
+      QJsonObject const input = document.object ();
+      static const QSet<QString> fields {
+        QStringLiteral ("request_id"), QStringLiteral ("server_epoch"),
+        QStringLiteral ("state_revision"), QStringLiteral ("decode_id")};
+      for (QString const& key : input.keys ())
+        if (!fields.contains (key))
+          {
+            reject_control (400, QStringLiteral ("unknown_json_field"));
+            return;
+          }
+      if (!input.value (QStringLiteral ("request_id")).isString ()
+          || !input.value (QStringLiteral ("server_epoch")).isString ()
+          || !input.value (QStringLiteral ("state_revision")).isDouble ()
+          || !input.value (QStringLiteral ("decode_id")).isDouble ()
+          || trusted_request_id.isEmpty ())
+        {
+          reject_control (400, QStringLiteral ("invalid_control_fields"));
+          return;
+        }
+      double const revision_number = input.value (QStringLiteral ("state_revision")).toDouble ();
+      double const decode_id_number = input.value (QStringLiteral ("decode_id")).toDouble ();
+      if (!std::isfinite (revision_number) || revision_number < 0
+          || revision_number > max_safe_json_integer || revision_number != std::floor (revision_number)
+          || !std::isfinite (decode_id_number) || decode_id_number <= 0
+          || decode_id_number > max_safe_json_integer || decode_id_number != std::floor (decode_id_number))
+        {
+          reject_control (400, QStringLiteral ("invalid_control_number"));
+          return;
+        }
+      JtdxWebState::DecodeSelection selection;
+      quint64 const decode_id = static_cast<quint64> (decode_id_number);
+      if (!state_->decode_selection (decode_id, &selection))
+        {
+          reject_control (409, QStringLiteral ("invalid_or_stale_decode"));
+          return;
+        }
+      auto const normalized = JtdxWebDx::normalize (selection.call, selection.grid);
+      if (!normalized.valid)
+        {
+          reject_control (400, normalized.reason);
+          return;
+        }
+      JtdxWebControl::Request control_request;
+      control_request.request_id = input.value (QStringLiteral ("request_id")).toString ();
+      control_request.server_epoch = input.value (QStringLiteral ("server_epoch")).toString ();
+      control_request.state_revision = static_cast<quint64> (revision_number);
+      control_request.operation = JtdxWebControl::Operation::SelectDx;
+      control_request.dx_call = normalized.call;
+      control_request.dx_grid = normalized.grid;
+      control_request.dx_frequency_offset = selection.delta_frequency;
+      control_request.dx_time = selection.time;
+      control_request.dx_selection_source = QStringLiteral ("decode");
+      control_request.dx_source_decode_id = selection.decode_id;
+      auto const result = control_->submit (std::move (control_request));
+      send_http (socket, result.http_status, status_reason (result.http_status),
+                 QByteArrayLiteral ("application/json"), json_response (control_response (result)));
       return;
     }
   if (method == QByteArrayLiteral ("POST") && path == QByteArrayLiteral ("/api/v1/control/frequency"))

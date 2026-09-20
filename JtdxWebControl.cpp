@@ -1,4 +1,5 @@
 #include "JtdxWebControl.hpp"
+#include "JtdxWebDx.hpp"
 
 #include <QCoreApplication>
 #include <QUuid>
@@ -70,7 +71,9 @@ QString JtdxWebControl::canonical_payload (Request const& request)
   QString const call = request.dx_call.trimmed ().toUpper ();
   QString const grid = request.dx_grid.trimmed ().toUpper ();
   return QStringLiteral ("select-dx:") + QString::number (call.size ()) + QStringLiteral (":") + call
-      + QString::number (grid.size ()) + QStringLiteral (":") + grid;
+      + QString::number (grid.size ()) + QStringLiteral (":") + grid
+      + QStringLiteral (":") + request.dx_selection_source
+      + QStringLiteral (":") + QString::number (request.dx_source_decode_id);
 }
 
 bool JtdxWebControl::safe_to_dispatch (SafetySnapshot const& safety, QString * reason)
@@ -244,6 +247,10 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
       if (!printable_ascii (request.dx_call, max_target_length)
           || (!request.dx_grid.isEmpty () && !printable_ascii (request.dx_grid, max_grid_length)))
         return reject (request, QStringLiteral ("invalid_normalized_dx"), 400);
+      auto const normalized = JtdxWebDx::normalize (request.dx_call, request.dx_grid);
+      if (!normalized.valid) return reject (request, normalized.reason, 400);
+      request.dx_call = normalized.call;
+      request.dx_grid = normalized.grid;
     }
 
   QString const request_epoch = epoch_;
@@ -305,6 +312,11 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
   record.frequency_hz = request.frequency_hz;
   record.dx_call = request.dx_call;
   record.dx_grid = request.dx_grid;
+  record.dx_report = request.dx_report;
+  record.dx_frequency_offset = request.dx_frequency_offset;
+  record.dx_time = request.dx_time;
+  record.dx_selection_source = request.dx_selection_source;
+  record.dx_source_decode_id = request.dx_source_decode_id;
   records_.insert (request.request_id, record);
   mark_operations_changed ();
   auto inserted = records_.find (request.request_id);
@@ -358,6 +370,11 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
   dispatch.frequency_hz = request.frequency_hz;
   dispatch.dx_call = request.dx_call;
   dispatch.dx_grid = request.dx_grid;
+  dispatch.dx_report = request.dx_report;
+  dispatch.dx_frequency_offset = request.dx_frequency_offset;
+  dispatch.dx_time = request.dx_time;
+  dispatch.dx_selection_source = request.dx_selection_source;
+  dispatch.dx_source_decode_id = request.dx_source_decode_id;
   DispatchHandler handler = request.operation == Operation::Frequency
       ? frequency_dispatcher_ : select_dx_dispatcher_;
   try
@@ -475,6 +492,11 @@ bool JtdxWebControl::prepare_dispatch (QString const& request_id, QString const&
   result.frequency_hz = it.value ().frequency_hz;
   result.dx_call = it.value ().dx_call;
   result.dx_grid = it.value ().dx_grid;
+  result.dx_report = it.value ().dx_report;
+  result.dx_frequency_offset = it.value ().dx_frequency_offset;
+  result.dx_time = it.value ().dx_time;
+  result.dx_selection_source = it.value ().dx_selection_source;
+  result.dx_source_decode_id = it.value ().dx_source_decode_id;
   *prepared = std::move (result);
   return true;
 }
@@ -541,7 +563,9 @@ bool JtdxWebControl::begin_dispatch (Dispatch const& dispatch)
   if (dispatch.operation != it.value ().result.operation
       || dispatch.expected_generation != it.value ().baseline_generation
       || dispatch.frequency_hz != it.value ().frequency_hz
-      || dispatch.dx_call != it.value ().dx_call || dispatch.dx_grid != it.value ().dx_grid)
+      || dispatch.dx_call != it.value ().dx_call || dispatch.dx_grid != it.value ().dx_grid
+      || dispatch.dx_selection_source != it.value ().dx_selection_source
+      || dispatch.dx_source_decode_id != it.value ().dx_source_decode_id)
     return false;
   it.value ().dispatched = true;
   return true;
@@ -593,7 +617,9 @@ bool JtdxWebControl::feedback_frequency (QString const& request_id, QString cons
 
 bool JtdxWebControl::feedback_select_dx (QString const& request_id, QString const& server_epoch,
                                          quint64 generation, QString dx_call, QString dx_grid,
-                                         quint64 state_revision)
+                                         quint64 state_revision, QString dx_report,
+                                         qint32 dx_frequency_offset, QString dx_time,
+                                         QString dx_selection_source, quint64 dx_source_decode_id)
 {
   if (!server_epoch_bound_) return false;
   if (pending_request_id_.isEmpty ())
@@ -627,10 +653,19 @@ bool JtdxWebControl::feedback_select_dx (QString const& request_id, QString cons
   dx_call = dx_call.trimmed ().toUpper ();
   dx_grid = dx_grid.trimmed ().toUpper ();
   if (dx_call != record.dx_call || dx_grid != record.dx_grid) return false;
+  if (!record.dx_selection_source.isEmpty () && dx_selection_source != record.dx_selection_source)
+    return false;
+  if (record.dx_source_decode_id != 0 && dx_source_decode_id != record.dx_source_decode_id)
+    return false;
   record.result.snapshot = observed_;
   record.result.snapshot.dx_known = true;
   record.result.snapshot.dx_call = dx_call;
   record.result.snapshot.dx_grid = dx_grid;
+  record.result.snapshot.dx_report = dx_report;
+  record.result.snapshot.dx_frequency_offset = dx_frequency_offset;
+  record.result.snapshot.dx_time = dx_time;
+  record.result.snapshot.dx_selection_source = dx_selection_source;
+  record.result.snapshot.dx_source_decode_id = dx_source_decode_id;
   record.result.snapshot.dx_generation = generation;
   record.result.snapshot.state_revision = state_revision;
   finish (record, Status::Completed, QStringLiteral ("feedback_matched"), generation);

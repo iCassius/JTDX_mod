@@ -52,6 +52,22 @@ int main (int argc, char ** argv)
   check (json.value (QStringLiteral ("target_frequency")).toDouble () == 14074000, "target frequency");
   check (json.value (QStringLiteral ("frequency")).isNull (), "target is not CAT frequency");
   check (json.value (QStringLiteral ("tx_enabled")).isBool (), "boolean JSON type");
+  state.observe_decode (true, QTime {12, 34, 56}, -10, 0.1F, 1500,
+                        QStringLiteral ("FT8"), QStringLiteral ("K1ABC FN31"), false, false,
+                        QStringLiteral ("K1ABC"), QStringLiteral ("FN31"));
+  JtdxWebState::DecodeSelection selection;
+  check (state.decode_selection (1, &selection) && selection.call == QStringLiteral ("K1ABC")
+             && selection.grid == QStringLiteral ("FN31") && selection.delta_frequency == 1500,
+         "fresh realtime decode can be selected by stable id");
+  auto const dx_generation_before = state.dx_generation ();
+  state.observe_web_dx_selection (selection.call, selection.grid, QStringLiteral ("decode"),
+                                  selection.decode_id, selection.delta_frequency, selection.time);
+  check (state.dx_generation () == dx_generation_before + 1,
+         "DX selection has an independent generation");
+  json = state.json_snapshot ();
+  check (json.value (QStringLiteral ("dx_selection_source")).toString () == QStringLiteral ("decode")
+             && json.value (QStringLiteral ("dx_source_decode_id")).toInt () == 1,
+         "DX selection source metadata is published");
   state.observe_business_state (true, QStringLiteral ("calling"), QStringLiteral ("armed"), QStringLiteral ("CQ N0CALL FN31"));
   json = state.json_snapshot ();
   check (json.value (QStringLiteral ("auto_sequence_state")).toString () == QStringLiteral ("enabled"), "AutoSeq state");
@@ -115,7 +131,7 @@ int main (int argc, char ** argv)
   json = state.json_snapshot ();
   auto decodes = json.value (QStringLiteral ("recent_decodes")).toArray ();
   check (decodes.size () == JtdxWebState::hard_decode_limit, "decode hard cap");
-  check (decodes.first ().toObject ().value (QStringLiteral ("decode_id")).toDouble () == 2, "oldest decode evicted");
+  check (decodes.first ().toObject ().value (QStringLiteral ("decode_id")).toDouble () == 3, "oldest decode evicted");
   check (decodes.last ().toObject ().value (QStringLiteral ("callsign")).toString () == QStringLiteral ("N0CALL"), "decoded callsign is carried through");
   check (decodes.last ().toObject ().value (QStringLiteral ("grid")).toString () == QStringLiteral ("FN31"), "decoded grid is carried through");
   auto const live_decode_id = decodes.last ().toObject ().value (QStringLiteral ("decode_id")).toDouble ();

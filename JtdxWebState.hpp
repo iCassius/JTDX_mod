@@ -51,6 +51,16 @@ public:
   };
   using FrequencyCandidates = QList<FrequencyCandidate>;
 
+  struct DecodeSelection
+  {
+    quint64 decode_id {0};
+    quint64 source_revision {0};
+    QString time;
+    qint32 delta_frequency {0};
+    QString call;
+    QString grid;
+  };
+
   explicit JtdxWebState (QString application_name, QString application_version,
                          QString instance_id = QString {}, QObject * parent = nullptr);
 
@@ -59,6 +69,7 @@ public:
   quint64 revision () const { return revision_; }
   // 仅由真实 rig 观测事件递增；不能由通用 status 或 nominal 目标推导。
   quint64 rig_generation () const { return rig_generation_; }
+  quint64 dx_generation () const { return dx_generation_; }
 
   void observe_status (Frequency target_frequency, QString const& mode,
                       QString const& dx_call, QString const& report,
@@ -81,6 +92,10 @@ public:
                             qint32 power, bool off_air);
   void observe_business_state (bool auto_sequence_enabled, QString const& qso_stage,
                                QString const& cq_state, QString const& current_tx_text);
+  bool decode_selection (quint64 decode_id, DecodeSelection * selection) const;
+  void observe_web_dx_selection (QString const& call, QString const& grid,
+                                 QString const& source, quint64 source_decode_id,
+                                 qint32 delta_frequency, QString const& time);
   void set_frequency_candidates (QString const& mode, QString const& region,
                                  FrequencyCandidates const& candidates);
   void clear_decodes ();
@@ -168,6 +183,11 @@ private:
   Frequency rig_tx_frequency_ {0};
   bool rig_ptt_ {false};
   quint64 rig_generation_ {0};
+  quint64 dx_generation_ {0};
+  QString dx_selection_source_;
+  quint64 dx_source_decode_id_ {0};
+  qint32 dx_frequency_offset_ {0};
+  QString dx_time_;
   qint64 rig_seen_ms_ {-1};
   qint64 decode_seen_ms_ {-1};
   QDateTime status_wall_;

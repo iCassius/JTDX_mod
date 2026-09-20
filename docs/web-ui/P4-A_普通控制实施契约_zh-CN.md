@@ -1,5 +1,7 @@
 # JTDX 内置 Web UI：P4-a 普通控制实施契约（DX 选择与 Call 校验）
 
+> 实施更新（2026-09-21）：本契约约束已落地为 `JtdxWebDx` 纯校验、`decode_id` 选择路由、独立 DX generation/source 回读和 MainWindow 最小字段投影。手工来源仍未开放；真实 CAT/PTT/TX/HIL 仍未验证。
+
 任务编号：`JTDX-WEBUI-P4-A-CONTRACT-20260910`
 文档性质：源码事实、实施边界、文件清单、测试计划与恢复检查点；本契约批次不实现控制，后续 P4-b 仅落地基础协调器，不改变本契约的生产入口边界。
 
