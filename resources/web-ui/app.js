@@ -408,7 +408,7 @@
       ? payload.reason : fallback;
   }
 
-  function settleFrequencyResponse(payload, request) {
+  function settleFrequencyResponse(payload, request, httpOk) {
     if (!responseIdentityMatches(payload, request)) {
       frequencyUnknown = true;
       frequencyStatus("响应无法与本次请求安全匹配，结果未知；等待回读或新 epoch。", "warning");
@@ -423,7 +423,10 @@
       return;
     }
     if (status === "completed") {
-      if (readbackMatches(payload, request.targetHz)) {
+      if (!httpOk) {
+        frequencyUnknown = true;
+        frequencyStatus("服务返回非成功 HTTP 状态，结果未知；等待回读或新 epoch。", "warning");
+      } else if (readbackMatches(payload, request.targetHz)) {
         frequencyStatus("频率已完成，并已由实际回读确认。", "success");
         frequencyRequest = null;
       } else {
@@ -496,7 +499,7 @@
         frequencyStatus("服务响应无法解析，结果未知；等待回读或新 epoch。", "warning");
         updateFrequencyForm();
       } else {
-        settleFrequencyResponse(payload, request);
+        settleFrequencyResponse(payload, request, response.ok);
       }
       if (!response.ok && responseIdentityMatches(payload, request)
           && !["failed", "rejected", "timeout"].includes(payload.status)) {

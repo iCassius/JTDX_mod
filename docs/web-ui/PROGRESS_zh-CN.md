@@ -1,5 +1,15 @@
 # JTDX 内置 Web UI：进度与中断恢复日志
 
+### 2026-09-20 P4 频率表单浏览器故障注入与身份锁修复
+
+- 基线为 `main/fb16e8b`；开始本轮时五小时额度为 `100%`，生产 `MainWindow` frequency gate 保持 `false`。本轮范围仅为 `resources/web-ui/app.js` 与本节指定中文文档；未启动真实 JTDX，未连接 CAT/PTT/TX，未做 HIL。
+- 真实 IAB + 隔离 `--serve-browser-frequency` 人工故障注入中，频率 POST 被拦截，未发送给 fixture。验证了：传输超过 5 秒后结果未知且锁发送；同 token 重新连接仍锁；HTTP 200 `completed`/`confirmed=false`、HTTP 200 `completed`/`confirmed=true` 但 wrong Hz、错误 `request_id`、非法 JSON 均锁发送。上述场景顶部实际频率为 `14.074`，`operations` 为零；清除拦截后关闭页面，fixture 已停止。
+- 额外复现 HTTP 500 + 匹配 ID/epoch + `completed`/`confirmed=true`/目标频率的矛盾响应：旧实现会在点击重连后错误解锁。前端最小修复让结算逻辑接收 `response.ok`，非 2xx 的矛盾 `completed` 保留 `frequencyRequest` 与 `frequencyUnknown`，合法 `failed`/`rejected`/`timeout` 终态维持原行为。重建后的真实 IAB fixture `49153` 复测后，同 token 连接仍为禁用，未知身份锁保留，顶部实际频率为 `14.074`。
+- 清除拦截后重载仅作另一用例隔离：`99999` 由服务端真实拒绝为 `invalid_frequency_hz` 且实际频率未改；随后 `14.075` 先 pending、再由匹配回读完成，顶部实际频率为 `14.075`，按钮重新可用。
+- 三目标构建退出码为 `0`，日志：`C:\JTDX64\deps-webui\p4-frequency-fault-final-build.log`。全量 CTest `19/19` 通过、耗时 `58.74 sec`，日志：`C:\JTDX64\deps-webui\p4-frequency-fault-final-ctest.log`。
+- 以上为浏览器人工故障注入，不是自动 DOM 回归。页面 reload 仅作为用例隔离，未验证未知锁跨 reload 持久化；`server_epoch` 更换与真实设备仍未测。生产 gate 仍为 `false`。
+- 下批最短路径：先专项覆盖 `server_epoch` 更换、未知结果跨页面与服务端 `unconfirmed_latch` 边界；随后让频段/预设候选来自 `Configuration::frequencies()`、按 region/mode 过滤的 `FrequencyList_v2` 迭代器与 `Bands`，不在 JS 硬编码、不读取 `QComboBox`、不改既有 model filter。生产 frequency gate 继续保持 `false`，直至高层隔离验证完成。
+
 ### 2026-09-20 P4 手动频率表单隔离验收收尾与提交恢复
 
 - 基线为 `main/2e378fc`。上一轮已完成本批源码、测试、三份前端资源和中文文档，但额度耗尽未提交；本轮仅恢复收尾记录并精确提交，不改代码、不重测。

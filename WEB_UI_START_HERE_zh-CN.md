@@ -4,6 +4,14 @@
 
 ## 最新恢复结果（2026-09-20）
 
+### P4 频率表单浏览器故障注入与 HTTP 矛盾状态修复
+
+基线为 `main/fb16e8b`，生产 `MainWindow` frequency gate 仍为 `false`。本轮使用真实 IAB 与隔离 `--serve-browser-frequency` 做人工故障注入；频率 POST 均被拦截，未发送给 fixture。超出 5 秒的传输请求显示结果未知并锁定发送；同 token 重新连接仍保持锁定；HTTP 200 的 `completed` 且 `confirmed=false`、`confirmed=true` 但回读频率错误、错误 `request_id`、非法 JSON 均保持未知锁。各场景顶部实际频率为 `14.074`，`operations` 为零。清除拦截后关闭页面，fixture 已停止。
+
+另复现 HTTP 500 但 payload 为匹配 ID/epoch、`completed`、`confirmed=true` 且目标频率一致时，旧实现会在重新连接时错误解锁。`resources/web-ui/app.js` 已做最小修复：非 2xx 的矛盾 `completed` 不再清除请求身份，保留未知锁，等待匹配回读或新 epoch；合法的 `failed`/`rejected`/`timeout` 终态保持原行为。重建后的真实 IAB fixture `49153` 复测该场景后，同 token 重新连接仍为禁用，未知身份锁保留，顶部实际频率为 `14.074`。清除拦截后重载仅作另一用例隔离：`99999` 由服务端真实拒绝为 `invalid_frequency_hz` 且实际频率不变；随后 `14.075` 先 pending、再由匹配回读完成，顶部实际频率为 `14.075`，按钮重新可用。三目标构建退出码为 `0`，日志为 `C:\JTDX64\deps-webui\p4-frequency-fault-final-build.log`；全量 CTest `19/19` 通过、耗时 `58.74 sec`，日志为 `C:\JTDX64\deps-webui\p4-frequency-fault-final-ctest.log`。
+
+上述是浏览器人工故障注入，不是自动 DOM 回归。页面 reload 仅用于用例隔离，不能据此声称未知锁可跨 reload 持久化；`server_epoch` 更换和真实设备仍未测试。本轮未启动真实 JTDX，未连接 CAT，未执行 PTT/TX/HIL，生产 gate 仍为 `false`。
+
 ### P4 手动频率表单与 capability fixture 验收
 
 基于前端片段基线 `2e378fc`，本轮已完成原生手动频率表单、安全频率 POST、capability 状态门和结果回读；生产 `MainWindow` gate 仍为 `false`。隔离 `--serve-browser-frequency` 真实 TCP fixture 软件验收通过：`14.075000`、`14.076000` 两次独立请求均经历 pending 后由匹配回读完成，`99999` 由服务端以 `invalid_frequency_hz` 拒绝且实际频率保持上一成功值；`390` 视口 DOM `clientWidth=scrollWidth=375`，无水平溢出。构建退出码 `0`，日志 `C:\JTDX64\deps-webui\p4-frequency-form-final-build.log`；全量 CTest `19/19`、`58.86 sec`，日志 `C:\JTDX64\deps-webui\p4-frequency-form-final-ctest.log`。
@@ -51,7 +59,7 @@
 
 P1 至 P6 每次只推进一个阶段；用户检查额度后再继续。HIL 不属于普通阶段的默认验收。
 
-下一步由根代理继续审查业务错误 JSON 合同、frequency 隔离浏览器验收和本批隔离证据，再决定是否进入频率 CAT 生产适配；operations 卡片的本轮隔离浏览器验收已完成。当前没有用户可用的生产频率控制、频率 CAT 生产回读或 HIL 证据。
+下批最短路径：先专项覆盖 `server_epoch` 更换、未知结果跨页面与服务端 `unconfirmed_latch` 边界；随后让频段/预设候选来自 `Configuration::frequencies()`、按 region/mode 过滤的 `FrequencyList_v2` 迭代器与 `Bands`，不在 JS 硬编码、不读取 `QComboBox`、不改既有 model filter。生产 frequency gate 继续保持 `false`，直至高层隔离验证完成。当前没有用户可用的生产频率控制、频率 CAT 生产回读或 HIL 证据。
 
 本批最终证据：构建日志为 `C:\JTDX64\deps-webui\p4-frequency-http-final-build-2ca51ec.log`，其中确认重新编译 `jtdx_web_service_test` 的 `JtdxWebService.cpp`/`JtdxWebServer.cpp`；全量 CTest 日志为 `C:\JTDX64\deps-webui\p4-frequency-http-final-ctest-2ca51ec.log`，`19/19` 通过。此前 `LastTestsFailed` 或旧 service 二进制状态不作为本批结论。
 
