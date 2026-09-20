@@ -2,6 +2,7 @@
 
 #include "mainwindow.h"
 #include <cinttypes>
+#include <algorithm>
 #include <limits>
 #include <fftw3.h>
 #include <thread>
@@ -53,6 +54,7 @@
 #include "FrequencyList.hpp"
 #include "StationList.hpp"
 #include "LiveFrequencyValidator.hpp"
+#include "JtdxWebFrequencyCandidates.hpp"
 #include "MessageClient.hpp"
 #include "wsprnet.h"
 #include "eqsl.h"
@@ -2251,6 +2253,23 @@ void MainWindow::applyWebUiConfiguration ()
       m_config.set_web_ui_url ({});
       ui->actionOpenWebUi->setEnabled (true);
     }
+}
+
+void MainWindow::refreshWebFrequencyCandidates () const
+{
+  if (!m_webState) return;
+
+  Modes::Mode frequency_mode = Modes::value (m_mode);
+  if (m_mode == QStringLiteral ("JT9+JT65")) frequency_mode = Modes::JT65;
+  else if (m_mode.startsWith (QStringLiteral ("WSPR"))) frequency_mode = Modes::WSPR;
+  IARURegions::Region const frequency_region = m_config.region ();
+
+  auto const candidates = JtdxWebFrequencyCandidates::build (
+      *m_config.frequencies (), *m_config.bands (), frequency_region, frequency_mode);
+
+  QString const mode_context = m_mode.isEmpty () ? QString {} : m_mode;
+  QString const region_context = QString::fromLatin1 (IARURegions::name (frequency_region));
+  m_webState->set_frequency_candidates (mode_context, region_context, candidates);
 }
 
 JtdxWebControl::ObservedState MainWindow::webControlObservation () const
@@ -8882,6 +8901,7 @@ void MainWindow::statusUpdate () const
 {
   if (!ui) return;
   m_webState->observe_band (m_config.bands ()->find (m_freqNominal));
+  refreshWebFrequencyCandidates ();
   QString qso_stage;
   switch (m_QSOProgress)
     {

@@ -7,9 +7,12 @@
 #include <QJsonValue>
 #include <QList>
 #include <QObject>
+#include <QSet>
 #include <QThread>
 #include <QTime>
 #include <QString>
+
+#include <utility>
 
 #include "Radio.hpp"
 
@@ -23,7 +26,30 @@ public:
   using Frequency = Radio::Frequency;
   static constexpr int default_decode_limit = 300;
   static constexpr int hard_decode_limit = 500;
+  static constexpr int default_frequency_candidate_limit = 200;
+  static constexpr int hard_frequency_candidate_limit = 500;
   static QString project_cq_state (bool cq_selected, bool enable_tx, bool transmitting);
+
+  struct FrequencyCandidate
+  {
+    FrequencyCandidate () = default;
+    FrequencyCandidate (Frequency frequency_hz, QString band, QString mode,
+                        QString region, bool default_frequency)
+      : frequency_hz {frequency_hz}
+      , band {std::move (band)}
+      , mode {std::move (mode)}
+      , region {std::move (region)}
+      , default_frequency {default_frequency}
+    {
+    }
+
+    Frequency frequency_hz {0};
+    QString band;
+    QString mode;
+    QString region;
+    bool default_frequency {false};
+  };
+  using FrequencyCandidates = QList<FrequencyCandidate>;
 
   explicit JtdxWebState (QString application_name, QString application_version,
                          QString instance_id = QString {}, QObject * parent = nullptr);
@@ -55,6 +81,8 @@ public:
                             qint32 power, bool off_air);
   void observe_business_state (bool auto_sequence_enabled, QString const& qso_stage,
                                QString const& cq_state, QString const& current_tx_text);
+  void set_frequency_candidates (QString const& mode, QString const& region,
+                                 FrequencyCandidates const& candidates);
   void clear_decodes ();
 
   // 测试时使用单调时钟，避免墙上时钟调整影响新鲜度断言。
@@ -129,6 +157,10 @@ private:
   bool tx_first_ {false};
   Frequency target_frequency_ {0};
   bool has_target_frequency_ {false};
+
+  QString frequency_candidate_mode_;
+  QString frequency_candidate_region_;
+  FrequencyCandidates frequency_candidates_;
 
   bool has_rig_ {false};
   bool rig_online_ {false};

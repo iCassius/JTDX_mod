@@ -411,6 +411,7 @@ private:
 private:
   void hideMenus (bool b);
   void applyWebUiConfiguration ();
+  void refreshWebFrequencyCandidates () const;
   JtdxWebControl::ObservedState webControlObservation () const;
   void dispatchWebFrequency (JtdxWebControl::Dispatch);
 

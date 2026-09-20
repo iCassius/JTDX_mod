@@ -1,5 +1,14 @@
 # JTDX 内置 Web UI：进度与中断恢复日志
 
+### 2026-09-20 P4 频段筛选与常用频率候选小片
+
+- 基线为 `main/e03e292`，本片只推进频率表单候选展示，不改变生产写控制边界。候选由 `Configuration::frequencies()` 的 `FrequencyList_v2` 原始项构建，按当前 mode/region 与 `Bands::find()` 过滤、去重、按 Hz 排序；生产候选默认上限 200，状态快照硬上限 500。未读取 `QComboBox`，未改既有 model filter，JS 不保存频率表。
+- `JtdxWebState` 新增有界 `frequency_candidates` 快照及 mode/region 上下文；`MainWindow::statusUpdate()` 复用现有状态刷新点发布候选。Web 页面新增频段筛选和常用频率选择；选择只填入原有 MHz 输入，不触发 POST、不触发 TX，手动输入仍可用；候选失效时只清空预设选择，不覆盖手动文本。
+- 新增 `JtdxWebFrequencyCandidates` 单元测试覆盖 All/Region、FT8/JT9、Bands 过滤、重复频率默认标记合并、排序、上限和空结果；状态测试覆盖快照字段、去重和 revision 稳定性。受影响目标构建退出码为 `0`，`node --check resources/web-ui/app.js` 退出码为 `0`；新增/相关定向 CTest 曾为 `3/3` 通过。
+- 隔离 `--serve-browser-frequency` 本地夹具验收：连接后浏览器显示 `FT8 / All · 4 条候选`，频段筛选 `40m/20m` 正常；选择 `7.074000 MHz` 后目标输入变为 `7.074000`，操作卡仍为 `0` 条；随后手动输入 `14.075000` 仍可用。`390x844` 窄屏截图确认频率表单纵向排列、无横向溢出。夹具已停止。
+- 全量 CTest 当前最终复跑为 `17/20` 通过：`configuration_web_ui_test` 与 `jtdx_web_service_test` 以 Windows `0xc0000602` fail-fast 退出，`jtdx_web_server_test` 在现有慢 SSE 背压断言处报告 `active count=1`；上述失败不是本片新增测试，需后续单独收敛，不能把本次全量结果描述为全绿。生产 `MainWindow` frequency gate 仍为 `false`。
+- 未启动真实 `jtdx.exe`，未连接 CAT/PTT/TX，未做 HIL 或部署；本片只使用本地隔离浏览器夹具和自动化测试。下一片应先独立收敛上述既有测试环境/时序失败，再考虑候选空列表的浏览器切换场景；生产频率写入口继续关闭。
+
 ### 2026-09-20 P4 频率表单浏览器故障注入与身份锁修复
 
 - 最终收尾检查点：五小时额度剩余 `28%`（已用 `72%`），已低于用户规定的 `30%` 阈值；本轮停止新实现，仅保留本地结果提交和交接。

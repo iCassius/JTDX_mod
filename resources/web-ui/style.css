@@ -31,6 +31,7 @@ h2 { font-size: 1rem; color: #a9bfdd; margin-bottom: 16px; }
 .frequency-form { display: flex; align-items: center; gap: 10px; }
 .frequency-form label { color: #a9bfdd; white-space: nowrap; }
 .frequency-form input { flex: 1; min-width: 0; background: #0e1118; border: 1px solid #40536e; border-radius: 7px; color: #e7edf7; padding: 9px; font: inherit; font-variant-numeric: tabular-nums; }
+.frequency-form select { min-width: 9rem; background: #0e1118; border: 1px solid #40536e; border-radius: 7px; color: #e7edf7; padding: 9px; font: inherit; }
 .frequency-form button { background: #477fbf; color: white; border: 0; border-radius: 7px; padding: 9px 16px; white-space: nowrap; }
 .frequency-form button:disabled { background: #354256; color: #8d99aa; cursor: not-allowed; }
 .frequency-control-status, .frequency-result { margin: 12px 0 0; font-size: .88rem; }
@@ -87,4 +88,5 @@ dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
   .auth label, .auth span { grid-column: 1 / -1; }
   .frequency-form { display: grid; grid-template-columns: 1fr auto; }
   .frequency-form label { grid-column: 1 / -1; }
+  .frequency-form input, .frequency-form select, .frequency-form button { grid-column: 1 / -1; width: 100%; box-sizing: border-box; }
 }

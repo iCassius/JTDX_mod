@@ -17,6 +17,7 @@
   let frequencyAbort = null;
   let connectionSession = 0;
   let connected = false;
+  let frequencyCandidates = [];
 
   const el = (id) => document.getElementById(id);
   const text = (id, value) => {
@@ -91,6 +92,88 @@
     const fraction = (parts[1] || "").padEnd(6, "0");
     const hz = (whole + fraction).replace(/^0+/, "");
     return hz && hz.length <= 19 ? hz : null;
+  }
+
+  function frequencyHzToMhz(value) {
+    const hz = canonicalHz(value);
+    if (!hz) return null;
+    const padded = hz.padStart(7, "0");
+    return padded.slice(0, -6) + "." + padded.slice(-6);
+  }
+
+  function frequencyCandidateLess(lhs, rhs) {
+    return lhs.hz.length === rhs.hz.length ? lhs.hz < rhs.hz : lhs.hz.length < rhs.hz.length;
+  }
+
+  function addOption(select, value, label) {
+    const option = document.createElement("option");
+    option.value = value;
+    option.textContent = label;
+    select.appendChild(option);
+  }
+
+  function updateFrequencyChoices(snapshot) {
+    const bandSelect = el("frequency_band");
+    const presetSelect = el("frequency_preset");
+    const meta = el("frequency_candidates_meta");
+    if (!bandSelect || !presetSelect) return;
+
+    const previousBand = bandSelect.value;
+    const previousPreset = presetSelect.value;
+    const limit = snapshot ? Math.min(500, integerValue(snapshot.frequency_candidate_limit) || 500) : 0;
+    const seen = new Set();
+    frequencyCandidates = [];
+    const rows = snapshot && Array.isArray(snapshot.frequency_candidates)
+      ? snapshot.frequency_candidates : [];
+    rows.slice(0, limit).forEach((row) => {
+      if (!row || typeof row !== "object") return;
+      const hz = canonicalHz(row.frequency_hz);
+      if (!hz || seen.has(hz) || typeof row.band !== "string" || row.band.length === 0) return;
+      seen.add(hz);
+      frequencyCandidates.push({
+        hz,
+        band: row.band,
+        mode: typeof row.mode === "string" ? row.mode : "",
+        region: typeof row.region === "string" ? row.region : "",
+        defaultFrequency: row.default === true
+      });
+    });
+    frequencyCandidates.sort(frequencyCandidateLess);
+
+    const bands = [];
+    const seenBands = new Set();
+    frequencyCandidates.forEach((row) => {
+      if (!seenBands.has(row.band)) {
+        seenBands.add(row.band);
+        bands.push(row.band);
+      }
+    });
+    bandSelect.replaceChildren();
+    addOption(bandSelect, "", "全部频段");
+    bands.forEach((band) => addOption(bandSelect, band, band));
+    bandSelect.value = bands.includes(previousBand) ? previousBand : "";
+
+    const filtered = frequencyCandidates.filter((row) => !bandSelect.value || row.band === bandSelect.value);
+    presetSelect.replaceChildren();
+    addOption(presetSelect, "", "选择常用频率");
+    filtered.forEach((row) => {
+      const mhz = frequencyHzToMhz(row.hz);
+      if (mhz) addOption(presetSelect, row.hz, mhz + " MHz · " + row.band);
+    });
+    const validPreset = filtered.some((row) => row.hz === previousPreset);
+    presetSelect.value = validPreset ? previousPreset : "";
+
+    if (meta) {
+      if (!snapshot) meta.textContent = "等待当前模式与地区的候选";
+      else if (frequencyCandidates.length === 0) meta.textContent = "当前模式与地区暂无候选，仍可手动输入";
+      else {
+        const mode = typeof snapshot.frequency_candidate_mode === "string"
+          && snapshot.frequency_candidate_mode.length > 0 ? snapshot.frequency_candidate_mode : "未知模式";
+        const region = typeof snapshot.frequency_candidate_region === "string"
+          && snapshot.frequency_candidate_region.length > 0 ? snapshot.frequency_candidate_region : "未知地区";
+        meta.textContent = mode + " / " + region + " · " + frequencyCandidates.length + " 条候选";
+      }
+    }
   }
 
   function secureRequestId() {
@@ -200,6 +283,7 @@
 
   function clearRenderedSnapshot(message) {
     currentSnapshot = null;
+    frequencyCandidates = [];
     lastUpdate = 0;
     lastId = "";
     operationEpoch = null;
@@ -212,6 +296,7 @@
     const box = el("decodes");
     if (box) box.replaceChildren();
     renderOperations("unknown", message || "等待新令牌对应的状态快照");
+    updateFrequencyChoices(null);
     updateFrequencyForm();
   }
 
@@ -389,6 +474,7 @@
       });
       box.appendChild(row);
     });
+    updateFrequencyChoices(snapshot);
     updateOperations(snapshot);
     updateFrequencyForm();
   }
@@ -607,11 +693,27 @@
   });
 
   el("frequency_send").addEventListener("click", sendFrequency);
-  el("frequency_input").addEventListener("input", updateFrequencyForm);
+  el("frequency_band").addEventListener("change", () => {
+    el("frequency_preset").value = "";
+    updateFrequencyChoices(currentSnapshot);
+  });
+  el("frequency_preset").addEventListener("change", () => {
+    const selected = canonicalHz(el("frequency_preset").value);
+    if (selected) {
+      const value = frequencyHzToMhz(selected);
+      if (value) el("frequency_input").value = value;
+    }
+    updateFrequencyForm();
+  });
+  el("frequency_input").addEventListener("input", () => {
+    el("frequency_preset").value = "";
+    updateFrequencyForm();
+  });
 
   setInterval(() => {
     if (lastUpdate && Date.now() - lastUpdate > 15000) setConnected(false);
     updateFrequencyForm();
   }, 1000);
+  updateFrequencyChoices(null);
   updateFrequencyForm();
 }());

@@ -13,6 +13,8 @@ constexpr qint64 stale_after_ms = 5000;
 
 constexpr int JtdxWebState::default_decode_limit;
 constexpr int JtdxWebState::hard_decode_limit;
+constexpr int JtdxWebState::default_frequency_candidate_limit;
+constexpr int JtdxWebState::hard_frequency_candidate_limit;
 
 QString JtdxWebState::project_cq_state (bool cq_selected, bool enable_tx, bool transmitting)
 {
@@ -180,6 +182,60 @@ void JtdxWebState::observe_business_state (bool auto_sequence_enabled,
   current_tx_text_ = current_tx_text;
 }
 
+void JtdxWebState::set_frequency_candidates (QString const& mode, QString const& region,
+                                              FrequencyCandidates const& candidates)
+{
+  Q_ASSERT (QThread::currentThread () == thread ());
+  FrequencyCandidates normalized;
+  QSet<QString> seen_frequencies;
+  for (auto const& candidate : candidates)
+    {
+      if (candidate.frequency_hz == 0 || candidate.band.isEmpty ()) continue;
+      QString const key = QString::number (static_cast<qulonglong> (candidate.frequency_hz));
+      if (seen_frequencies.contains (key))
+        {
+          for (auto& existing : normalized)
+            if (QString::number (static_cast<qulonglong> (existing.frequency_hz)) == key)
+              {
+                existing.default_frequency = existing.default_frequency || candidate.default_frequency;
+                if (existing.band.isEmpty ()) existing.band = candidate.band;
+                if (existing.mode.isEmpty ()) existing.mode = candidate.mode;
+                if (existing.region.isEmpty ()) existing.region = candidate.region;
+                break;
+              }
+          continue;
+        }
+      seen_frequencies.insert (key);
+      normalized.append (candidate);
+      if (normalized.size () >= hard_frequency_candidate_limit) break;
+    }
+
+  bool changed = frequency_candidate_mode_ != mode
+    || frequency_candidate_region_ != region
+    || frequency_candidates_.size () != normalized.size ();
+  if (!changed)
+    {
+      for (int index = 0; index < normalized.size (); ++index)
+        {
+          auto const& lhs = frequency_candidates_.at (index);
+          auto const& rhs = normalized.at (index);
+          if (lhs.frequency_hz != rhs.frequency_hz || lhs.band != rhs.band
+              || lhs.mode != rhs.mode || lhs.region != rhs.region
+              || lhs.default_frequency != rhs.default_frequency)
+            {
+              changed = true;
+              break;
+            }
+        }
+    }
+  if (!changed) return;
+
+  frequency_candidate_mode_ = mode;
+  frequency_candidate_region_ = region;
+  frequency_candidates_ = std::move (normalized);
+  bump_revision ();
+}
+
 void JtdxWebState::clear_decodes ()
 {
   Q_ASSERT (QThread::currentThread () == thread ());
@@ -273,6 +329,9 @@ QJsonObject JtdxWebState::json_snapshot () const
                                                                has_rig_));
   object.insert (QStringLiteral ("mode"), nullable_string (mode_));
   object.insert (QStringLiteral ("band"), nullable_string (band_));
+  object.insert (QStringLiteral ("frequency_candidate_mode"), nullable_string (frequency_candidate_mode_));
+  object.insert (QStringLiteral ("frequency_candidate_region"), nullable_string (frequency_candidate_region_));
+  object.insert (QStringLiteral ("frequency_candidate_limit"), hard_frequency_candidate_limit);
   object.insert (QStringLiteral ("dx_call"), nullable_string (dx_call_));
   object.insert (QStringLiteral ("dx_grid"), nullable_string (dx_grid_));
   object.insert (QStringLiteral ("report"), nullable_string (report_));
@@ -301,6 +360,20 @@ QJsonObject JtdxWebState::json_snapshot () const
                                                                      : QJsonValue {QJsonValue::Null});
   object.insert (QStringLiteral ("current_tx_text"), has_business_state_
                 ? nullable_string (current_tx_text_) : QJsonValue {QJsonValue::Null});
+
+  QJsonArray frequency_candidates;
+  for (auto const& candidate : frequency_candidates_)
+    {
+      QJsonObject item;
+      item.insert (QStringLiteral ("frequency_hz"),
+                   QString::number (static_cast<qulonglong> (candidate.frequency_hz)));
+      item.insert (QStringLiteral ("band"), candidate.band);
+      item.insert (QStringLiteral ("mode"), candidate.mode);
+      item.insert (QStringLiteral ("region"), candidate.region);
+      item.insert (QStringLiteral ("default"), candidate.default_frequency);
+      frequency_candidates.append (item);
+    }
+  object.insert (QStringLiteral ("frequency_candidates"), frequency_candidates);
 
   QJsonArray decode_array;
   for (auto const& decode : decodes_)

@@ -263,6 +263,12 @@ int main (int argc, char ** argv)
                             QStringLiteral ("AA00"), QStringLiteral ("FN31"), false, {}, false, false);
       state.observe_rig (true, 14074000, 14074000, false);
       state.observe_business_state (false, QStringLiteral ("idle"), QStringLiteral ("idle"), {});
+      state.set_frequency_candidates (
+          QStringLiteral ("FT8"), QStringLiteral ("All"),
+          {{7074000u, QStringLiteral ("40m"), QStringLiteral ("FT8"), QStringLiteral ("All"), true},
+           {14074000u, QStringLiteral ("20m"), QStringLiteral ("FT8"), QStringLiteral ("All"), true},
+           {14075000u, QStringLiteral ("20m"), QStringLiteral ("FT8"), QStringLiteral ("All"), false},
+           {14076000u, QStringLiteral ("20m"), QStringLiteral ("JT65"), QStringLiteral ("All"), false}});
 
       control.set_observation_provider ([&state] {
           QJsonObject const snapshot = state.json_snapshot ();

@@ -35,6 +35,8 @@ int main (int argc, char ** argv)
   check (json.value (QStringLiteral ("frequency")).isNull (), "empty CAT frequency is null");
   check (json.value (QStringLiteral ("recent_decodes")).isArray (), "decodes is an array");
   check (json.value (QStringLiteral ("auto_sequence_state")).isNull (), "empty AutoSeq state is null");
+  check (json.value (QStringLiteral ("frequency_candidates")).toArray ().isEmpty (),
+         "empty frequency candidate list");
   check (JtdxWebState::project_cq_state (false, true, true) == QStringLiteral ("not_selected"), "non-CQ TX is not CQ state");
   check (JtdxWebState::project_cq_state (true, false, false) == QStringLiteral ("idle"), "selected CQ idle state");
   check (JtdxWebState::project_cq_state (true, true, false) == QStringLiteral ("armed"), "selected CQ armed state");
@@ -56,6 +58,33 @@ int main (int argc, char ** argv)
   check (json.value (QStringLiteral ("qso_stage")).toString () == QStringLiteral ("calling"), "QSO stage");
   check (json.value (QStringLiteral ("cq_state")).toString () == QStringLiteral ("armed"), "CQ state");
   check (json.value (QStringLiteral ("current_tx_text")).toString () == QStringLiteral ("CQ N0CALL FN31"), "current TX text");
+  JtdxWebState::FrequencyCandidates candidates {
+    {14074000u, QStringLiteral ("20m"), QStringLiteral ("FT8"), QStringLiteral ("All"), false},
+    {14074000u, QStringLiteral ("20m"), QStringLiteral ("FT8"), QStringLiteral ("All"), true},
+    {7074000u, QStringLiteral ("40m"), QStringLiteral ("FT8"), QStringLiteral ("Region 1"), true},
+    {0u, QStringLiteral ("invalid"), QStringLiteral ("FT8"), QStringLiteral ("All"), true}
+  };
+  state.set_frequency_candidates (QStringLiteral ("FT8"), QStringLiteral ("Region 1"), candidates);
+  json = state.json_snapshot ();
+  auto const candidate_array = json.value (QStringLiteral ("frequency_candidates")).toArray ();
+  check (candidate_array.size () == 2, "frequency candidates reject zero and duplicate Hz rows");
+  check (json.value (QStringLiteral ("frequency_candidate_mode")).toString () == QStringLiteral ("FT8"),
+         "frequency candidate mode context");
+  check (json.value (QStringLiteral ("frequency_candidate_region")).toString () == QStringLiteral ("Region 1"),
+         "frequency candidate region context");
+  check (candidate_array.first ().toObject ().value (QStringLiteral ("frequency_hz")).toString ()
+             == QStringLiteral ("14074000"), "frequency candidate Hz is an exact string");
+  check (candidate_array.first ().toObject ().value (QStringLiteral ("default")).toBool (),
+         "duplicate candidate metadata is retained");
+  auto const candidate_revision = state.revision ();
+  state.set_frequency_candidates (QStringLiteral ("FT8"), QStringLiteral ("Region 1"), candidates);
+  check (state.revision () == candidate_revision, "unchanged frequency candidates do not churn revision");
+  state.set_frequency_candidates (QStringLiteral ("JT9"), QStringLiteral ("Region 2"), {});
+  json = state.json_snapshot ();
+  check (json.value (QStringLiteral ("frequency_candidates")).toArray ().isEmpty (),
+         "mode or region changes can publish an empty candidate list");
+  check (json.value (QStringLiteral ("frequency_candidate_mode")).toString () == QStringLiteral ("JT9"),
+         "empty candidate list keeps the new mode context");
   auto revision_after_status = state.revision ();
   state.advance_clock_for_test (5001);
   check (state.json_snapshot ().value (QStringLiteral ("freshness")).toString () == QStringLiteral ("stale"), "stale status");

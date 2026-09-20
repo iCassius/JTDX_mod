@@ -4,6 +4,10 @@
 
 ## 最新恢复结果（2026-09-20）
 
+### P4 频段筛选与常用频率候选小片
+
+本片在 `main/e03e292` 上完成：候选来自 `Configuration::frequencies()` 的 `FrequencyList_v2` 与 `Bands`，按当前 mode/region 过滤、去重、排序并有界发布；前端频段筛选和常用频率选择只填入目标输入，不自动发送，手动输入保留。隔离浏览器夹具已验证 40m/20m 候选、选择后操作结果保持 `0` 条，以及 `390x844` 窄屏布局。受影响目标构建和新增定向测试通过；全量 CTest 最终为 `17/20`，3 项既有 GUI/SSE 环境或时序失败已写入进度日志，不能宣称全量全绿。生产 gate 仍为 `false`，未启动真实 JTDX、未连接 CAT/PTT/TX、未做 HIL/部署。详见 [`docs/web-ui/PROGRESS_zh-CN.md`](docs/web-ui/PROGRESS_zh-CN.md) 与 [`docs/web-ui/P4-FREQUENCY-FORM_验收_zh-CN.md`](docs/web-ui/P4-FREQUENCY-FORM_验收_zh-CN.md)。
+
 ### P4 频率表单浏览器故障注入与 HTTP 矛盾状态修复
 
 基线为 `main/fb16e8b`，生产 `MainWindow` frequency gate 仍为 `false`。本轮使用真实 IAB 与隔离 `--serve-browser-frequency` 做人工故障注入；频率 POST 均被拦截，未发送给 fixture。超出 5 秒的传输请求显示结果未知并锁定发送；同 token 重新连接仍保持锁定；HTTP 200 的 `completed` 且 `confirmed=false`、`confirmed=true` 但回读频率错误、错误 `request_id`、非法 JSON 均保持未知锁。各场景顶部实际频率为 `14.074`，`operations` 为零。清除拦截后关闭页面，fixture 已停止。

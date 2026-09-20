@@ -202,6 +202,7 @@ set (wsjt_qt_CXXSRCS
   NetworkMessage.cpp
   MessageClient.cpp
   JtdxWebFrequency.cpp
+  JtdxWebFrequencyCandidates.cpp
   JtdxWebControl.cpp
   JtdxWebState.cpp
   JtdxWebServer.cpp
@@ -1641,6 +1642,12 @@ if (JTDX_BUILD_LOCAL_TESTS)
   target_include_directories (jtdx_web_frequency_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   target_link_libraries (jtdx_web_frequency_test Qt5::Core)
   add_test (NAME jtdx_web_frequency_test COMMAND jtdx_web_frequency_test)
+  add_executable (jtdx_web_frequency_candidates_test
+    tests/jtdx_web_frequency_candidates_test.cpp
+    JtdxWebFrequencyCandidates.cpp)
+  target_include_directories (jtdx_web_frequency_candidates_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_link_libraries (jtdx_web_frequency_candidates_test wsjt_qt Qt5::Core Qt5::Network)
+  add_test (NAME jtdx_web_frequency_candidates_test COMMAND jtdx_web_frequency_candidates_test)
   add_executable (configuration_web_ui_test
     tests/configuration_web_ui_test.cpp
     Configuration.cpp
