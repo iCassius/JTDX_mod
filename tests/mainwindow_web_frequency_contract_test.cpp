@@ -38,6 +38,21 @@ int main ()
   QFile main_window {QStringLiteral (JTDX_SOURCE_DIR "/mainwindow.cpp")};
   check (main_window.open (QIODevice::ReadOnly), "open MainWindow source");
   QByteArray const source = main_window.readAll ();
+  QFile web_app {QStringLiteral (JTDX_SOURCE_DIR "/resources/web-ui/app.js")};
+  check (web_app.open (QIODevice::ReadOnly), "open Web UI source");
+  QByteArray const web_app_source = web_app.readAll ();
+  QFile web_index {QStringLiteral (JTDX_SOURCE_DIR "/resources/web-ui/index.html")};
+  check (web_index.open (QIODevice::ReadOnly), "open Web UI document");
+  QByteArray const web_index_source = web_index.readAll ();
+  check (web_index_source.contains ("role=\"dialog\"")
+             && web_index_source.contains ("aria-modal=\"true\"")
+             && web_app_source.contains ("function requestConfirmation")
+             && web_app_source.contains ("finishConfirmation(false)")
+             && web_app_source.contains ("await requestConfirmation")
+             && web_app_source.contains ("if (value === \"start-cq\") return \"启动 CQ\";")
+             && web_app_source.contains ("if (value === \"stop-auto-call\") return \"停止 CQ/AutoSeq\";")
+             && !web_app_source.contains ("globalThis.confirm"),
+         "business controls use an explicit keyboard-accessible in-page confirmation instead of a native dialog");
   check (source.contains ("configuration.enable_frequency_control = m_config.web_ui_frequency_control_enabled ()"),
          "MainWindow forwards the explicit frequency-control setting");
   check (source.contains ("configuration.enable_dx_control = m_config.web_ui_dx_control_enabled ()"),

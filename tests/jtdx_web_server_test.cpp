@@ -291,7 +291,9 @@ int main (int argc, char ** argv)
   config.enable_automation_control = true;
   bool const browser_automation_fixture = app.arguments ().contains (
       QStringLiteral ("--serve-browser-automation"));
-  if (browser_automation_fixture)
+  bool const browser_automation_p6_fixture = app.arguments ().contains (
+      QStringLiteral ("--serve-browser-automation-p6"));
+  if (browser_automation_fixture || browser_automation_p6_fixture)
     {
       // Loopback-only browser fixture.  It drives the production HTTP,
       // Control and State objects with an in-memory business adapter; no
@@ -333,14 +335,30 @@ int main (int argc, char ** argv)
           if (!control.prepare_dispatch (dispatch.request_id, dispatch.server_epoch, &prepared)
               || !control.begin_dispatch (prepared)) return;
           QTimer::singleShot (250, &state, [&state, &control, prepared] {
+              if (control.result (prepared.request_id).status != JtdxWebControl::Status::Pending)
+                return;
               if (prepared.operation == JtdxWebControl::Operation::StartCq)
-                state.observe_business_state (false, QStringLiteral ("calling"), QStringLiteral ("armed"),
-                                              QStringLiteral ("CQ N0CALL FN31"));
+                {
+                  state.observe_status (14074000, QStringLiteral ("FT8"), {}, QStringLiteral ("-10"),
+                                        QStringLiteral ("FT8"), true, true, false, -100, 150,
+                                        QStringLiteral ("N0CALL"), QStringLiteral ("AA00"), {}, false,
+                                        {}, false, false);
+                  state.observe_rig (true, 14074000, 14074000, true);
+                  state.observe_business_state (false, QStringLiteral ("calling"), QStringLiteral ("armed"),
+                                                QStringLiteral ("CQ N0CALL FN31"));
+                }
               else if (prepared.operation == JtdxWebControl::Operation::StartAutoCall)
                 state.observe_business_state (true, QStringLiteral ("calling"), QStringLiteral ("armed"),
                                               QStringLiteral ("CQ N0CALL FN31"));
               else
-                state.observe_business_state (false, QStringLiteral ("idle"), QStringLiteral ("idle"), {});
+                {
+                  state.observe_status (14074000, QStringLiteral ("FT8"), {}, QStringLiteral ("-10"),
+                                        QStringLiteral ("FT8"), false, false, true, -100, 150,
+                                        QStringLiteral ("N0CALL"), QStringLiteral ("AA00"), {}, false,
+                                        {}, false, false);
+                  state.observe_rig (true, 14074000, 14074000, false);
+                  state.observe_business_state (false, QStringLiteral ("idle"), QStringLiteral ("idle"), {});
+                }
               auto const snapshot = state.json_snapshot ();
               control.feedback_business (prepared.request_id, prepared.server_epoch,
                                          snapshot.value (QStringLiteral ("business_generation")).toVariant ().toULongLong (),
@@ -349,7 +367,8 @@ int main (int argc, char ** argv)
                                          state.revision ());
             });
         });
-      config.automatic_port = true;
+      config.automatic_port = !browser_automation_p6_fixture;
+      if (browser_automation_p6_fixture) config.port = 49153;
       if (!server.start (config)) return 2;
       control.bind_server_epoch (server.server_epoch ());
       QByteArray const fixture_url = server.url ().toUtf8 () + QByteArrayLiteral ("/#fixture");

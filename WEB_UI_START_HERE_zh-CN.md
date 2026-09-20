@@ -4,6 +4,16 @@
 
 ## 最新恢复结果（2026-09-21）
 
+### P6 页面确认与隔离浏览器业务回归（2026-09-21）
+
+本批将 CQ/AutoSeq/Stop 的浏览器二次确认从原生 `globalThis.confirm()` 改为页面内可访问对话框：`role=dialog`、`aria-modal=true`、标题/说明关联、默认焦点为“取消”、Escape 取消、Tab 在取消/确认之间循环。取消在生成 `request_id` 和发送 POST 之前结束，因此不产生操作记录；服务端仍强制要求 `confirm=true`，没有放宽控制门。操作卡补充 CQ、AutoSeq、Stop 的中文名称。
+
+loopback 浏览器人工证据：连接隔离夹具后，点击 CQ 出现页面确认框且焦点位于“取消”；取消后操作结果仍为空；再次确认后先显示“命令已登记，等待业务状态回读”，随后显示 `CQ/AutoSeq 操作已由业务状态回读确认`，操作卡为 1 条、原因 `cq_armed`。这证明的是隔离软件链路，不是 MainWindow、CAT、PTT 或真实发射。原先由原生确认框卡住的旧标签页无法由当前 Computer Use 安全层清理，后续服务测试的 `slow active count` 失败归类为残留浏览器 SSE 环境污染，不作为源码回归。
+
+自动化/构建证据：页面静态契约和资源重建见 `C:\JTDX64\deps-webui\p6-dialog-fixture-build-20260921.log`；`mainwindow_web_frequency_contract_test` 通过见 `C:\JTDX64\deps-webui\p6-dialog-test-fix-focused-20260921.log`。受残留浏览器页影响的回归日志 `C:\JTDX64\deps-webui\p6-dialog-fixture-focused-20260921.log` 保留用于环境说明；此前同一批 `jtdx_web_server_test` 在无该残留连接时通过，但本批不把它当作清理后的最终全量证据。新增 `--serve-browser-automation-p6` 仅用于后续无旧客户端的临时端口隔离夹具，不是生产端点。
+
+尚未在本批浏览器人工验证：AutoSeq 确认完成、Stop 活动 TX/PTT 的页面回读、重复点击、断线重连、epoch/身份不匹配和超时；这些由现有 Control/Server 自动合同及后续可控浏览器会话继续补验。AutoSeq 仍是 decode-driven，等待实时解码，不等于立即呼叫当前 DX。
+
 ### P4 DX 选择软件链路批次
 
 新增独立 `WebUiDxControlEnabled` 配置与 `POST /api/v1/control/select-dx` 路由。请求只携带当前 `decode_id`，服务端按有界新鲜实时解码重新校验 Call/Grid；MainWindow 只更新 DX 输入投影，不进入双击、QSO、标准消息、AutoSeq 或 TX/PTT 路径。`JtdxWebState` 发布独立 `dx_generation`、来源、解码 ID、DF 和时间，完成仅接受匹配回读。新鲜解码行提供“选择 DX”按钮，未知响应保持锁定。

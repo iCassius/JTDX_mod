@@ -74,6 +74,16 @@ dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
 .auth button { background: #477fbf; color: white; border: 0; border-radius: 7px; padding: 8px 16px; white-space: nowrap; }
 .auth span { color: #e89a9a; font-size: .85rem; }
 
+.confirm-dialog { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 18px; background: #070a10cc; }
+.confirm-dialog[hidden] { display: none; }
+.confirm-dialog-panel { width: min(520px, 100%); background: #171d29; border: 1px solid #4e6686; border-radius: 15px; padding: 22px; box-shadow: 0 18px 60px #000b; }
+.confirm-dialog-panel p { color: #c5d2e6; line-height: 1.55; }
+.confirm-dialog-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+.confirm-dialog-actions button { border: 0; border-radius: 7px; padding: 9px 16px; font: inherit; cursor: pointer; }
+.confirm-dialog-actions button:focus-visible { outline: 2px solid #9fc7ff; outline-offset: 2px; }
+.confirm-dialog-actions button:first-child { background: #354256; color: #e7edf7; }
+.confirm-dialog-actions button:last-child { background: #477fbf; color: white; }
+
 @media (max-width: 650px) {
   main { padding: 20px 12px; }
   .frequency { grid-column: span 1; }

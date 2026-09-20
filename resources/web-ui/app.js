@@ -21,6 +21,8 @@
   let businessRequest = null;
   let businessUnknown = false;
   let businessAbort = null;
+  let confirmationResolver = null;
+  let confirmationPreviousFocus = null;
   let connectionSession = 0;
   let connected = false;
   let frequencyCandidates = [];
@@ -219,6 +221,53 @@
     if (!node) return;
     node.textContent = message;
     node.className = "frequency-result " + (kind || "");
+  }
+
+  function finishConfirmation(accepted) {
+    const resolver = confirmationResolver;
+    if (!resolver) return;
+    confirmationResolver = null;
+    const previousFocus = confirmationPreviousFocus;
+    confirmationPreviousFocus = null;
+    const dialog = el("confirm_dialog");
+    if (dialog) dialog.hidden = true;
+    if (previousFocus && typeof previousFocus.focus === "function") previousFocus.focus();
+    resolver(accepted);
+  }
+
+  function requestConfirmation(title, message) {
+    if (confirmationResolver) return Promise.resolve(false);
+    const dialog = el("confirm_dialog");
+    const titleNode = el("confirm_title");
+    const messageNode = el("confirm_message");
+    const cancel = el("confirm_cancel");
+    if (!dialog || !titleNode || !messageNode || !cancel) return Promise.resolve(false);
+    titleNode.textContent = title;
+    messageNode.textContent = message;
+    confirmationPreviousFocus = document.activeElement;
+    dialog.hidden = false;
+    cancel.focus();
+    return new Promise((resolve) => { confirmationResolver = resolve; });
+  }
+
+  function handleConfirmationKeydown(event) {
+    if (!confirmationResolver) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      finishConfirmation(false);
+      return;
+    }
+    if (event.key !== "Tab") return;
+    const cancel = el("confirm_cancel");
+    const accept = el("confirm_accept");
+    if (!cancel || !accept) return;
+    if (event.shiftKey && document.activeElement === cancel) {
+      event.preventDefault();
+      accept.focus();
+    } else if (!event.shiftKey && document.activeElement === accept) {
+      event.preventDefault();
+      cancel.focus();
+    }
   }
 
   function operationForRequest(snapshot) {
@@ -482,6 +531,9 @@
   function operationLabel(value) {
     if (value === "frequency") return "频率";
     if (value === "select-dx") return "选择 DX";
+    if (value === "start-cq") return "启动 CQ";
+    if (value === "start-auto-call") return "启用 AutoSeq";
+    if (value === "stop-auto-call") return "停止 CQ/AutoSeq";
     return "未知";
   }
 
@@ -903,7 +955,7 @@
     const confirmation = operation === "start-auto-call"
       ? "确认启用 AutoSeq？它会等待现有实时解码驱动自动呼叫，不会凭空生成目标或立即证明已呼叫。"
       : "确认" + labels[operation] + "？页面只提交命令，完成必须等待主程序业务状态回读。";
-    if (!globalThis.confirm(confirmation)) return;
+    if (!await requestConfirmation(labels[operation], confirmation)) return;
     let requestId;
     try { requestId = secureRequestId(); } catch (_) {
       businessStatus("浏览器没有可用的安全随机源，无法发送命令。", "error");
@@ -1060,6 +1112,9 @@
   });
 
   el("frequency_send").addEventListener("click", sendFrequency);
+  el("confirm_cancel").addEventListener("click", () => finishConfirmation(false));
+  el("confirm_accept").addEventListener("click", () => finishConfirmation(true));
+  el("confirm_dialog").addEventListener("keydown", handleConfirmationKeydown);
   el("business_start_cq").addEventListener("click", () => sendBusiness("start-cq"));
   el("business_start_auto").addEventListener("click", () => sendBusiness("start-auto-call"));
   el("business_stop").addEventListener("click", () => sendBusiness("stop-auto-call"));

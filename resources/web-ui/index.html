@@ -27,6 +27,13 @@
     <p id="demo_notice" class="notice" hidden>本地演示夹具：数据为模拟状态，不代表真实电台。</p>
     <p class="notice">频率、DX 与 CQ/AutoSeq 控制必须在桌面设置中分别显式开放；所有完成状态都以主程序回读为准，不代表真实发射。</p>
   </main>
+  <div id="confirm_dialog" class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="confirm_title" aria-describedby="confirm_message" hidden tabindex="-1">
+    <div class="confirm-dialog-panel">
+      <h2 id="confirm_title">确认操作</h2>
+      <p id="confirm_message"></p>
+      <div class="confirm-dialog-actions"><button id="confirm_cancel" type="button">取消</button><button id="confirm_accept" type="button">确认</button></div>
+    </div>
+  </div>
   <script src="/app.js"></script>
 </body>
 </html>

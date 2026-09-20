@@ -1,5 +1,14 @@
 # JTDX 内置 Web UI：进度与中断恢复日志
 
+### 2026-09-21 P6 页面确认与浏览器业务回归收尾记录
+
+- 范围：基于 `main/c6f14fd`，只处理页面确认可控性、CQ/AutoSeq/Stop 的 loopback 浏览器链路和交付记录；不启动真实 `jtdx.exe`，不连接 CAT/电台，不执行 PTT/TX/HIL，不改 UDP、不新增生产 API/线程/进程。
+- 实现：用页面内 `role=dialog` 替换原生 `globalThis.confirm()`；默认焦点在取消，Escape/取消都在生成 request ID 和 POST 前结束，Tab 只在取消/确认之间循环；服务端 `confirm=true` 要求保持不变。操作卡补齐 `start-cq`、`start-auto-call`、`stop-auto-call` 中文名称。
+- 夹具：CQ 回调模拟活动 TX/PTT；Stop 回调清除 TX/PTT 并回读 idle/disabled；若启动尚未完成即被 Stop 取代，旧回调不再写入业务状态。新增 `--serve-browser-automation-p6` 使用临时固定端口 `49153`，用于避免残留 `49152` 浏览器页，但本批未再进行 UI 操作。
+- 浏览器人工证据：页面确认框显示且默认焦点为取消；取消后无操作记录；确认后先 pending，再由匹配 business generation/readback 完成，`cq_armed` 且操作卡仅 1 条。原生确认框遗留页无法由 Computer Use 安全层清理，故后续 `slow active count=2` 失败保留为环境污染证据，不归因源码。
+- 自动证据：构建 `C:\JTDX64\deps-webui\p6-dialog-fixture-build-20260921.log`；页面/主窗口静态与 `mainwindow_web_frequency_contract_test` 通过日志 `C:\JTDX64\deps-webui\p6-dialog-test-fix-focused-20260921.log`；排除受污染 `jtdx_web_server_test` 后其余 CTest `21/21`、`100% tests passed`，日志 `C:\JTDX64\deps-webui\p6-dialog-final-no-server-ctest-20260921.log`。`p6-dialog-fixture-focused-20260921.log` 中 server 失败为残留浏览器 SSE 污染；此前同批无残留时 server 单项通过，但不能替代本批清理后的全量证据。
+- 未验：AutoSeq/Stop 的完整浏览器人工确认链、重复点击、断线重连、epoch/身份不匹配和 timeout 的浏览器场景；完整 MainWindow 窗口、真实 CAT/DX/CQ 回读、PTT/TX/HIL、部署仍未验。AutoSeq 仍为 decode-driven 等待实时解码，不表示立即呼叫当前 DX。
+
 ### 2026-09-21 P5 启停语义审查、修复与隔离回归
 
 - 基线：`main/bfa0c34`，工作树开始时干净；本批只处理 CQ/AutoSeq 请求到 MainWindow 业务入口的语义，不启动真实 `jtdx.exe`，不连接 CAT/PTT/TX，不改 UDP、不新增 Web 线程/进程。
