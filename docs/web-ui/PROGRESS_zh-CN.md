@@ -1,5 +1,14 @@
 # JTDX 内置 Web UI：进度与中断恢复日志
 
+### 2026-09-20 P4 操作结果卡片隔离浏览器验收收尾
+
+- 上一轮在五小时额度剩余 `29%` 时触发收尾阈值并暂停新实现，但收尾额度耗尽，验收结果未写入；本轮恢复额度为五小时 `100%`、周 `68%`。本轮不新增测试，仅补齐上一轮已完成的结果记录。
+- 隔离 `--serve-browser` 真实 TCP fixture 运行 5 分钟，使用只读数据，生产 `frequency gate=false`，模拟 4 条操作结果。浏览器已观察到 `pending`、`timeout`、`failed`、`completed` 中文状态正确；仅 confirmed completed 显示 `14.075000 MHz`，其他频率值未知，顶部实际频率仍未知；陈旧快照提示正确。
+- `1280x900` 宽屏与 `390x844` 窄屏视觉通过；窄屏 `clientWidth=scrollWidth=375`，无水平溢出。停止自建 fixture 后显示“连接断开，保留旧操作快照”，四条结果仍保留。
+- 权威构建日志：`C:\JTDX64\deps-webui\p4-operations-ui-final-build.log`，构建退出码 `0`；权威全量 CTest 日志：`C:\JTDX64\deps-webui\p4-operations-ui-final-ctest.log`，`19/19` 通过，总耗时 `57.20 sec`。
+- 未启动真实 `jtdx.exe`，未连接 CAT，未执行 PTT/TX/HIL。本次浏览器验收不覆盖 20 条显示上限、`server_epoch` 切换、异常字段浏览器场景或自动化 DOM 断言；这些仍是静态实现待专项。
+- 结果提交前保持生产 gate 为 `false`；本轮仅更新验收文档、入口和进度日志并精确提交，不 push、amend 或 reset。
+
 ### 2026-09-20 P4 频率 POST 拒绝响应 request_id 修复批次开始检查点
 
 - 开始额度：五小时剩余 `44%`、周剩余 `91%`；重启后的工作权限已恢复。本批五小时剩余低于 `30%` 时停止实现，仅做有界验证、文档、精确提交和交接。

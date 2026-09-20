@@ -4,6 +4,12 @@
 
 ## 最新恢复结果（2026-09-20）
 
+### P4 操作结果卡片隔离浏览器验收收尾
+
+上一轮在五小时额度剩余 `29%` 时按规则停止新实现，但收尾额度耗尽，未写入结果。本轮恢复时额度为五小时 `100%`、周 `68%`；本轮不新增测试，仅补齐上一轮已完成的验收记录。隔离 `--serve-browser` 真实 TCP fixture 运行 5 分钟，使用只读数据、生产 `frequency gate=false`，模拟 4 条操作结果：`pending`、`timeout`、`failed`、`completed` 中文状态正确；仅 confirmed completed 显示 `14.075000 MHz`，其他值未知且顶部实际频率仍未知；陈旧快照提示正确。`1280x900` 与 `390x844` 视觉通过，窄屏 `clientWidth=scrollWidth=375` 无水平溢出；停止自建 fixture 后显示“连接断开，保留旧操作快照”，四条结果保留。权威构建日志 `C:\JTDX64\deps-webui\p4-operations-ui-final-build.log` 退出码为 `0`，全量 CTest 日志 `C:\JTDX64\deps-webui\p4-operations-ui-final-ctest.log` 为 `19/19`、`57.20 sec`。本轮未启动真实 JTDX、未连接 CAT、未执行 PTT/TX/HIL。
+
+本次浏览器记录不覆盖 20 条上限、`server_epoch` 切换、异常字段浏览器场景或自动化 DOM 断言；这些仍是静态实现待专项。详见 [`docs/web-ui/P4-OPERATIONS-UI_验收_zh-CN.md`](docs/web-ui/P4-OPERATIONS-UI_验收_zh-CN.md)。
+
 额度中止后续的 `request_id` 拒绝响应小片已完成有界回归：业务拒绝在可取得可信 ID 时保留规范化 `request_id`，无可信 ID 时生成新的规范化 UUID；生产频率 gate 仍为 `false`。受影响目标构建退出码为 `0`，定向 Web 回归 `3/3`、全量 CTest `19/19` 通过。独立证据分别见 `C:\JTDX64\deps-webui\p4-request-id-final-build-20260920-retry.log`、`C:\JTDX64\deps-webui\p4-request-id-focused-ctest-20260920-retry.log` 和 `C:\JTDX64\deps-webui\p4-request-id-final-ctest-20260920-retry.log`。此前失败日志 `p4-request-id-final-ctest-20260920.log` 的 6 项连锁失败来自 completion 夹具真实时钟脆弱性，不能作为最终结论。本次未启动 JTDX，未连接 CAT/PTT/TX，未做 HIL、浏览器或部署验证；详见 [`docs/web-ui/PROGRESS_zh-CN.md`](docs/web-ui/PROGRESS_zh-CN.md) 与 [`docs/web-ui/P4-FREQUENCY-HTTP_契约_zh-CN.md`](docs/web-ui/P4-FREQUENCY-HTTP_契约_zh-CN.md)。
 
 ## 当前状态
@@ -39,7 +45,7 @@
 
 P1 至 P6 每次只推进一个阶段；用户检查额度后再继续。HIL 不属于普通阶段的默认验收。
 
-下一步由根代理审查业务错误 JSON 合同、前端 operations/frequency 隔离浏览器验收和本批隔离证据，再决定是否进入频率 CAT 生产适配；当前没有用户可用的生产频率控制、频率 CAT 生产回读或 HIL 证据。
+下一步由根代理继续审查业务错误 JSON 合同、frequency 隔离浏览器验收和本批隔离证据，再决定是否进入频率 CAT 生产适配；operations 卡片的本轮隔离浏览器验收已完成。当前没有用户可用的生产频率控制、频率 CAT 生产回读或 HIL 证据。
 
 本批最终证据：构建日志为 `C:\JTDX64\deps-webui\p4-frequency-http-final-build-2ca51ec.log`，其中确认重新编译 `jtdx_web_service_test` 的 `JtdxWebService.cpp`/`JtdxWebServer.cpp`；全量 CTest 日志为 `C:\JTDX64\deps-webui\p4-frequency-http-final-ctest-2ca51ec.log`，`19/19` 通过。此前 `LastTestsFailed` 或旧 service 二进制状态不作为本批结论。
 

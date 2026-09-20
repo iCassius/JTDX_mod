@@ -261,14 +261,61 @@ int main (int argc, char ** argv)
         state.observe_decode (true, QTime {12, 34, i}, -10 + i, 0.1F, static_cast<quint32> (100 + i),
                               QStringLiteral ("FT8"), QStringLiteral ("K1ABC FN31 <script>"), false, false,
                               QStringLiteral ("K1ABC"), QStringLiteral ("FN31"));
+      observed.state_revision = state.revision ();
+      control.set_observed_state (observed);
+      control.set_frequency_dispatcher ([&] (JtdxWebControl::Dispatch const& dispatch) {
+          if (dispatch.request_id == QStringLiteral ("fixture-completed"))
+            {
+              JtdxWebControl::Dispatch prepared;
+              if (control.prepare_dispatch (dispatch.request_id, dispatch.server_epoch, &prepared)
+                  && control.begin_dispatch (prepared))
+                control.feedback_frequency (prepared.request_id, prepared.server_epoch,
+                                           prepared.expected_generation + 1, prepared.frequency_hz,
+                                           observed.state_revision + 1);
+            }
+          else if (dispatch.request_id == QStringLiteral ("fixture-failed"))
+            {
+              control.fail (dispatch.request_id, dispatch.server_epoch, QStringLiteral ("fixture_failed"));
+            }
+          // fixture-timeout intentionally remains queued without begin_dispatch so it
+          // expires without setting the unconfirmed feedback latch. fixture-pending is
+          // submitted last and remains pending for the browser operations view.
+        });
       config.automatic_port = true;
+      config.enable_frequency_control = false;
       if (!server.start (config)) return 2;
+      control.bind_server_epoch (server.server_epoch ());
+      auto fixture_request = [&] (QString request_id, qint64 frequency_hz) {
+        JtdxWebControl::Request request;
+        request.request_id = std::move (request_id);
+        request.server_epoch = server.server_epoch ();
+        request.state_revision = observed.state_revision;
+        request.frequency_hz = frequency_hz;
+        request.operation = JtdxWebControl::Operation::Frequency;
+        return control.submit (std::move (request));
+      };
+      check (fixture_request (QStringLiteral ("fixture-completed"), 14075000).status
+                 == JtdxWebControl::Status::Completed,
+             "browser fixture includes a completed operation");
+      check (fixture_request (QStringLiteral ("fixture-failed"), 14076000).status
+                 == JtdxWebControl::Status::Failed,
+             "browser fixture includes a failed operation");
+      check (fixture_request (QStringLiteral ("fixture-timeout"), 14077000).status
+                 == JtdxWebControl::Status::Pending,
+             "browser fixture admits a timeout operation before expiry");
+      control.advance_clock_for_test (1001);
+      check (control.expire () && control.result (QStringLiteral ("fixture-timeout")).status
+                 == JtdxWebControl::Status::Timeout,
+             "browser fixture expires a queued operation without dispatch");
+      check (fixture_request (QStringLiteral ("fixture-pending"), 14078000).status
+                 == JtdxWebControl::Status::Pending,
+             "browser fixture leaves a pending operation for the UI");
       QByteArray fixture_url = server.url ().toUtf8 () + QByteArrayLiteral ("/#fixture");
       std::fprintf (stdout, "WEB_UI_FIXTURE_URL=%s\nWEB_UI_FIXTURE_TOKEN=%s\n",
                     fixture_url.constData (), token.constData ());
       std::fflush (stdout);
       QTimer::singleShot (7000, &state, [&state] { state.advance_clock_for_test (7000); });
-      QTimer::singleShot (120000, &app, &QCoreApplication::quit);
+      QTimer::singleShot (300000, &app, &QCoreApplication::quit);
       return app.exec ();
     }
   check (!server.is_listening (), "server must be lazy and stopped by default");
