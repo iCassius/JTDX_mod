@@ -107,12 +107,14 @@ void LogQSO::initLogQSO(QString const& hisCall, QString const& hisGrid, QString 
   m_debug=m_config->write_decoded_debug();
   ui->band->setText(m_config->bands ()->find (dialFreq));
 
-  if(!autologging && !m_suppress_show) {
-	 show ();
-  }
-  else {
-	 accept();
-  }
+  if (autologging)
+    {
+      accept ();
+    }
+  else if (!m_suppress_show)
+    {
+      show ();
+    }
 }
 
 void LogQSO::initWebLogQSO (QString const& hisCall, QString const& hisGrid, QString mode,
