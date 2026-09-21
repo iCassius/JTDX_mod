@@ -397,8 +397,12 @@
         businessStatus("服务报告完成，但业务回读不匹配，结果未知。", "warning");
       } else {
         businessRequest = null;
-        businessUnknown = false;
-        businessStatus("CQ/AutoSeq 请求未完成：" + boundedString(row.reason || "服务未提供原因", 180), "error");
+        businessUnknown = row.status === "timeout";
+        businessStatus(businessUnknown
+          ? "CQ/AutoSeq 请求结果未知，服务端保留未确认锁："
+            + boundedString(row.reason || "feedback_timeout", 180)
+          : "CQ/AutoSeq 请求未完成：" + boundedString(row.reason || "服务未提供原因", 180),
+          businessUnknown ? "warning" : "error");
       }
     }
     updateBusinessControls();
@@ -977,10 +981,19 @@
         businessStatus(request.operation === "start-auto-call"
           ? "AutoSeq 已启用，等待实时解码驱动自动呼叫；未表示已开始具体呼叫。"
           : "操作已由业务状态回读确认。", "success");
-      } else if (payload.status === "failed" || payload.status === "rejected" || payload.status === "timeout") {
+      } else if (payload.status === "timeout") {
         businessRequest = null;
-        businessUnknown = false;
-        businessStatus("命令未完成：" + responseReason(payload, "服务未提供原因"), "error");
+        businessUnknown = true;
+        businessStatus("CQ/AutoSeq 请求结果未知，服务端保留未确认锁："
+          + responseReason(payload, "feedback_timeout"), "warning");
+      } else if (payload.status === "failed" || payload.status === "rejected") {
+        const reason = responseReason(payload, "服务未提供原因");
+        businessRequest = null;
+        businessUnknown = reason === "unconfirmed_feedback";
+        businessStatus(businessUnknown
+          ? "服务端保留未确认锁：" + reason
+          : "命令未完成：" + reason,
+          businessUnknown ? "warning" : "error");
       } else {
         businessUnknown = true;
         businessStatus("完成响应缺少匹配业务回读，结果未知。", "warning");

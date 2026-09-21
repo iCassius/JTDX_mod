@@ -1,6 +1,6 @@
 # JTDX 内置 Web UI：阶段入口与恢复说明
 
-本目录记录 JTDX 内置轻量 Web UI 的需求、边界、设计和阶段证据。P3 生产 service/QAction、P4 普通控制、P5 CQ/AutoSeq 软件控制链路、P7 页面收口、P8 视口/断线验收和 P9 DX/异常浏览器闭环已完成本批隔离验证；仍不代表已经启动 JTDX、连接 JTDX 电台或完成 HIL/部署验证。频率、DX、CQ/AutoSeq 控制均可由用户在设置中分别显式开启，默认仍关闭；完成仍须实际业务/CAT 状态回读，不能把隔离夹具的 `accepted/pending` 当作硬件完成。较早 CAT `.10` 交付提交 `a89c9da` 仅作外部历史参考。
+本目录记录 JTDX 内置轻量 Web UI 的需求、边界、设计和阶段证据。P3 生产 service/QAction、P4 普通控制、P5 CQ/AutoSeq 软件控制链路、P7 页面收口、P8 视口/断线验收、P9 DX/异常闭环和 P10 软件交付收尾已完成本批隔离验证；仍不代表已经完成完整 MainWindow、真实 CAT/DX/CQ 设备回读或 HIL/部署验证。频率、DX、CQ/AutoSeq 控制均可由用户在设置中分别显式开启，默认仍关闭；完成仍须实际业务/CAT 状态回读，不能把隔离夹具的 `accepted/pending` 当作硬件完成。较早 CAT `.10` 交付提交 `a89c9da` 仅作外部历史参考。
 
 ## 最新恢复结果（2026-09-21）
 
@@ -25,6 +25,12 @@ Web UI 已移除 token 访问保护及前端令牌输入；旧 `WebUiTokenSha256
 AutoSeq 在页面确认后保持 pending，Stop 在其回读前确认并只产生 2 个业务 POST；Stop 以 `already_selected` 完成，旧 AutoSeq 以 `superseded_by_stop` 拒绝，旧回调未复活状态。取消 CQ 和重复点击确认流程均为 0 个 POST、无新增操作记录。pending 请求断开并重启 fixture 后显示旧请求已失效，不误报完成；timeout fixture 以 1 个 POST 经 pending 后显示 `feedback_timeout`，按钮恢复可用。
 
 P9 构建日志为 `C:\JTDX64\deps-webui\p9-fixture-build-20260921-r9.log`，服务定向 CTest 为 `1/1`、34.34 秒，日志为 `C:\JTDX64\deps-webui\p9-server-focused-20260921.log`；全量 CTest 为 `22/22`、57.51 秒，日志为 `C:\JTDX64\deps-webui\p9-final-ctest-20260921.log`。仍未启动真实 `jtdx.exe`，未连接 CAT/PTT/TX，未做 HIL、生产部署或完整 MainWindow 验收。
+
+### P10 软件交付收尾与 MainWindow 隔离审查（2026-09-21）
+
+P10 用临时本机 TCP 代理做浏览器测试流量故障注入，不改 fixture 内存、不绕过页面确认；错误 `request_id`、错误 `server_epoch` 回包均使页面保持“结果未知/处理中”，不误报完成。真实确认后的同一 `start-auto-call` POST 被代理转发两次，服务端和页面仍只保留一条 `处理中/awaiting_feedback` 记录；`C:\JTDX64\deps-webui\p10-proxy-duplicate.stdout.log` 记录 `DUPLICATE_FORWARD`/`DUPLICATE_COMPLETE`。超时后前端保持未知锁，Stop 被服务端以 `unconfirmed_feedback` 拒绝时仍不重新开放启动按钮；最终定向 `3/3`、全量 `22/22`。临时代理脚本、fixture、代理和浏览器页均已清理。
+
+已审查并安全启动自有 `C:\JTDX64\build-webui-dev-msys2\jtdx.exe --test-mode --rig-name p10-mainwindow`，确认使用独立测试实例锁、默认 `Rig=None`/UDP 控制关闭/Web 关闭边界，观察到的 `jtdxjt9` 是既有解码子进程；自有进程随后已停止，未终止用户实例，未连接 CAT/PTT/TX。当前工具没有原生 MainWindow 可操作面，因此设置 Tab、保存重载、菜单重复、端口冲突/重启/退出释放和完整窗口视觉仍不宣称已验收。详见 [`docs/web-ui/P10-软件交付报告_zh-CN.md`](docs/web-ui/P10-软件交付报告_zh-CN.md)。
 
 ### P6 页面确认与隔离浏览器业务回归（2026-09-21）
 
@@ -90,7 +96,7 @@ loopback 浏览器人工证据：连接隔离夹具后，点击 CQ 出现页面�
 
 ## 当前状态
 
-- 阶段：`P9 DX、在途停止与异常状态浏览器闭环`，P0/P1/P2/P3 已完成，P4 frequency/DX、P5 业务命令、P7 页面收口、P8 视口/断线和 P9 DX/异常闭环的隔离验证已完成；完整 MainWindow、真实 CAT/DX/CQ 设备回读、HIL/部署未验证。
+- 阶段：`P10 软件交付收尾与 MainWindow 隔离审查`，P0/P1/P2/P3 已完成，P4 frequency/DX、P5 业务命令、P7 页面收口、P8 视口/断线、P9 DX/异常和 P10 软件收尾的隔离验证已完成；原生 MainWindow 人工操作、真实 CAT/DX/CQ 设备回读、HIL/部署未验证。
 - 基线：本批从分支 `main`、HEAD `bd1a91c` 开始；结果提交号以本批本地提交为准。P4 HTTP 契约见 [`docs/web-ui/P4-FREQUENCY-HTTP_契约_zh-CN.md`](docs/web-ui/P4-FREQUENCY-HTTP_契约_zh-CN.md)，当前结果与恢复点见进度日志。
 - 代码根目录：`C:\JTDX64\jtdx_sourcecode`。用户需求中的 `jtdx\_sourcecode` 按当前实际仓库路径解释。
 - P3 历史范围：增加 Web UI 配置 Tab、MainWindow 唯一服务生命周期、菜单入口和 Qt Resource 原生深色响应式只读页；历史版本曾有摘要令牌，本批已移除其运行时和设置入口。服务仍为单进程主 Qt 事件循环，不新增 UDP/线程/进程或控制 API。
@@ -116,12 +122,13 @@ loopback 浏览器人工证据：连接隔离夹具后，点击 CQ 出现页面�
 | P3 | 设置/菜单/前端骨架 | Web UI 设置 Tab、端口/绑定策略、菜单入口、内置资源、响应式只读页面 | 代码/资源/CTest/浏览器夹具复验已完成；完整 MainWindow 窗口人工验收留到 P6 |
 | P4 | 普通控制 | `JtdxWebControl`、频率切换、过期解码 ID、DX 选择、状态回读 | 频率与 DX 软件安全门、独立显式配置、独立 generation/source 回读、跨客户端未确认锁和 MainWindow 隔离契约已通过；完整窗口/CAT 回读待后续批次 |
 | P5 | 高风险控制 | CQ/AutoSeq 启动、停止流程、二次确认、幂等/超时/冲突和状态回读 | 软件命令与业务 generation 回读已通过隔离测试；真实设备和浏览器人工验收待后续 |
-| P6 | 整体验证 | 自动化合同、浏览器手测、异常隔离、回归和交付报告 | 已由 P7-P9 分批完成有界隔离验收；完整 MainWindow 仍待后续 |
+| P6 | 整体验证 | 自动化合同、浏览器手测、异常隔离、回归和交付报告 | 已由 P7-P10 分批完成有界软件/浏览器验收；完整 MainWindow 仍待后续 |
 | P8 | 浏览器视口与生命周期 | 实际宽/窄视口、确认、断线重连、横向溢出 | 已完成有界浏览器验收；未覆盖真实 MainWindow/CAT |
 | P9 | DX、在途停止与异常 | 新鲜/陈旧 DX、Stop 接管、取消/重复、timeout、epoch/身份边界 | 已完成隔离浏览器闭环；未覆盖真实设备/HIL |
+| P10 | 软件交付收尾 | 错误身份回包、确认后重复提交、MainWindow 无硬件审查、报告与使用说明 | 已完成软件收尾；原生窗口人工验收、真实设备/HIL/部署未完成 |
 | HIL | 独立授权 | 真实 CAT/PTT/发射、设备反馈、长时间运行和无线电行为 | 未授权/未开始 |
 
-P1 至 P9 每次只推进一个阶段；HIL 不属于普通阶段的默认验收。
+P1 至 P10 每次只推进一个阶段；HIL 不属于普通阶段的默认验收。
 
 下批最短路径：由根会话评估是否继续补齐完整 MainWindow 隔离验收、交付收口或另行授权 HIL；真实 CAT/PTT/TX/HIL 仍需单独授权。频率、DX、CQ/AutoSeq 的软件回读都不能替代设备证据。
 
@@ -156,3 +163,4 @@ C:\msys64\mingw64\bin\ctest.exe --test-dir C:\JTDX64\build-webui-dev --output-on
 - [设计、API 与安全契约](docs/web-ui/02_设计_API_安全_zh-CN.md)
 - [阶段验收矩阵](docs/web-ui/03_阶段验收矩阵_zh-CN.md)
 - [进度与中断恢复日志](docs/web-ui/PROGRESS_zh-CN.md)
+- [P10 软件交付报告与简短使用说明](docs/web-ui/P10-软件交付报告_zh-CN.md)

@@ -28,6 +28,15 @@
 - Timeout：timeout fixture 中 1 个 POST 先保持 pending，约 4.2 秒后显示 `超时/feedback_timeout`，按钮恢复可用，未显示业务完成。
 - 自动验证：`p9-fixture-build-20260921-r9.log` 构建通过；`p9-server-focused-20260921.log` 为 `1/1`、34.34 秒；`p9-final-ctest-20260921.log` 为全量 `22/22`、57.51 秒。未启动真实 JTDX，未连接 CAT/PTT/TX，未做 HIL、部署或完整 MainWindow 验收。
 
+### 2026-09-21 P10 软件交付收尾与 MainWindow 隔离审查
+
+- 范围：只对 `resources/web-ui/app.js` 增加超时/未确认锁的前端保护，不改生产 API、线程、UDP、令牌或控制语义；并核对 `main.cpp` 的 `--test-mode`/`--rig-name` 实例锁、`Configuration` 默认 `Rig=None`/`AcceptUDPRequests=false`/Web 关闭、MainWindow 的延迟 `rigOpen()`、既有音频线程和 `jtdxjt9` 子进程边界。
+- 浏览器身份专项：受支持浏览器工具没有直接 CDP 响应改写接口，因此使用临时本机 TCP 代理做测试流量故障注入。真实页面确认后，分别只改回包 `request_id`、只改回包 `server_epoch`；页面均保持“结果未知/处理中”保护，不绕过确认、不注入 fixture 内存。临时代理脚本已删除。
+- 浏览器幂等专项：页面真实确认 `启用 AutoSeq` 后，代理把同一个已确认 POST `/api/v1/control/start-auto-call` 实际转发两次；页面最终只保留 1 条 `处理中/awaiting_feedback` 操作记录，代理日志 `C:\JTDX64\deps-webui\p10-proxy-duplicate.stdout.log` 记录 `DUPLICATE_FORWARD` 与 `DUPLICATE_COMPLETE`。这与“重复点击后取消、0 POST”是不同证据。
+- MainWindow 安全启动：仅启动自有 `C:\JTDX64\build-webui-dev-msys2\jtdx.exe --test-mode --rig-name p10-mainwindow`，观察到自有 `jtdx.exe` 和既有 `jtdxjt9.exe`，随后均停止；未终止用户实例、未连接 CAT、未执行 PTT/TX。当前工具没有原生 MainWindow 可操作面，故不宣称设置 Tab、保存重载、菜单、端口冲突/重启/退出释放或完整窗口人工验收。
+- 超时锁收口：最终浏览器观察到 `超时/feedback_timeout` 后启动按钮禁用、Stop 可用；确认 Stop 被服务端以 `unconfirmed_feedback` 拒绝后，启动按钮仍禁用。最终构建 `p10-timeout-ui-build-20260921-r2.log`、定向 `p10-timeout-ui-focused-20260921-r2.log`（3/3）和全量 `p10-timeout-ui-final-ctest-20260921-r2.log`（22/22）。
+- 交付：新增 [`P10-软件交付报告_zh-CN.md`](P10-软件交付报告_zh-CN.md)，覆盖 14 项原交付要求、API/配置/调用路径、简短使用说明、浏览器证据、唯一权威构建/CTest 日志和未验证边界。P9 权威构建/测试日志不因本批纯文档与流量观察而重测。
+
 ### 2026-09-21 P6 页面确认与浏览器业务回归收尾记录
 
 - 范围：基于 `main/c6f14fd`，只处理页面确认可控性、CQ/AutoSeq/Stop 的 loopback 浏览器链路和交付记录；不启动真实 `jtdx.exe`，不连接 CAT/电台，不执行 PTT/TX/HIL，不改 UDP、不新增生产 API/线程/进程。
