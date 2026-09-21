@@ -115,6 +115,9 @@ int main (int argc, char ** argv)
 
   std::fprintf (stdout, "P19_LOGQSO_DATA_DIR=%s\n", data_dir.absolutePath ().toUtf8 ().constData ());
   std::fprintf (stdout, "P19_LOGQSO_ADIF_RECORDS=%d\n", first_adif.count ("<eor>"));
+  std::fprintf (stdout, "P19_LOGQSO_ADIF=%s\n", first_adif.constData ());
+  std::fprintf (stdout, "P19_LOGQSO_ADIF_PATH_IS_DIR=%d\n", QDir {adif_path}.exists () ? 1 : 0);
+  std::fprintf (stdout, "P19_LOGQSO_LOG_BYTES=%lld\n", static_cast<long long> (read_file (log_path).size ()));
   std::fprintf (stdout, "P19_LOGQSO_FAILURE_REASON=%s\n", reason.toUtf8 ().constData ());
   data_dir.removeRecursively ();
   return failures == 0 ? 0 : 1;
