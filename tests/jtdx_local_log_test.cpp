@@ -89,6 +89,22 @@ int main ()
   check (read (directory.absoluteFilePath (QStringLiteral ("existing.log"))).contains ("key=value"),
          "legacy key-value separators remain parseable");
 
+  QString const rotation_failure_path = directory.absoluteFilePath (QStringLiteral ("rotation-failure.log"));
+  QDir const rotation_blocker {rotation_failure_path + QStringLiteral (".1")};
+  check (rotation_blocker.mkpath (QStringLiteral (".")), "rotation failure blocker directory is created");
+  QFile rotation_failure {rotation_failure_path};
+  check (rotation_failure.open (QIODevice::WriteOnly), "rotation failure fixture opens");
+  check (rotation_failure.write (QByteArray (400, 'r')) == 400, "rotation failure fixture writes");
+  rotation_failure.close ();
+  JtdxLocalLog::Limits rotation_failure_limits;
+  rotation_failure_limits.max_bytes = 128;
+  check (JtdxLocalLog::append (directory, QStringLiteral ("rotation-failure.log"),
+                               QStringLiteral ("legacy"), QStringLiteral ("fallback=value"),
+                               rotation_failure_limits),
+         "rotation failure falls back to bounded active log");
+  check (QFileInfo {rotation_failure_path}.size () <= rotation_failure_limits.max_bytes,
+         "rotation failure keeps the active file bounded");
+
   for (int i = 0; i != 12; ++i)
     check (JtdxLocalLog::append (directory, QStringLiteral ("control.log"),
                                  QStringLiteral ("web-control"),
