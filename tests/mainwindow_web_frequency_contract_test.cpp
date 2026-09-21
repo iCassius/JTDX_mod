@@ -88,7 +88,8 @@ int main ()
              && source.contains ("bool MainWindow::cancelWebLogQsoDraft ()")
              && source.contains ("bool MainWindow::commitWebLogQsoDraft")
              && source.contains ("QStringLiteral (\"duplicate_qso\")")
-             && source.contains ("m_logDlg->accept ()"),
+             && source.contains ("m_logDlg->acceptWebQSO (&write_reason)")
+             && source.contains ("m_logDlg->done (QDialog::Accepted)"),
          "Web QSO uses an editable draft, explicit commit, and duplicate guard");
   check (source.contains ("configuration.enable_dx_control = m_config.web_ui_dx_control_enabled ()"),
          "MainWindow forwards the explicit DX-control setting");
