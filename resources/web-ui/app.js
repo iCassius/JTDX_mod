@@ -492,7 +492,7 @@
     if (snapshot.tx_enabled !== false || snapshot.transmitting !== false || snapshot.ptt !== false
         || snapshot.watchdog_timeout !== false) return "当前 TX/PTT 状态不是明确安全值";
     if (integerValue(snapshot.state_revision) == null) return "状态快照版本无效";
-    if (businessUnknown) return "上一次 CQ/AutoSeq 结果未知，等待回读或新状态";
+    if (businessUnknown) return "上一次 CQ/AutoSeq 结果未知；若服务端仍保留未确认锁，请重启 JTDX";
     if (businessRequest) return "已有 CQ/AutoSeq 请求处理中";
     return "";
   }
