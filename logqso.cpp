@@ -133,6 +133,17 @@ void LogQSO::initWebLogQSO (QString const& hisCall, QString const& hisGrid, QStr
 
 void LogQSO::accept()
 {
+  QString reason;
+  if (acceptWebQSO (&reason))
+    {
+      QDialog::accept ();
+      return;
+    }
+  JTDXMessageBox::information_message (0, "", reason);
+}
+
+bool LogQSO::acceptWebQSO (QString * reason)
+{
   QString hisCall,hisGrid,mode,rptSent,rptRcvd,time,band;
   QString comments,eqslcomments,name;
   hisCall=ui->call->text();
@@ -152,19 +163,20 @@ void LogQSO::accept()
   QString strDialFreq(QString::number(m_dialFreq / 1.e6,'f',6));
 
   //Log this QSO to ADIF file "wsjtx_log.adi"
-  QString filename = "wsjtx_log.adi";  // TODO allow user to set
   ADIF adifile;
   auto adifilePath = QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)}.absoluteFilePath ("wsjtx_log.adi");
   adifile.init(adifilePath);
   if (!adifile.addQSOToFile(hisCall,hisGrid,mode,rptSent,rptRcvd,m_dateTimeOn,m_dateTimeOff,band,comments,name,strDialFreq,m_myCall,m_myGrid,m_txPower,m_send_to_eqsl))
   {
-      JTDXMessageBox::information_message(0,"","Cannot open file \"" + adifilePath + "\".");
+      if (reason) *reason = "Cannot open file \"" + adifilePath + "\".";
+      return false;
    }
 
 //Log this QSO to file "wsjtx.log"
   static QFile f {QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)}.absoluteFilePath ("wsjtx.log")};
   if(!f.open(QIODevice::Text | QIODevice::Append)) {
-    JTDXMessageBox::information_message(0,"","Cannot open file \"" + f.fileName () + "\" for append:" + f.errorString ());
+    if (reason) *reason = "Cannot open file \"" + f.fileName () + "\" for append:" + f.errorString ();
+    return false;
   } else {
     QString logEntry=m_dateTimeOn.date().toString("yyyy-MM-dd,") +
       m_dateTimeOn.time().toString("hh:mm:ss,") + 
@@ -290,7 +302,7 @@ void LogQSO::accept()
     }
     if(fopen) f2.close();
   }
-  QDialog::accept();
+  return true;
 }
 
 // closeEvent is only called from the system menu close widget for a

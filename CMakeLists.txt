@@ -1705,6 +1705,33 @@ if (JTDX_BUILD_LOCAL_TESTS)
   set_tests_properties (configuration_web_ui_test PROPERTIES
     TIMEOUT 60
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+  add_executable (logqso_persistence_test
+    tests/logqso_persistence_test.cpp
+    logqso.cpp
+    Configuration.cpp
+    JTDXMessageBox.cpp
+    JTDXDateTime.cpp
+    getfile.cpp
+    logbook/adif.cpp
+    logbook/countrydat.cpp)
+  target_include_directories (logqso_persistence_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR})
+  set_target_properties (logqso_persistence_test PROPERTIES
+    AUTOMOC_COMPILER_PREDEFINES OFF)
+  target_link_libraries (logqso_persistence_test
+    wsjt_qt wsjt_qtmm wsjt_cxx
+    Qt5::Widgets Qt5::Multimedia Qt5::SerialPort Qt5::Network)
+  if (APPLE)
+    target_link_libraries (logqso_persistence_test wsjt_fort)
+  elseif (OPENMP_FOUND)
+    target_link_libraries (logqso_persistence_test wsjt_fort_omp)
+  else ()
+    target_link_libraries (logqso_persistence_test wsjt_fort)
+  endif ()
+  add_test (NAME logqso_persistence_test COMMAND logqso_persistence_test)
+  set_tests_properties (logqso_persistence_test PROPERTIES
+    TIMEOUT 60
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
   qt5_add_resources (jtdx_web_server_test_resources tests/web_ui_test.qrc)
   add_executable (jtdx_web_server_test
     tests/jtdx_web_server_test.cpp

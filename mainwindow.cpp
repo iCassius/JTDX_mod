@@ -2425,7 +2425,13 @@ bool MainWindow::commitWebLogQsoDraft (QJsonObject const& draft, QString * reaso
                            draft.value (QStringLiteral ("tx_power")).toString (),
                            draft.value (QStringLiteral ("comments")).toString (),
                            draft.value (QStringLiteral ("eqsl_comments")).toString ());
-  m_logDlg->accept ();
+  QString write_reason;
+  if (!m_logDlg->acceptWebQSO (&write_reason))
+    {
+      if (reason) *reason = write_reason.isEmpty () ? QStringLiteral ("qso_write_failed") : write_reason;
+      return false;
+    }
+  m_logDlg->done (QDialog::Accepted);
   m_webLastLoggedQsoKey = key;
   m_webLogQsoDraft = {};
   ++m_webLogQsoGeneration;

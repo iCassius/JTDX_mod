@@ -38,6 +38,7 @@ public:
                       QDateTime const& dateTimeOff, Radio::Frequency dialFreq,
                       QString const& txPower, QString const& comments,
                       QString const& eqslComments);
+  bool acceptWebQSO (QString * reason = nullptr);
 
 public slots:
   void accept();
