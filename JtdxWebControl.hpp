@@ -69,6 +69,8 @@ public:
     int radio_current_tx_index {0};
     QStringList radio_tx_messages;
     bool radio_log_dialog_open {false};
+    QJsonObject radio_qso_draft;
+    quint64 radio_qso_generation {0};
   };
 
   struct Request
@@ -89,6 +91,7 @@ public:
     bool radio_value {false};
     int radio_index {0};
     QString radio_text;
+    QJsonObject radio_qso;
   };
 
   struct Dispatch
@@ -109,6 +112,7 @@ public:
     bool radio_value {false};
     int radio_index {0};
     QString radio_text;
+    QJsonObject radio_qso;
   };
 
   struct Result
@@ -147,6 +151,7 @@ public:
 
   void set_observed_state (ObservedState state);
   void set_observation_provider (ObservationProvider provider);
+  ObservedState observed_state () const;
   void set_frequency_dispatcher (DispatchHandler handler);
   void set_select_dx_dispatcher (DispatchHandler handler);
   void set_business_dispatcher (DispatchHandler handler) { business_dispatcher_ = std::move (handler); }
@@ -213,6 +218,7 @@ private:
     bool radio_value {false};
     int radio_index {0};
     QString radio_text;
+    QJsonObject radio_qso;
     QString target_cq_state;
     bool target_auto_sequence_enabled {false};
     bool timed_out {false};
@@ -221,6 +227,7 @@ private:
   };
 
   static bool printable_ascii (QString const& value, int max_length);
+  static bool printable_radio_text (QString const& value, int max_length);
   static QString canonical_payload (Request const& request);
   static bool safe_to_dispatch (SafetySnapshot const& safety, Operation operation, QString * reason);
   void mark_operations_changed ();

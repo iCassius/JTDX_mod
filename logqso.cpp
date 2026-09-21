@@ -107,12 +107,28 @@ void LogQSO::initLogQSO(QString const& hisCall, QString const& hisGrid, QString 
   m_debug=m_config->write_decoded_debug();
   ui->band->setText(m_config->bands ()->find (dialFreq));
 
-  if(!autologging) {
+  if(!autologging && !m_suppress_show) {
 	 show ();
   }
   else {
 	 accept();
   }
+}
+
+void LogQSO::initWebLogQSO (QString const& hisCall, QString const& hisGrid, QString mode,
+                            QString const& rptSent, QString const& rptRcvd, QString const& distance,
+                            QString const& name, QDateTime const& dateTimeOn,
+                            QDateTime const& dateTimeOff, Radio::Frequency dialFreq,
+                            QString const& txPower, QString const& comments,
+                            QString const& eqslComments)
+{
+  m_suppress_show = true;
+  initLogQSO (hisCall, hisGrid, std::move (mode), rptSent, rptRcvd, distance, name,
+              dateTimeOn, dateTimeOff, dialFreq, false);
+  m_suppress_show = false;
+  ui->txPower->setText (txPower);
+  ui->comments->setText (comments);
+  ui->eqslcomments->setText (eqslComments);
 }
 
 void LogQSO::accept()

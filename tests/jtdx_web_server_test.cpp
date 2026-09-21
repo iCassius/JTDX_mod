@@ -180,6 +180,12 @@ QByteArray post_business (quint16 port, QByteArray const& token, QByteArray cons
   return raw_request (port, wire);
 }
 
+QByteArray post_radio (quint16 port, QByteArray const& token, QByteArray const& body,
+                       QByteArray const& origin)
+{
+  return post_business (port, token, QByteArrayLiteral ("radio"), body, origin);
+}
+
 bool partial_header_times_out (quint16 port)
 {
   QTcpSocket socket;
@@ -365,6 +371,9 @@ int main (int argc, char ** argv)
           current.radio_current_tx_index = radio.value (QStringLiteral ("current_tx_index")).toInt ();
           for (auto const& value : radio.value (QStringLiteral ("tx_messages")).toArray ())
             current.radio_tx_messages.append (value.toString ());
+          current.radio_log_dialog_open = radio.value (QStringLiteral ("qso_draft_open")).toBool ();
+          current.radio_qso_draft = radio.value (QStringLiteral ("qso_draft")).toObject ();
+          current.radio_qso_generation = radio.value (QStringLiteral ("qso_generation")).toVariant ().toULongLong ();
           current.frequency_generation = state.rig_generation ();
           current.frequency_known = snapshot.value (QStringLiteral ("frequency")).isDouble ();
           current.actual_frequency_hz = snapshot.value (QStringLiteral ("frequency")).toVariant ().toLongLong ();
@@ -408,6 +417,60 @@ int main (int argc, char ** argv)
                               &state, [&state, &control, prepared] {
               if (control.result (prepared.request_id).status != JtdxWebControl::Status::Pending)
                 return;
+              if (prepared.operation == JtdxWebControl::Operation::Radio)
+                {
+                  QJsonObject const before = state.json_snapshot ();
+                  QJsonObject const radio = before.value (QStringLiteral ("radio_controls")).toObject ();
+                  bool multi_decode = radio.value (QStringLiteral ("multi_decode")).toBool ();
+                  bool agc = radio.value (QStringLiteral ("agc_compensation")).toBool ();
+                  bool narrow = radio.value (QStringLiteral ("narrow")).toBool ();
+                  bool sync = radio.value (QStringLiteral ("sync")).toBool ();
+                  bool skip_tx1 = radio.value (QStringLiteral ("skip_tx1")).toBool ();
+                  int current_tx = radio.value (QStringLiteral ("current_tx_index")).toInt ();
+                  QStringList messages;
+                  for (auto const& value : radio.value (QStringLiteral ("tx_messages")).toArray ())
+                    messages.append (value.toString ());
+                  while (messages.size () < 6) messages.append (QString {});
+                  QJsonObject draft = radio.value (QStringLiteral ("qso_draft")).toObject ();
+                  quint64 qso_generation = radio.value (QStringLiteral ("qso_generation")).toVariant ().toULongLong ();
+                  if (prepared.radio_action == QStringLiteral ("log-qso"))
+                    {
+                      draft = prepared.radio_qso;
+                      if (draft.isEmpty ())
+                        {
+                          draft.insert (QStringLiteral ("call"), QStringLiteral ("K1ABC"));
+                          draft.insert (QStringLiteral ("grid"), QStringLiteral ("FN31"));
+                          draft.insert (QStringLiteral ("mode"), QStringLiteral ("FT8"));
+                          draft.insert (QStringLiteral ("report_sent"), QStringLiteral ("-10"));
+                          draft.insert (QStringLiteral ("report_received"), QStringLiteral ("-10"));
+                          draft.insert (QStringLiteral ("start"), QStringLiteral ("2026-09-21T10:03:00"));
+                          draft.insert (QStringLiteral ("end"), QStringLiteral ("2026-09-21T10:03:15"));
+                          draft.insert (QStringLiteral ("frequency_hz"), 14074000);
+                          draft.insert (QStringLiteral ("name"), QString {});
+                          draft.insert (QStringLiteral ("tx_power"), QString {});
+                          draft.insert (QStringLiteral ("comments"), QString {});
+                          draft.insert (QStringLiteral ("eqsl_comments"), QString {});
+                        }
+                      ++qso_generation;
+                    }
+                  else if (prepared.radio_action == QStringLiteral ("log-qso-cancel")
+                           || prepared.radio_action == QStringLiteral ("log-qso-confirm"))
+                    { draft = {}; ++qso_generation; }
+                  else if (prepared.radio_action == QStringLiteral ("multi-decode")) multi_decode = prepared.radio_value;
+                  else if (prepared.radio_action == QStringLiteral ("agc-compensation")) agc = prepared.radio_value;
+                  else if (prepared.radio_action == QStringLiteral ("narrow")) narrow = prepared.radio_value;
+                  else if (prepared.radio_action == QStringLiteral ("sync")) sync = prepared.radio_value;
+                  else if (prepared.radio_action == QStringLiteral ("skip-tx1")) skip_tx1 = prepared.radio_value;
+                  else if (prepared.radio_action == QStringLiteral ("select-tx")) current_tx = prepared.radio_index;
+                  else if (prepared.radio_action == QStringLiteral ("set-tx-message")
+                           && prepared.radio_index >= 1 && prepared.radio_index <= messages.size ())
+                    messages[prepared.radio_index - 1] = prepared.radio_text;
+                  state.observe_radio_controls (multi_decode, agc, narrow, sync, skip_tx1,
+                                                current_tx, messages, draft.isEmpty (), draft, qso_generation);
+                  control.feedback_radio (prepared.request_id, prepared.server_epoch, state.revision (),
+                                          control.observed_state ());
+                  return;
+                }
               if (prepared.operation == JtdxWebControl::Operation::StartCq)
                 {
                   state.observe_status (14074000, QStringLiteral ("FT8"), {}, QStringLiteral ("-10"),
@@ -741,6 +804,65 @@ int main (int argc, char ** argv)
       check (control.begin_dispatch (prepared),
              "TCP CQ request reaches production begin dispatcher");
     });
+  auto radio_observed = observed;
+  radio_observed.radio_state_known = true;
+  radio_observed.radio_qso_generation = 0;
+  control.set_observed_state (radio_observed);
+  QByteArray const radio_origin = QByteArrayLiteral ("http://127.0.0.1:") + QByteArray::number (port);
+  QByteArray const radio_open_body = QByteArrayLiteral ("{\"request_id\":\"tcp-radio-open\",\"server_epoch\":\"")
+      + server.server_epoch ().toUtf8 () + QByteArrayLiteral ("\",\"state_revision\":")
+      + QByteArray::number (radio_observed.state_revision)
+      + QByteArrayLiteral (",\"action\":\"log-qso\",\"value\":false,\"tx_index\":0,\"text\":\"\"}");
+  QJsonObject const radio_open_response = response_json (post_radio (port, token, radio_open_body, radio_origin));
+  check (radio_open_response.value (QStringLiteral ("status")).toString () == QStringLiteral ("pending")
+             && captured_business.operation == JtdxWebControl::Operation::Radio
+             && captured_business.radio_action == QStringLiteral ("log-qso"),
+         "radio log-QSO open enters the production control queue");
+  radio_observed.state_revision += 1;
+  radio_observed.radio_log_dialog_open = true;
+  radio_observed.radio_qso_draft = QJsonObject {{QStringLiteral ("call"), QStringLiteral ("K1ABC")},
+                                                {QStringLiteral ("mode"), QStringLiteral ("FT8")}};
+  radio_observed.radio_qso_generation = 1;
+  control.set_observed_state (radio_observed);
+  check (control.feedback_radio (captured_business.request_id, captured_business.server_epoch,
+                                 radio_observed.state_revision, radio_observed),
+         "radio log-QSO open completes only after draft readback");
+  QJsonObject const radio_open_completed = response_json (post_radio (port, token, radio_open_body, radio_origin));
+  check (radio_open_completed.value (QStringLiteral ("status")).toString () == QStringLiteral ("completed")
+             && radio_open_completed.value (QStringLiteral ("readback")).toObject ()
+                    .value (QStringLiteral ("radio_log_dialog_open")).toBool (),
+         "completed radio open exposes the open draft readback");
+
+  QByteArray const radio_confirm_body = QByteArrayLiteral ("{\"request_id\":\"tcp-radio-confirm\",\"server_epoch\":\"")
+      + server.server_epoch ().toUtf8 () + QByteArrayLiteral ("\",\"state_revision\":")
+      + QByteArray::number (radio_observed.state_revision)
+      + QByteArrayLiteral (",\"action\":\"log-qso-confirm\",\"value\":false,\"tx_index\":0,\"text\":\"\",\"confirm\":true,\"qso\":{\"call\":\"K1ABC\",\"mode\":\"FT8\",\"start\":\"2026-09-21T10:03:00\",\"end\":\"2026-09-21T10:03:15\",\"frequency_hz\":14074000}}");
+  QJsonObject const radio_confirm_response = response_json (post_radio (port, token, radio_confirm_body, radio_origin));
+  check (radio_confirm_response.value (QStringLiteral ("status")).toString () == QStringLiteral ("pending")
+             && captured_business.radio_action == QStringLiteral ("log-qso-confirm")
+             && captured_business.radio_qso.value (QStringLiteral ("call")).toString () == QStringLiteral ("K1ABC"),
+         "radio log-QSO confirm preserves the bounded QSO payload");
+  radio_observed.state_revision += 1;
+  radio_observed.radio_log_dialog_open = false;
+  radio_observed.radio_qso_draft = {};
+  radio_observed.radio_qso_generation = 2;
+  control.set_observed_state (radio_observed);
+  check (control.feedback_radio (captured_business.request_id, captured_business.server_epoch,
+                                 radio_observed.state_revision, radio_observed),
+         "radio log-QSO confirm completes only after closed-draft readback");
+  QJsonObject const radio_confirm_completed = response_json (post_radio (port, token, radio_confirm_body, radio_origin));
+  check (radio_confirm_completed.value (QStringLiteral ("status")).toString () == QStringLiteral ("completed")
+             && response_json (post_radio (port, token, radio_confirm_body, radio_origin))
+                    .value (QStringLiteral ("status")).toString () == QStringLiteral ("completed"),
+         "radio log-QSO confirm is idempotent by request id");
+  QByteArray const radio_unknown_qso_body = QByteArrayLiteral ("{\"request_id\":\"tcp-radio-bad-qso\",\"server_epoch\":\"")
+      + server.server_epoch ().toUtf8 () + QByteArrayLiteral ("\",\"state_revision\":")
+      + QByteArray::number (radio_observed.state_revision)
+      + QByteArrayLiteral (",\"action\":\"log-qso-confirm\",\"confirm\":true,\"qso\":{\"call\":\"K1ABC\",\"extra\":true}}");
+  QJsonObject const radio_unknown_qso = response_json (post_radio (port, token, radio_unknown_qso_body, radio_origin));
+  check (radio_unknown_qso.value (QStringLiteral ("reason")).toString () == QStringLiteral ("unknown_qso_field"),
+         "radio API rejects QSO fields outside the fixed whitelist");
+  control.set_observed_state (observed);
   QByteArray const cq_body = QByteArrayLiteral ("{\"request_id\":\"tcp-cq-1\",\"server_epoch\":\"")
       + server.server_epoch ().toUtf8 () + QByteArrayLiteral ("\",\"state_revision\":")
       + QByteArray::number (observed.state_revision) + QByteArrayLiteral (",\"confirm\":true}");

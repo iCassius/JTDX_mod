@@ -414,6 +414,10 @@ private:
   void hideMenus (bool b);
   void applyWebUiConfiguration ();
   void updateWebRadioState ();
+  QJsonObject defaultWebLogQsoDraft () const;
+  bool openWebLogQsoDraft ();
+  bool cancelWebLogQsoDraft ();
+  bool commitWebLogQsoDraft (QJsonObject const& draft, QString * reason);
   void dispatchWebRadio (JtdxWebControl::Dispatch dispatch);
   void refreshWebFrequencyCandidates () const;
   JtdxWebControl::ObservedState webControlObservation () const;
@@ -776,6 +780,9 @@ private:
   JtdxWebService * m_webService;
   JtdxWebControl::Dispatch m_webFrequencyDispatch;
   bool m_webFrequencyPending {false};
+  QJsonObject m_webLogQsoDraft;
+  quint64 m_webLogQsoGeneration {0};
+  QString m_webLastLoggedQsoKey;
   PSK_Reporter *psk_Reporter;
   DisplayManual m_manual;
   QHash<QString, QVariant> m_pwrBandTxMemory; // Remembers power level by band

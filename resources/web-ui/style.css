@@ -63,6 +63,14 @@ dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
 .tx-rows label { display: grid; grid-template-columns: 1.1rem 2.5rem minmax(0, 1fr); gap: 7px; align-items: center; color: #a9bfdd; }
 .tx-rows input[type="text"] { width: 100%; }
 .tx-rows input[type="radio"] { accent-color: #73b8ff; }
+.cq-editor { margin-top: 10px; }
+.cq-editor label, .qso-grid label { display: grid; gap: 4px; color: #9eb5c9; font-size: .78rem; }
+.cq-editor input, .qso-grid input { width: 100%; min-width: 0; box-sizing: border-box; background: #202b3d; border: 1px solid #40536e; border-radius: 7px; color: #e7edf7; padding: 8px; font: inherit; }
+.qso-draft { margin-top: 14px; border: 1px solid #477fbf; border-radius: 9px; padding: 11px; background: #0f1c2c; }
+.qso-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 9px; }
+.qso-grid .qso-wide { grid-column: 1 / -1; }
+.qso-draft .button-row { margin-top: 10px; }
+.qso-draft input:disabled { opacity: .6; }
 .notice { text-align: center; margin-top: 18px; font-size: .9rem; }
 
 .operations-card { margin-top: 14px; border-color: #324766; }
@@ -102,6 +110,8 @@ dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
   .decode { grid-template-columns: 3.8rem 2.5rem 3.4rem 3.7rem 2.5rem 3rem minmax(0, 1fr); gap: 5px; font-size: .78rem; }
   .decode button { display: none; }
   .radio-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .qso-grid { grid-template-columns: minmax(0, 1fr); }
+  .qso-grid .qso-wide { grid-column: auto; }
   .operations-heading { display: block; }
   .operations-meta { display: block; text-align: left; margin-top: -10px; margin-bottom: 12px; }
   .operation-row dl { grid-template-columns: 1fr; }

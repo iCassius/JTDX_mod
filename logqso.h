@@ -32,6 +32,12 @@ public:
                   QString const& rptSent, QString const& rptRcvd, QString const& distance,
                   QString const& name, QDateTime const& dateTimeOn,
                   QDateTime const& dateTimeOff, Radio::Frequency dialFreq, bool autologging);
+  void initWebLogQSO (QString const& hisCall, QString const& hisGrid, QString mode,
+                      QString const& rptSent, QString const& rptRcvd, QString const& distance,
+                      QString const& name, QDateTime const& dateTimeOn,
+                      QDateTime const& dateTimeOff, Radio::Frequency dialFreq,
+                      QString const& txPower, QString const& comments,
+                      QString const& eqslComments);
 
 public slots:
   void accept();
@@ -71,6 +77,7 @@ private:
   uint m_eqsltimer;
   bool m_enable_tcp_connection;
   bool m_debug;
+  bool m_suppress_show {false};
   JTDXDateTime * m_jtdxtime;
 };
 

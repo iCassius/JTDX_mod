@@ -97,7 +97,8 @@ public:
                                QString const& cq_state, QString const& current_tx_text);
   void observe_radio_controls (bool multi_decode, bool agc_compensation, bool narrow,
                                bool sync, bool skip_tx1, int current_tx_index,
-                               QStringList const& tx_messages, bool can_log_qso);
+                               QStringList const& tx_messages, bool can_log_qso,
+                               QJsonObject const& qso_draft = {}, quint64 qso_generation = 0);
   bool decode_selection (quint64 decode_id, DecodeSelection * selection) const;
   void observe_web_dx_selection (QString const& call, QString const& grid,
                                  QString const& source, quint64 source_decode_id,
@@ -183,6 +184,8 @@ private:
   int current_tx_index_ {0};
   QStringList tx_messages_;
   bool can_log_qso_ {false};
+  QJsonObject qso_draft_;
+  quint64 qso_generation_ {0};
   bool watchdog_timeout_ {false};
   QString sub_mode_;
   bool fast_mode_ {false};

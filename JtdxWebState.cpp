@@ -192,7 +192,8 @@ void JtdxWebState::observe_business_state (bool auto_sequence_enabled,
 void JtdxWebState::observe_radio_controls (bool multi_decode, bool agc_compensation,
                                            bool narrow, bool sync, bool skip_tx1,
                                            int current_tx_index, QStringList const& tx_messages,
-                                           bool can_log_qso)
+                                           bool can_log_qso, QJsonObject const& qso_draft,
+                                           quint64 qso_generation)
 {
   Q_ASSERT (QThread::currentThread () == thread ());
   QStringList bounded_messages;
@@ -204,7 +205,8 @@ void JtdxWebState::observe_radio_controls (bool multi_decode, bool agc_compensat
       || multi_decode_ != multi_decode || agc_compensation_ != agc_compensation
       || narrow_ != narrow || sync_ != sync || skip_tx1_ != skip_tx1
       || current_tx_index_ != current_tx_index || tx_messages_ != bounded_messages
-      || can_log_qso_ != can_log_qso;
+      || can_log_qso_ != can_log_qso || qso_draft_ != qso_draft
+      || qso_generation_ != qso_generation;
   if (changed) ++revision_;
   has_radio_controls_ = true;
   multi_decode_ = multi_decode;
@@ -215,6 +217,8 @@ void JtdxWebState::observe_radio_controls (bool multi_decode, bool agc_compensat
   current_tx_index_ = current_tx_index;
   tx_messages_ = std::move (bounded_messages);
   can_log_qso_ = can_log_qso;
+  qso_draft_ = qso_draft;
+  qso_generation_ = qso_generation;
 }
 
 bool JtdxWebState::decode_selection (quint64 decode_id, DecodeSelection * selection) const
@@ -450,6 +454,9 @@ QJsonObject JtdxWebState::json_snapshot () const
     for (auto const& message : tx_messages_) tx_messages.append (message);
   radio_controls.insert (QStringLiteral ("tx_messages"), tx_messages);
   radio_controls.insert (QStringLiteral ("can_log_qso"), has_radio_controls_ ? QJsonValue {can_log_qso_} : QJsonValue {QJsonValue::Null});
+  radio_controls.insert (QStringLiteral ("qso_draft_open"), has_radio_controls_ && !qso_draft_.isEmpty ());
+  radio_controls.insert (QStringLiteral ("qso_draft"), qso_draft_);
+  radio_controls.insert (QStringLiteral ("qso_generation"), static_cast<qint64> (qso_generation_));
   object.insert (QStringLiteral ("radio_controls"), radio_controls);
 
   QJsonArray frequency_candidates;

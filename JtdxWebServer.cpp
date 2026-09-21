@@ -617,6 +617,8 @@ QJsonObject JtdxWebServer::operation_result (JtdxWebControl::Result const& resul
   readback.insert (QStringLiteral ("radio_current_tx_index"), result.snapshot.radio_state_known ? QJsonValue {result.snapshot.radio_current_tx_index} : QJsonValue {QJsonValue::Null});
   readback.insert (QStringLiteral ("radio_tx_messages"), QJsonArray::fromStringList (result.snapshot.radio_tx_messages));
   readback.insert (QStringLiteral ("radio_log_dialog_open"), result.snapshot.radio_log_dialog_open);
+  readback.insert (QStringLiteral ("radio_qso_draft"), result.snapshot.radio_qso_draft);
+  readback.insert (QStringLiteral ("radio_qso_generation"), static_cast<qint64> (result.snapshot.radio_qso_generation));
   output.insert (QStringLiteral ("readback"), readback);
   return output;
 }
@@ -1059,7 +1061,8 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
       static const QSet<QString> fields {QStringLiteral ("request_id"), QStringLiteral ("server_epoch"),
                                          QStringLiteral ("state_revision"), QStringLiteral ("action"),
                                          QStringLiteral ("value"), QStringLiteral ("tx_index"),
-                                         QStringLiteral ("text"), QStringLiteral ("confirm")};
+                                         QStringLiteral ("text"), QStringLiteral ("confirm"),
+                                         QStringLiteral ("qso")};
       for (QString const& key : input.keys ())
         if (!fields.contains (key)) { reject_control (400, QStringLiteral ("unknown_json_field")); return; }
       if (trusted_request_id.isEmpty () || !input.value (QStringLiteral ("server_epoch")).isString ()
@@ -1072,7 +1075,7 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
         { reject_control (400, QStringLiteral ("invalid_state_revision")); return; }
       QString const action = input.value (QStringLiteral ("action")).toString ().trimmed ();
       static const QSet<QString> dangerous {QStringLiteral ("enable-tx"), QStringLiteral ("stop-tx"),
-                                             QStringLiteral ("log-qso"), QStringLiteral ("cq")};
+                                             QStringLiteral ("log-qso-confirm"), QStringLiteral ("cq")};
       if (dangerous.contains (action)
           && (!input.value (QStringLiteral ("confirm")).isBool ()
               || !input.value (QStringLiteral ("confirm")).toBool ()))
@@ -1086,6 +1089,36 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
       QString radio_text = input.value (QStringLiteral ("text")).toString ();
       if (radio_text.size () > 64 || (input.contains (QStringLiteral ("text")) && !input.value (QStringLiteral ("text")).isString ()))
         { reject_control (400, QStringLiteral ("invalid_text")); return; }
+      QJsonObject qso;
+      if (input.contains (QStringLiteral ("qso")))
+        {
+          if (!input.value (QStringLiteral ("qso")).isObject ())
+            { reject_control (400, QStringLiteral ("invalid_qso")); return; }
+          qso = input.value (QStringLiteral ("qso")).toObject ();
+          static const QSet<QString> qso_fields {
+            QStringLiteral ("call"), QStringLiteral ("grid"), QStringLiteral ("mode"),
+            QStringLiteral ("report_sent"), QStringLiteral ("report_received"),
+            QStringLiteral ("name"), QStringLiteral ("tx_power"), QStringLiteral ("comments"),
+            QStringLiteral ("eqsl_comments"), QStringLiteral ("start"), QStringLiteral ("end"),
+            QStringLiteral ("frequency_hz")};
+          for (QString const& key : qso.keys ())
+            if (!qso_fields.contains (key)) { reject_control (400, QStringLiteral ("unknown_qso_field")); return; }
+          static const QSet<QString> qso_text_fields {
+            QStringLiteral ("call"), QStringLiteral ("grid"), QStringLiteral ("mode"),
+            QStringLiteral ("report_sent"), QStringLiteral ("report_received"),
+            QStringLiteral ("name"), QStringLiteral ("tx_power"), QStringLiteral ("comments"),
+            QStringLiteral ("eqsl_comments"), QStringLiteral ("start"), QStringLiteral ("end")};
+          for (QString const& key : qso_text_fields)
+            if (qso.contains (key) && (!qso.value (key).isString () || qso.value (key).toString ().size () > 256))
+              { reject_control (400, QStringLiteral ("invalid_qso_text")); return; }
+          if (qso.contains (QStringLiteral ("frequency_hz"))
+              && (!qso.value (QStringLiteral ("frequency_hz")).isDouble ()
+                  || qso.value (QStringLiteral ("frequency_hz")).toDouble () < 1
+                  || qso.value (QStringLiteral ("frequency_hz")).toDouble () > 60000000))
+            { reject_control (400, QStringLiteral ("invalid_qso_frequency")); return; }
+        }
+      if (action == QStringLiteral ("log-qso-confirm") && qso.isEmpty ())
+        { reject_control (400, QStringLiteral ("qso_draft_required")); return; }
       JtdxWebControl::Request control_request;
       control_request.request_id = input.value (QStringLiteral ("request_id")).toString ();
       control_request.server_epoch = input.value (QStringLiteral ("server_epoch")).toString ();
@@ -1095,6 +1128,7 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
       control_request.radio_value = input.value (QStringLiteral ("value")).toBool (false);
       control_request.radio_index = tx_index;
       control_request.radio_text = radio_text;
+      control_request.radio_qso = qso;
       auto const result = control_->submit (std::move (control_request));
       send_http (socket, result.http_status, status_reason (result.http_status),
                  QByteArrayLiteral ("application/json"), json_response (control_response (result)));

@@ -11,6 +11,9 @@
   let operationEpoch = null;
   let operationRows = [];
   let currentSnapshot = null;
+  let qsoDraftEditGeneration = null;
+  let qsoDraftDirty = false;
+  const txEditTimers = {};
   let frequencyRequest = null;
   let frequencyUnknown = false;
   let frequencyAbort = null;
@@ -348,6 +351,9 @@
       "set-tx-message": Array.isArray(readback.radio_tx_messages)
         && readback.radio_tx_messages[request.index - 1] === request.message,
       "log-qso": readback.radio_log_dialog_open === true,
+      "log-qso-cancel": readback.radio_log_dialog_open === false,
+      "log-qso-confirm": readback.radio_log_dialog_open === false
+        && integerValue(readback.radio_qso_generation) > request.qsoGeneration,
       "cq": readback.cq_state === "armed"
     };
     return Object.prototype.hasOwnProperty.call(values, request.action) ? values[request.action] : true;
@@ -594,6 +600,9 @@
             || snapshot.watchdog_timeout !== false)) return "TX/PTT 状态不是明确安全值";
     if (action === "log-qso" && snapshot.radio_controls
         && snapshot.radio_controls.can_log_qso !== true) return "当前没有可记录的 DX 通联";
+    const draftOpen = !!(snapshot.radio_controls && snapshot.radio_controls.qso_draft_open === true);
+    if (action === "log-qso-confirm" && !draftOpen) return "请先打开记录通联草稿";
+    if (action === "log-qso-cancel" && !draftOpen) return "当前没有待确认的记录草稿";
     return "";
   }
 
@@ -619,14 +628,42 @@
         || (action === "sync" && state.sync === true)
         || (action === "skip-tx1" && state.skip_tx1 === true));
     });
+    const qsoDraft = state.qso_draft && typeof state.qso_draft === "object" ? state.qso_draft : {};
+    const qsoOpen = state.qso_draft_open === true;
+    const qsoGeneration = integerValue(state.qso_generation);
+    if (!qsoOpen) {
+      qsoDraftEditGeneration = null;
+      qsoDraftDirty = false;
+    } else if (qsoDraftEditGeneration !== qsoGeneration) {
+      qsoDraftEditGeneration = qsoGeneration;
+      qsoDraftDirty = false;
+    }
+    const qsoBox = el("radio_qso_draft");
+    if (qsoBox) qsoBox.hidden = !qsoOpen;
+    ["call", "grid", "mode", "report_sent", "report_received", "name", "start", "end",
+      "frequency_hz", "tx_power", "comments", "eqsl_comments"].forEach((key) => {
+      const input = el("qso_" + key);
+      if (input && !qsoDraftDirty && document.activeElement !== input)
+        input.value = typeof qsoDraft[key] === "string" || typeof qsoDraft[key] === "number" ? qsoDraft[key] : "";
+      if (input) input.disabled = !qsoOpen || !!radioGateReason(snapshot, "log-qso-confirm");
+    });
+    const qsoCancel = el("radio_qso_cancel");
+    const qsoConfirm = el("radio_qso_confirm");
+    if (qsoCancel) qsoCancel.disabled = !qsoOpen || !!radioGateReason(snapshot, "log-qso-cancel");
+    if (qsoConfirm) qsoConfirm.disabled = !qsoOpen || !!radioGateReason(snapshot, "log-qso-confirm");
+    const qsoStatus = el("radio_qso_status");
+    if (qsoStatus) qsoStatus.textContent = qsoOpen ? "已打开草稿；修改字段后确认提交，取消不会写入 ADIF。" : "提交前不会写入 ADIF。";
     const status = el("radio_control_status");
     const reason = radioGateReason(snapshot, "clear-windows");
     if (status) { status.textContent = reason || "操作需等待主程序实际状态回读"; status.className = "frequency-control-status " + (reason ? "blocked" : "ready"); }
     text("radio_state_badge", known ? "已同步" : "未知");
     for (let index = 1; index <= 6; index++) {
       const input = el("radio_tx_" + index);
-      if (input && Array.isArray(state.tx_messages) && document.activeElement !== input)
-        input.value = typeof state.tx_messages[index - 1] === "string" ? state.tx_messages[index - 1] : "";
+      if (input && Array.isArray(state.tx_messages)) {
+        const value = typeof state.tx_messages[index - 1] === "string" ? state.tx_messages[index - 1] : "";
+        if (input.dataset.webDirty === "1" && input.value === value) input.dataset.webDirty = "";
+        if (document.activeElement !== input && input.dataset.webDirty !== "1") input.value = value;
+      }
     }
     document.querySelectorAll("input[name='web_tx_index']").forEach((input) => {
       input.checked = integerValue(state.current_tx_index) === integerValue(input.value);
@@ -1145,22 +1182,35 @@
     }
   }
 
-  async function sendRadio(action, value, index, message) {
+  function qsoDraftFromDom() {
+    const qso = {};
+    ["call", "grid", "mode", "report_sent", "report_received", "name", "start", "end",
+      "tx_power", "comments", "eqsl_comments"].forEach((key) => { qso[key] = (el("qso_" + key)?.value || "").trim(); });
+    qso.frequency_hz = integerValue(el("qso_frequency_hz")?.value || "");
+    if (!qso.call || !qso.mode || !qso.start || !qso.end || qso.frequency_hz == null) return null;
+    return qso;
+  }
+
+  async function sendRadio(action, value, index, message, qso) {
     const gate = radioGateReason(currentSnapshot, action);
     if (gate || !currentSnapshot) { updateRadioControls(); return; }
-    const labels = {"enable-tx": "启用发射", "stop-tx": "终止发射", "log-qso": "记录通联",
+    const labels = {"enable-tx": "启用发射", "stop-tx": "终止发射", "log-qso": "打开记录草稿",
+      "log-qso-confirm": "提交记录通联", "log-qso-cancel": "取消记录草稿",
       "clear-windows": "清空窗口", "sync": "同步", "multi-decode": "多次解码",
       "agc-compensation": "AGC 补偿", "narrow": "窄频", "decode": "解码",
       "clear-dx": "清除 DX", "generate-message": "生成消息", "cq": "CQ",
       "skip-tx1": "跳过 Tx1", "select-tx": "选择 Tx", "set-tx-message": "编辑消息"};
-    const dangerous = ["enable-tx", "stop-tx", "log-qso", "cq"].includes(action);
-    if (dangerous && !await requestConfirmation(labels[action], action === "log-qso"
-        ? "确认打开 JTDX 原生 QSO 记录对话框？Web UI 不会伪造已写入 ADIF。"
+    const dangerous = ["enable-tx", "stop-tx", "log-qso-confirm", "cq"].includes(action);
+    if (action === "log-qso-confirm" && !qso) qso = qsoDraftFromDom();
+    if (action === "log-qso-confirm" && !qso) { radioStatus("记录草稿缺少必填字段。", "error"); return; }
+    if (dangerous && !await requestConfirmation(labels[action], action === "log-qso-confirm"
+        ? "确认提交这条 QSO？提交后将按主程序记录模型写入 ADIF，重复提交会被拦截。"
         : "确认" + labels[action] + "？完成必须等待主程序实际状态回读。")) return;
     let requestId;
     try { requestId = secureRequestId(); } catch (_) { radioStatus("浏览器没有可用的安全随机源，无法发送操作。", "error"); return; }
     const request = {requestId, epoch: currentSnapshot.server_epoch, action, value: value === true,
       index: integerValue(index) || 0, message: typeof message === "string" ? message : "",
+      qso: qso || {}, qsoGeneration: integerValue(currentSnapshot.radio_controls?.qso_generation) || 0,
       session: connectionSession};
     radioRequest = request;
     radioUnknown = false;
@@ -1174,7 +1224,7 @@
         method: "POST", headers: {"Content-Type": "application/json", "Accept": "application/json"},
         body: JSON.stringify({request_id: request.requestId, server_epoch: request.epoch,
           state_revision: integerValue(currentSnapshot.state_revision), action: request.action,
-          value: request.value, tx_index: request.index, text: request.message, confirm: dangerous}),
+          value: request.value, tx_index: request.index, text: request.message, confirm: dangerous, qso: request.qso}),
         cache: "no-store", signal: local.signal
       });
       if (request.session !== connectionSession || radioRequest !== request) return;
@@ -1332,8 +1382,25 @@
   });
   for (let index = 1; index <= 6; index++) {
     const input = el("radio_tx_" + index);
-    input.addEventListener("change", () => sendRadio("set-tx-message", false, index, input.value));
+    input.addEventListener("input", () => {
+      input.dataset.webDirty = "1";
+      clearTimeout(txEditTimers[index]);
+      txEditTimers[index] = setTimeout(() => {
+        txEditTimers[index] = null;
+        sendRadio("set-tx-message", false, index, input.value);
+      }, 200);
+    });
   }
+  el("radio_qso_confirm").addEventListener("click", () => sendRadio("log-qso-confirm", false, 0, "", qsoDraftFromDom()));
+  el("radio_qso_cancel").addEventListener("click", () => sendRadio("log-qso-cancel", false, 0, "", null));
+  ["call", "grid", "mode", "report_sent", "report_received", "name", "start", "end",
+    "frequency_hz", "tx_power", "comments", "eqsl_comments"].forEach((key) => {
+    el("qso_" + key).addEventListener("input", () => { qsoDraftDirty = true; });
+  });
+  el("radio_cq_text").addEventListener("change", () => {
+    const value = el("radio_cq_text").value.trim();
+    if (value) sendRadio("generate-message", false, 0, value);
+  });
   el("frequency_band").addEventListener("change", () => {
     el("frequency_preset").value = "";
     updateFrequencyChoices(currentSnapshot);

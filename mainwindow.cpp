@@ -2345,8 +2345,91 @@ JtdxWebControl::ObservedState MainWindow::webControlObservation () const
   result.radio_current_tx_index = radio.value (QStringLiteral ("current_tx_index")).toInt (0);
   for (auto const& value : radio.value (QStringLiteral ("tx_messages")).toArray ())
     result.radio_tx_messages.append (value.toString ());
-  result.radio_log_dialog_open = m_logDlg && m_logDlg->isVisible ();
+  result.radio_log_dialog_open = !radio.value (QStringLiteral ("qso_draft")).toObject ().isEmpty ();
+  result.radio_qso_draft = radio.value (QStringLiteral ("qso_draft")).toObject ();
+  result.radio_qso_generation = radio.value (QStringLiteral ("qso_generation")).toVariant ().toULongLong ();
   return result;
+}
+
+QJsonObject MainWindow::defaultWebLogQsoDraft () const
+{
+  QJsonObject draft;
+  if (m_hisCall.trimmed ().isEmpty ()) return draft;
+  QDateTime const end = m_jtdxtime->currentDateTimeUtc2 ();
+  QDateTime start = m_dateTimeQSOOn;
+  if (!start.isValid () || start > end) start = end;
+  draft.insert (QStringLiteral ("call"), m_hisCall.trimmed ());
+  draft.insert (QStringLiteral ("grid"), m_hisGrid.trimmed ());
+  draft.insert (QStringLiteral ("mode"), m_modeTx);
+  draft.insert (QStringLiteral ("report_sent"), m_rptSent);
+  draft.insert (QStringLiteral ("report_received"), m_rptRcvd);
+  draft.insert (QStringLiteral ("name"), m_name);
+  draft.insert (QStringLiteral ("tx_power"), QString {});
+  draft.insert (QStringLiteral ("comments"), QString {});
+  draft.insert (QStringLiteral ("eqsl_comments"), QString {});
+  draft.insert (QStringLiteral ("start"), start.toString (Qt::ISODateWithMs));
+  draft.insert (QStringLiteral ("end"), end.toString (Qt::ISODateWithMs));
+  draft.insert (QStringLiteral ("frequency_hz"), static_cast<qint64> (m_freqNominal + ui->TxFreqSpinBox->value ()));
+  return draft;
+}
+
+bool MainWindow::openWebLogQsoDraft ()
+{
+  if (m_logDlg && m_logDlg->isVisible ()) return false;
+  if (m_webLogQsoDraft.isEmpty ())
+    {
+      m_webLogQsoDraft = defaultWebLogQsoDraft ();
+      if (m_webLogQsoDraft.isEmpty ()) return false;
+      ++m_webLogQsoGeneration;
+    }
+  return true;
+}
+
+bool MainWindow::cancelWebLogQsoDraft ()
+{
+  if (m_webLogQsoDraft.isEmpty ()) return false;
+  m_webLogQsoDraft = {};
+  ++m_webLogQsoGeneration;
+  return true;
+}
+
+bool MainWindow::commitWebLogQsoDraft (QJsonObject const& draft, QString * reason)
+{
+  if (m_logDlg && m_logDlg->isVisible ()) { if (reason) *reason = QStringLiteral ("desktop_log_dialog_open"); return false; }
+  if (m_webLogQsoDraft.isEmpty ()) { if (reason) *reason = QStringLiteral ("qso_draft_not_open"); return false; }
+  static const QStringList required {QStringLiteral ("call"), QStringLiteral ("mode"),
+                                     QStringLiteral ("start"), QStringLiteral ("end"),
+                                     QStringLiteral ("frequency_hz")};
+  for (QString const& key : required)
+    if (!draft.value (key).isString () && key != QStringLiteral ("frequency_hz"))
+      { if (reason) *reason = QStringLiteral ("invalid_qso_draft"); return false; }
+  QString const call = draft.value (QStringLiteral ("call")).toString ().trimmed ();
+  if (call.isEmpty () || call.compare (m_hisCall.trimmed (), Qt::CaseInsensitive) != 0)
+    { if (reason) *reason = QStringLiteral ("qso_call_must_match_current_dx"); return false; }
+  bool frequency_ok = false;
+  qint64 const frequency = draft.value (QStringLiteral ("frequency_hz")).toVariant ().toLongLong (&frequency_ok);
+  QDateTime const start = QDateTime::fromString (draft.value (QStringLiteral ("start")).toString (), Qt::ISODateWithMs);
+  QDateTime const end = QDateTime::fromString (draft.value (QStringLiteral ("end")).toString (), Qt::ISODateWithMs);
+  if (!frequency_ok || frequency < 1 || frequency > 60000000 || !start.isValid () || !end.isValid () || start > end)
+    { if (reason) *reason = QStringLiteral ("invalid_qso_time_or_frequency"); return false; }
+  QString const key = call.toUpper () + QLatin1Char ('|') + start.toString (Qt::ISODateWithMs)
+      + QLatin1Char ('|') + QString::number (frequency);
+  if (key == m_webLastLoggedQsoKey)
+    { if (reason) *reason = QStringLiteral ("duplicate_qso"); return false; }
+  m_logDlg->initWebLogQSO (call, draft.value (QStringLiteral ("grid")).toString (),
+                           draft.value (QStringLiteral ("mode")).toString (),
+                           draft.value (QStringLiteral ("report_sent")).toString (),
+                           draft.value (QStringLiteral ("report_received")).toString (),
+                           ui->labDist->text (), draft.value (QStringLiteral ("name")).toString (),
+                           start, end, frequency,
+                           draft.value (QStringLiteral ("tx_power")).toString (),
+                           draft.value (QStringLiteral ("comments")).toString (),
+                           draft.value (QStringLiteral ("eqsl_comments")).toString ());
+  m_logDlg->accept ();
+  m_webLastLoggedQsoKey = key;
+  m_webLogQsoDraft = {};
+  ++m_webLogQsoGeneration;
+  return true;
 }
 
 void MainWindow::updateWebRadioState ()
@@ -2362,7 +2445,8 @@ void MainWindow::updateWebRadioState ()
   m_webState->observe_radio_controls (ui->swlButton->isChecked (), ui->AGCcButton->isChecked (),
                                       ui->filterButton->isChecked (), ui->syncButton->isChecked (),
                                       ui->skipTx1->isChecked (), current_tx_index, messages,
-                                      !m_hisCall.trimmed ().isEmpty ());
+                                      !m_hisCall.trimmed ().isEmpty () && m_webLogQsoDraft.isEmpty (),
+                                      m_webLogQsoDraft, m_webLogQsoGeneration);
 }
 
 void MainWindow::dispatchWebFrequency (JtdxWebControl::Dispatch dispatch)
@@ -2482,7 +2566,22 @@ void MainWindow::dispatchWebRadio (JtdxWebControl::Dispatch dispatch)
   const auto action = dispatch.radio_action;
   if (action == QStringLiteral ("enable-tx")) enableTx_mode (dispatch.radio_value);
   else if (action == QStringLiteral ("stop-tx")) on_stopTxButton_clicked ();
-  else if (action == QStringLiteral ("log-qso")) on_logQSOButton_clicked ();
+  else if (action == QStringLiteral ("log-qso"))
+    {
+      if (!openWebLogQsoDraft ())
+        { m_webControl->fail (dispatch.request_id, dispatch.server_epoch, QStringLiteral ("no_current_qso")); return; }
+    }
+  else if (action == QStringLiteral ("log-qso-cancel"))
+    {
+      if (!cancelWebLogQsoDraft ())
+        { m_webControl->fail (dispatch.request_id, dispatch.server_epoch, QStringLiteral ("qso_draft_not_open")); return; }
+    }
+  else if (action == QStringLiteral ("log-qso-confirm"))
+    {
+      QString reason;
+      if (!commitWebLogQsoDraft (dispatch.radio_qso, &reason))
+        { m_webControl->fail (dispatch.request_id, dispatch.server_epoch, reason); return; }
+    }
   else if (action == QStringLiteral ("clear-windows")) on_EraseButton_clicked ();
   else if (action == QStringLiteral ("sync")) ui->syncButton->setChecked (dispatch.radio_value);
   else if (action == QStringLiteral ("multi-decode")) { ui->swlButton->setChecked (dispatch.radio_value); on_swlButton_clicked (dispatch.radio_value); }
@@ -2490,7 +2589,11 @@ void MainWindow::dispatchWebRadio (JtdxWebControl::Dispatch dispatch)
   else if (action == QStringLiteral ("narrow")) { ui->filterButton->setChecked (dispatch.radio_value); on_filterButton_clicked (dispatch.radio_value); }
   else if (action == QStringLiteral ("decode")) on_DecodeButton_clicked (true);
   else if (action == QStringLiteral ("clear-dx")) on_ClearDxButton_clicked ();
-  else if (action == QStringLiteral ("generate-message")) on_genStdMsgsPushButton_clicked ();
+  else if (action == QStringLiteral ("generate-message"))
+    {
+      if (!dispatch.radio_text.trimmed ().isEmpty ()) ui->genMsg->setText (dispatch.radio_text.trimmed ());
+      on_genStdMsgsPushButton_clicked ();
+    }
   else if (action == QStringLiteral ("cq")) applyWebStartCq (true);
   else if (action == QStringLiteral ("skip-tx1")) { ui->skipTx1->setChecked (dispatch.radio_value); on_skipTx1_clicked (dispatch.radio_value); }
   else if (action == QStringLiteral ("select-tx"))

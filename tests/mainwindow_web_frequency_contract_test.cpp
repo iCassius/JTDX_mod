@@ -38,6 +38,9 @@ int main ()
   QFile main_window {QStringLiteral (JTDX_SOURCE_DIR "/mainwindow.cpp")};
   check (main_window.open (QIODevice::ReadOnly), "open MainWindow source");
   QByteArray const source = main_window.readAll ();
+  QFile main_window_ui {QStringLiteral (JTDX_SOURCE_DIR "/mainwindow.ui")};
+  check (main_window_ui.open (QIODevice::ReadOnly), "open MainWindow UI definition");
+  QByteArray const main_window_ui_source = main_window_ui.readAll ();
   QFile web_app {QStringLiteral (JTDX_SOURCE_DIR "/resources/web-ui/app.js")};
   check (web_app.open (QIODevice::ReadOnly), "open Web UI source");
   QByteArray const web_app_source = web_app.readAll ();
@@ -71,6 +74,22 @@ int main ()
          "business controls use an accessible confirmation and the page keeps the compact responsive layout");
   check (source.contains ("configuration.enable_frequency_control = m_config.web_ui_frequency_control_enabled ()"),
          "MainWindow forwards the explicit frequency-control setting");
+  auto const lang_menu = main_window_ui_source.indexOf ("<addaction name=\"menuLang\"/>");
+  auto const web_menu = main_window_ui_source.indexOf ("<addaction name=\"menuWebUI\"/>");
+  auto const help_menu = main_window_ui_source.indexOf ("<addaction name=\"menuHelp\"/>");
+  check (lang_menu >= 0 && web_menu > lang_menu && help_menu > web_menu,
+         "Language-WebUI-Help menus stay in the required top-level order");
+  check (main_window_ui_source.contains ("<action name=\"actionWebUiEnabled\">")
+             && source.contains ("ui->actionOpenWebUi->setEnabled (true)")
+             && source.contains ("ui->actionOpenWebUi->setEnabled (false)")
+             && source.contains ("m_config.set_web_ui_status (QStringLiteral (\"错误\")"),
+         "Web UI menu enable/open state has explicit success and failure branches");
+  check (source.contains ("bool MainWindow::openWebLogQsoDraft ()")
+             && source.contains ("bool MainWindow::cancelWebLogQsoDraft ()")
+             && source.contains ("bool MainWindow::commitWebLogQsoDraft")
+             && source.contains ("QStringLiteral (\"duplicate_qso\")")
+             && source.contains ("m_logDlg->accept ()"),
+         "Web QSO uses an editable draft, explicit commit, and duplicate guard");
   check (source.contains ("configuration.enable_dx_control = m_config.web_ui_dx_control_enabled ()"),
          "MainWindow forwards the explicit DX-control setting");
   check (source.contains ("result.safety.rig_online = m_rigOk && m_config.is_transceiver_online ()"),

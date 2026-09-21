@@ -181,6 +181,6 @@ C:\msys64\mingw64\bin\ctest.exe --test-dir C:\JTDX64\build-webui-dev --output-on
 - [阶段验收矩阵](docs/web-ui/03_阶段验收矩阵_zh-CN.md)
 - [进度与中断恢复日志](docs/web-ui/PROGRESS_zh-CN.md)
 - [P10 软件交付报告与简短使用说明](docs/web-ui/P10-软件交付报告_zh-CN.md)
-# P17 最新交接
+# P18 最新交接
 
-功能扩展、截图映射、受限 radio API、浏览器检查和无 HIL 边界见 `docs/web-ui/P17-WebUI功能扩展与RC交接_zh-CN.md`。
+QSO 草稿完整流程、截图差异、受限 radio API、1280/390 视口指标、浏览器操作回读和无 HIL 边界见 `docs/web-ui/P18-WebUI-QSO与视口验收_zh-CN.md`。P17 的历史实现与 RC 交接仍见 `docs/web-ui/P17-WebUI功能扩展与RC交接_zh-CN.md`。

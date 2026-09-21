@@ -2,6 +2,7 @@
 #include "JtdxWebDx.hpp"
 
 #include <QCoreApplication>
+#include <QJsonDocument>
 #include <QUuid>
 
 #include <algorithm>
@@ -72,6 +73,15 @@ bool JtdxWebControl::printable_ascii (QString const& value, int max_length)
   return true;
 }
 
+bool JtdxWebControl::printable_radio_text (QString const& value, int max_length)
+{
+  if (value.size () > max_length) return false;
+  for (QChar const character : value)
+    if (character.unicode () < 0x20 || character.unicode () > 0x7e)
+      return false;
+  return true;
+}
+
 QString JtdxWebControl::canonical_payload (Request const& request)
 {
   if (request.operation == Operation::Frequency)
@@ -83,7 +93,8 @@ QString JtdxWebControl::canonical_payload (Request const& request)
     return QStringLiteral ("radio:") + request.radio_action + QStringLiteral (":")
         + (request.radio_value ? QStringLiteral ("1") : QStringLiteral ("0"))
         + QStringLiteral (":") + QString::number (request.radio_index)
-        + QStringLiteral (":") + request.radio_text;
+        + QStringLiteral (":") + request.radio_text + QStringLiteral (":")
+        + QString::fromUtf8 (QJsonDocument {request.radio_qso}.toJson (QJsonDocument::Compact));
   QString const call = request.dx_call.trimmed ().toUpper ();
   QString const grid = request.dx_grid.trimmed ().toUpper ();
   return QStringLiteral ("select-dx:") + QString::number (call.size ()) + QStringLiteral (":") + call
@@ -155,6 +166,11 @@ void JtdxWebControl::set_observed_state (ObservedState state)
 void JtdxWebControl::set_observation_provider (ObservationProvider provider)
 {
   observation_provider_ = std::move (provider);
+}
+
+JtdxWebControl::ObservedState JtdxWebControl::observed_state () const
+{
+  return observation ();
 }
 
 void JtdxWebControl::set_frequency_dispatcher (DispatchHandler handler)
@@ -323,16 +339,20 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
         QStringLiteral ("decode"), QStringLiteral ("clear-dx"),
         QStringLiteral ("generate-message"), QStringLiteral ("cq"),
         QStringLiteral ("skip-tx1"), QStringLiteral ("select-tx"),
-        QStringLiteral ("set-tx-message")};
+        QStringLiteral ("set-tx-message"), QStringLiteral ("log-qso-confirm"),
+        QStringLiteral ("log-qso-cancel")};
       if (!actions.contains (request.radio_action))
         return reject (request, QStringLiteral ("invalid_radio_action"), 400);
       if (request.radio_index < 0 || request.radio_index > 6
-          || (!printable_ascii (request.radio_text, 64) && !request.radio_text.isEmpty ()))
+          || !printable_radio_text (request.radio_text, 64))
         return reject (request, QStringLiteral ("invalid_radio_fields"), 400);
       if ((request.radio_action == QStringLiteral ("select-tx")
            || request.radio_action == QStringLiteral ("set-tx-message"))
           && (request.radio_index < 1 || request.radio_index > 6))
         return reject (request, QStringLiteral ("invalid_tx_index"), 400);
+      if (request.radio_action == QStringLiteral ("log-qso-confirm")
+          && request.radio_qso.isEmpty ())
+        return reject (request, QStringLiteral ("qso_draft_required"), 400);
     }
 
   QString const request_epoch = epoch_;
@@ -422,6 +442,7 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
   record.radio_value = request.radio_value;
   record.radio_index = request.radio_index;
   record.radio_text = request.radio_text;
+  record.radio_qso = request.radio_qso;
   record.baseline_business_generation = current.business_generation;
   record.target_cq_state = request.operation == Operation::StartCq ? QStringLiteral ("armed")
       : request.operation == Operation::StopAutoCall ? QStringLiteral ("idle") : QString {};
@@ -497,6 +518,7 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
   dispatch.radio_value = request.radio_value;
   dispatch.radio_index = request.radio_index;
   dispatch.radio_text = request.radio_text;
+  dispatch.radio_qso = request.radio_qso;
   DispatchHandler handler = request.operation == Operation::Frequency ? frequency_dispatcher_
       : request.operation == Operation::SelectDx ? select_dx_dispatcher_ : business_dispatcher_;
   try
@@ -627,6 +649,7 @@ bool JtdxWebControl::prepare_dispatch (QString const& request_id, QString const&
   result.radio_value = it.value ().radio_value;
   result.radio_index = it.value ().radio_index;
   result.radio_text = it.value ().radio_text;
+  result.radio_qso = it.value ().radio_qso;
   *prepared = std::move (result);
   return true;
 }
@@ -703,7 +726,8 @@ bool JtdxWebControl::begin_dispatch (Dispatch const& dispatch)
       || dispatch.radio_action != it.value ().radio_action
       || dispatch.radio_value != it.value ().radio_value
       || dispatch.radio_index != it.value ().radio_index
-      || dispatch.radio_text != it.value ().radio_text)
+      || dispatch.radio_text != it.value ().radio_text
+      || dispatch.radio_qso != it.value ().radio_qso)
     return false;
   it.value ().dispatched = true;
   return true;
@@ -897,7 +921,12 @@ bool JtdxWebControl::feedback_radio (QString const& request_id, QString const& s
   else if (record.radio_action == QStringLiteral ("set-tx-message"))
     matched = record.radio_index >= 1 && record.radio_index <= observed.radio_tx_messages.size ()
       && observed.radio_tx_messages.at (record.radio_index - 1) == record.radio_text;
-  else if (record.radio_action == QStringLiteral ("log-qso")) matched = observed.radio_log_dialog_open;
+  else if (record.radio_action == QStringLiteral ("log-qso")) matched = !observed.radio_qso_draft.isEmpty ()
+      && observed.radio_log_dialog_open;
+  else if (record.radio_action == QStringLiteral ("log-qso-cancel")) matched = !observed.radio_log_dialog_open;
+  else if (record.radio_action == QStringLiteral ("log-qso-confirm"))
+    matched = !observed.radio_log_dialog_open
+      && observed.radio_qso_generation > record.result.snapshot.radio_qso_generation;
   else if (record.radio_action == QStringLiteral ("cq")) matched = observed.cq_state == QStringLiteral ("armed");
   if (!matched) return false;
   record.result.snapshot = observed;

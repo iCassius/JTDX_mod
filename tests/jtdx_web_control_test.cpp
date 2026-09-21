@@ -193,6 +193,55 @@ int main ()
          "CQ command requires a later matching business-state readback");
   control.set_observed_state (safe_state (1));
 
+  Control radio_control {100};
+  bind_fixture_epoch (radio_control);
+  radio_control.set_clock_for_test (0);
+  auto radio_observation = safe_state (1);
+  radio_observation.radio_state_known = true;
+  radio_observation.radio_qso_generation = 0;
+  radio_control.set_observed_state (radio_observation);
+  radio_control.set_business_dispatcher ([&] (Control::Dispatch const& dispatch) {
+    Control::Dispatch prepared;
+    check (radio_control.prepare_dispatch (dispatch.request_id, dispatch.server_epoch, &prepared),
+           "radio dispatch prepares at execution time");
+    check (radio_control.begin_dispatch (prepared), "radio dispatch begins exactly once");
+  });
+  Control::Request radio_open;
+  radio_open.request_id = QStringLiteral ("radio-open");
+  radio_open.operation = Control::Operation::Radio;
+  radio_open.server_epoch = radio_control.server_epoch ();
+  radio_open.state_revision = 1;
+  radio_open.radio_action = QStringLiteral ("log-qso");
+  check (radio_control.submit (radio_open).status == Control::Status::Pending,
+         "Web QSO open enters pending without writing a record");
+  radio_observation.state_revision = 2;
+  radio_observation.radio_log_dialog_open = true;
+  radio_observation.radio_qso_draft = QJsonObject {{QStringLiteral ("call"), QStringLiteral ("K1ABC")}};
+  radio_observation.radio_qso_generation = 1;
+  radio_control.set_observed_state (radio_observation);
+  check (radio_control.feedback_radio (QStringLiteral ("radio-open"), radio_control.server_epoch (), 2,
+                                       radio_observation)
+         && radio_control.result (QStringLiteral ("radio-open")).status == Control::Status::Completed,
+         "Web QSO open completes only after draft readback");
+  Control::Request radio_confirm = radio_open;
+  radio_confirm.request_id = QStringLiteral ("radio-confirm");
+  radio_confirm.state_revision = 2;
+  radio_confirm.radio_action = QStringLiteral ("log-qso-confirm");
+  radio_confirm.radio_qso = radio_observation.radio_qso_draft;
+  check (radio_control.submit (radio_confirm).status == Control::Status::Pending,
+         "Web QSO confirm enters pending with a bounded draft");
+  radio_observation.state_revision = 3;
+  radio_observation.radio_log_dialog_open = false;
+  radio_observation.radio_qso_draft = {};
+  radio_observation.radio_qso_generation = 2;
+  radio_control.set_observed_state (radio_observation);
+  check (radio_control.feedback_radio (QStringLiteral ("radio-confirm"), radio_control.server_epoch (), 3,
+                                       radio_observation),
+         "Web QSO confirm requires closed draft and a later generation");
+  auto duplicate_radio = radio_control.submit (radio_confirm);
+  check (duplicate_radio.status == Control::Status::Completed,
+         "Web QSO confirm is idempotent by request id");
+
   Control stop_control {100};
   bind_fixture_epoch (stop_control);
   stop_control.set_clock_for_test (0);
