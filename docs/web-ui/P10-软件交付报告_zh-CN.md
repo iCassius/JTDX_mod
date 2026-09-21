@@ -11,11 +11,25 @@ P10 不改变生产功能边界。唯一代码变更是 `resources/web-ui/app.js
 
 ## P12 追加：本地控制诊断日志
 
-P12 将控制生命周期接入现有 MainWindow recovery log：`jtdx_recovery.log` 位于实例已有可写数据目录，主动文件上限 `256 KiB`，只保留一个 `.1` 轮转文件。日志写入为 UTF-8，写失败、打开失败或轮转失败只影响诊断，不影响控制、安全门、回读或未知锁；日志不是恢复状态源，也不参与新 epoch 或多浏览器解锁。
+P12 将控制生命周期接入现有 MainWindow recovery log：`jtdx_recovery.log` 位于实例已有可写数据目录，主动文件上限 `256 KiB`，只保留一个 `.1` 轮转文件。P13 又把 Hamlib CAT 诊断的同文件写入统一到同一组件，并保持既有本地 ISO 毫秒时间格式、UTF-8 和 `key=value` 字段分隔。写失败、打开失败或轮转失败只影响诊断，不影响控制、安全门、回读或未知锁；日志不是恢复状态源，也不参与新 epoch 或多浏览器解锁。
 
-每条记录包含 UTC 毫秒时间、规范化 `request_id`、操作、事件（`reject`/`accepted`/`transition`/`duplicate`）、状态、限长原因、generation/state revision 和有限 readback 摘要。换行/制表符、反斜杠和等号会被清洗或转义并限长；不写 Authorization、token、密码、原始 HTTP、call/grid 或其他凭据。相同 request ID 与相同 payload 的重复请求只记录 `duplicate`，不会再次执行 dispatcher。
+每条 Web 记录包含本地 ISO 毫秒时间、规范化 `request_id`、操作、事件（`reject`/`accepted`/`transition`/`duplicate`）、状态、限长原因、generation/state revision 和有限 readback 摘要。Web 字段值的换行/制表符、反斜杠和等号会被清洗或转义并限长；通用写入器保留既有 `key=value` 分隔。日志不写 Web Authorization、token、密码、原始 HTTP、call/grid 或其他凭据。相同 request ID 与相同 payload 的重复请求只记录 `duplicate`，不会再次执行 dispatcher。
 
-P12 自动证据：构建 `C:\JTDX64\deps-webui\p12-build-20260921-r3.log`；定向配置、Control、MainWindow 合同、Server、Service 与本地日志测试为 `6/6`，日志 `C:\JTDX64\deps-webui\p12-focused-20260921-r2.log`；全量 CTest 为 `23/23`、`100% tests passed`、57.29 秒，日志 `C:\JTDX64\deps-webui\p12-final-ctest-20260921.log`。新增本地日志测试覆盖临时目录、Unicode/换行注入、主动/轮转大小、重复生命周期和不可写路径；真实 MainWindow、CAT/PTT/TX/HIL、部署和 LAN 仍未验证/未授权。
+P12 自动证据：构建 `C:\JTDX64\deps-webui\p12-build-20260921-r3.log`；定向配置、Control、MainWindow 合同、Server、Service 与本地日志测试为 `6/6`，日志 `C:\JTDX64\deps-webui\p12-focused-20260921-r2.log`；全量 CTest 为 `23/23`、`100% tests passed`、57.29 秒，日志 `C:\JTDX64\deps-webui\p12-final-ctest-20260921.log`。P13 对代码基线 `d6dbad6` 的统一日志构建为 `C:\JTDX64\deps-webui\p13-build-20260921.log`，定向测试为 `C:\JTDX64\deps-webui\p13-focused-20260921.log`，全量 CTest 为 `23/23`、`100% tests passed`、57.29 秒，日志 `C:\JTDX64\deps-webui\p13-final-ctest-20260921.log`；恢复提示资源在 `a19146f` 后由 `node --check resources/web-ui/app.js` 和 `C:\JTDX64\deps-webui\p13-ui-build-20260921.log` 验证。新增边界测试覆盖临时目录、Unicode/换行注入、key=value 兼容、超长单条、超大既有文件轮转、重复生命周期和不可写路径；真实 MainWindow、CAT/PTT/TX/HIL、部署和 LAN 仍未验证/未授权。
+
+## P13 最终软件交付摘要与人工验收清单
+
+最终代码来源为 `d6dbad6`（统一恢复日志写入边界）和 `a19146f`（未确认锁恢复提示）；最终文档提交另列，不把文档提交号写入自身。统一日志主程序/测试目标按 `p13-build-20260921.log` 构建，页面资源按 `p13-ui-build-20260921.log` 重建；唯一权威全量测试日志为 `p13-final-ctest-20260921.log`，共 `23/23`、`100%` 通过。P13 发现并修复了 Hamlib 与 MainWindow 分别直接写同一日志文件的问题，以及超大既有文件轮转后 `.1` 仍可能超限的问题；未改变 CAT 诊断字段顺序、时间格式、UTF-8 或 `key=value` 解析约定。
+
+当前默认边界：Web UI 关闭、自动端口选择开启、默认绑定 `127.0.0.1`、LAN 关闭；频率、DX、CQ/AutoSeq 控制分别关闭；无 token 输入、校验或写回。显式 LAN 仍要求用户主动开启并配置精确 allowed origin。控制完成必须有实际频率、DX 或业务状态回读；`accepted/pending`、HTTP 200、日志写入和 UDP datagram 都不等于完成。AutoSeq 只启用既有 decode-driven 流程并等待下一批实时解码，不等于立即呼叫当前 DX。
+
+人工验收清单（只使用用户自有实例和授权环境）：
+
+1. 在设置中核对 Web UI 默认关闭、loopback、自动/手动端口，确认保存/重载、端口冲突、停止/启动 Web 服务和菜单重复操作；不启用 LAN，除非用户明确授权。
+2. 核对页面无 token 输入；分别开启频率/DX/CQ/AutoSeq 后，确认登记、处理中、匹配回读和拒绝结果，且未回读时不显示完成。
+3. 在 AutoSeq 场景确认页面文案是“等待实时解码”，不是立即呼叫当前 DX；确认 Stop 优先级、`idle/disabled` 回读和未知结果保护。
+4. 若已 dispatch 的请求超时并保留 `unconfirmed_feedback`，先执行安全 Stop；若普通控制仍锁定，关闭并重启 JTDX 以重建 `JtdxWebControl`。刷新网页、重启 Web 服务、读取/删除日志均不能解锁，也不得自动重发。
+5. 仅在单独授权后验证真实 CAT/DX/CQ 回读、PTT/TX/HIL、长时运行、部署和 LAN；本批没有执行这些操作，也没有修改 UDP 监听/配置、线程或服务架构。
 
 ## 2. 原交付要求追踪
 
@@ -125,7 +139,7 @@ P10 使用临时本机 TCP 代理把浏览器流量转发到自有 `--serve-brow
 
 ### 9.5 诊断与分层结论
 
-Web 未新增远程日志 API，也未新增 Web 专用本地诊断文件；这是有意遵守有限操作摘要边界。`/api/v1/state` 与 SSE 的有界 `operations` 已实际实现并回归 `request_id`、`received_ms`/`deadline_ms`/`completed_ms`、`reason`、generation 和 `readback.confirmed`；既有 MainWindow recovery log 只属于既有音频/AutoSeq/CAT 诊断，不宣称为 Web 访问日志。软件实现、自动 CTest、loopback 浏览器已验证；原生 MainWindow 人工操作、真实 CAT/DX/CQ 回读、PTT/TX、HIL、部署和 LAN 启用仍未验证/未授权。
+Web 未新增远程日志 API；本地 `jtdx_recovery.log` 由现有 MainWindow/Hamlib 写入路径统一受限，并加入 Web 控制诊断摘要，不作为状态源或 Web 访问审计日志。`/api/v1/state` 与 SSE 的有界 `operations` 已实际实现并回归 `request_id`、`received_ms`/`deadline_ms`/`completed_ms`、`reason`、generation 和 `readback.confirmed`；软件实现、自动 CTest、loopback 浏览器已验证；原生 MainWindow 人工操作、真实 CAT/DX/CQ 回读、PTT/TX、HIL、部署和 LAN 启用仍未验证/未授权。
 
 ## 8. 构建、测试与未完成事项
 

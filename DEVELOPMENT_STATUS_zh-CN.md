@@ -21,7 +21,7 @@ Web UI 工作从阶段 `P0 文档与事实基线` 开始，当前只完成需求
 - 新批次优先接受明确发给本台的标准报文，并按 `QsoHistory` 已有 RCALL、RREPORT、RRREPORT、RRR、RRR73、R73 状态恢复 Tx2/Tx3/Tx4/Tx5；完整中断呼号保留在 DX 字段，匹配键单独使用基本呼号。
 - 首个 73 的历史记录可能在 TX 开始时已经写成 `FIN`。只有本批实际收到原台的 `RRR`、`RR73` 或 `73` 才允许判断结束；若故障时 Tx5 在途则重发 Tx5，否则不凭旧 `FIN` 再发射。
 - 没有原台续联或新候选时 DX 保持为空、票据继续等待；实际新候选才消费恢复票据。用户停发、Escape、UDP HaltTx、禁用、清除、目标/模式/波段/Tx 周期变化均取消票据；内部故障 halt 保留票据。
-- `jtdx_recovery.log` 的 Hamlib 错误记录与 FTX-1 聚合失败计数使用同一受限日志轮换；日志互斥只覆盖 Hamlib 写入者，不宣称覆盖 MainWindow 的全局线程安全。
+- `jtdx_recovery.log` 的 Hamlib 错误记录、FTX-1 聚合失败计数与 Web 控制诊断使用 `JtdxLocalLog` 的同一受限写入/轮换；Hamlib 的策略互斥仍只覆盖其诊断决策，不能据此宣称 MainWindow 的全局业务线程安全。
 
 本 `.9` 构建明确使用 `WSJT_ENABLE_OMNIRIG=OFF`，沿用 Hamlib-only 交付边界；默认选项仍保持 `ON`。以实现提交 `e5a4381e6ac496c7d1a0088e39c1e3a08d94ad2a`、文档结果提交/构建 artifact code HEAD `651bf9f674d0e028ed0a6e03e5e7cd86c72701bc` 为依据，权威 `build-159.2.9` MinGW64 Release 构建完成，最终 CTest `13/13` 通过（总耗时 22.00 秒，含 `autoseq_recovery_policy_test` 与 `omnirig_build_option_test`）。
 

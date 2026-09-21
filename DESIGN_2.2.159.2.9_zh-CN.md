@@ -44,7 +44,7 @@ CAT 故障且 AutoSeq 有真实发射意图
 
 ## 取消条件与诊断
 
-用户停发、Escape、UDP `HaltTx`、禁用 Enable Tx、清除 DX、编辑目标、改变模式/波段/Tx 周期均取消票据。CAT 内部故障触发的 `haltTx` 由内部标记与用户停发区分，保留票据。Hamlib 错误回调和 FTX-1 聚合失败计数写入受 256 KiB 轮换限制的 `jtdx_recovery.log`；互斥只保护 Hamlib 日志写入者，不能据此宣称 MainWindow 全局线程安全。
+用户停发、Escape、UDP `HaltTx`、禁用 Enable Tx、清除 DX、编辑目标、改变模式/波段/Tx 周期均取消票据。CAT 内部故障触发的 `haltTx` 由内部标记与用户停发区分，保留票据。Hamlib 错误回调和 FTX-1 聚合失败计数写入由 `JtdxLocalLog` 统一受 256 KiB/单 `.1` 轮换限制的 `jtdx_recovery.log`；Hamlib 的策略互斥和写入器互斥分别只承担各自职责，不能据此宣称 MainWindow 全局线程安全。
 
 ## 验证边界
 

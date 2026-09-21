@@ -6,9 +6,9 @@
 
 ### P12 有界本地控制诊断日志（2026-09-21）
 
-控制生命周期写入现有数据目录下的 `jtdx_recovery.log`：主动文件最多 `256 KiB`，只轮转为一个 `.1` 文件，使用 UTF-8；目录、文件名和轮转均沿用现有实例隔离路径。记录只保留 UTC 时间、规范化 request ID、操作、事件/状态、限长原因、generation/state revision 和有限 readback 摘要；换行、制表符、反斜杠和等号会被安全处理，绝不记录 Authorization、token、密码、原始 HTTP 或凭据。日志写失败不改变控制和安全结果，日志也不参与未知状态恢复。
+控制生命周期写入现有数据目录下的 `jtdx_recovery.log`：主动文件最多 `256 KiB`，只轮转为一个 `.1` 文件，沿用既有本地 ISO 毫秒时间和 UTF-8；目录、文件名和轮转均沿用现有实例隔离路径。记录只保留规范化 request ID、操作、事件/状态、限长原因、generation/state revision 和有限 readback 摘要；Web 字段值的换行、制表符、反斜杠和等号会被安全处理，通用写入器保留既有 `key=value` 分隔，绝不记录 Web Authorization、token、密码、原始 HTTP 或凭据。日志写失败不改变控制和安全结果，日志也不参与未知状态恢复。
 
-P11 的未确认锁经核对仍是服务级安全状态：新 epoch、多浏览器、断线重连和日志文件都不能解锁；只有当前 Stop 经当前 epoch/revision 校验并得到 `idle/disabled` 回读后才完成停止，而且旧未知锁继续保留。构建与定向测试见 `C:\JTDX64\deps-webui\p12-build-20260921-r3.log`、`p12-focused-20260921-r2.log`；全量 CTest `23/23`、`100% tests passed` 见 `p12-final-ctest-20260921.log`。真实 MainWindow、CAT/PTT/TX/HIL 和部署仍按边界单独报告。
+P11 的未确认锁经核对仍是服务级安全状态：新 epoch、多浏览器、断线重连、停止/启动 Web 服务和日志文件都不能解锁；只有当前 Stop 经当前 epoch/revision 校验并得到 `idle/disabled` 回读后才完成停止，而且旧未知锁继续保留。若 Stop 已确认但普通 CQ/AutoSeq/频率/DX 控制仍被锁定，必须关闭并重启 JTDX，让新的 `JtdxWebControl` 实例重建；不能靠刷新网页、重启 Web 服务、读取/删除日志或自动重发绕过安全门。构建与定向测试见 `C:\JTDX64\deps-webui\p12-build-20260921-r3.log`、`p12-focused-20260921-r2.log`；全量 CTest `23/23`、`100% tests passed` 见 `p12-final-ctest-20260921.log`。真实 MainWindow、CAT/PTT/TX/HIL 和部署仍按边界单独报告。
 
 ### P7 Web 访问与页面布局收口（2026-09-21）
 

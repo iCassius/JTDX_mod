@@ -16,7 +16,7 @@
 | P9 | DX 新鲜/过期选择、在途 Stop 接管、取消/重复 POST 计数、跨 epoch 与 timeout | 已完成隔离浏览器闭环：DX 匹配回读且不触发 TX；stale 锁定；Stop 以 `superseded_by_stop` 接管旧启动；取消/重复点击无额外 POST；跨 epoch 不误报完成；timeout 显示 `feedback_timeout`；定向/全量 CTest 通过 |
 | P10 | 错误身份回包、确认后重复提交、MainWindow 无硬件隔离审查、软件交付报告 | 已完成软件收尾：错误 `request_id`/`server_epoch` 回包均保持未知/处理中保护；同一确认 POST 实际重复转发仍只保留一条记录；自有 `--test-mode` MainWindow 安全启动/停止通过；原生窗口人工验收、CAT/PTT/TX/HIL/部署未完成 |
 | P11 | 主程序嵌入资源重建、未确认锁后的安全 Stop、结果字段和 MainWindow 集成边界 | 已完成最小 operation-specific Stop 修复：超时后 Stop 以 `automation_stopped`/`idle/disabled` 回读完成但不解除旧 latch；主程序 `qrc_jtdx.cpp`/`jtdx.exe` 已重建，最终 CTest `22/22`；原生窗口人工验收、CAT/PTT/TX/HIL/部署未完成 |
-| P12 | 有界本地控制诊断日志、生命周期/重复/拒绝记录、写失败隔离、P11 新 epoch/多浏览器恢复核对 | 已完成：复用现有数据目录的 `jtdx_recovery.log`，主动文件 `256 KiB`、仅 `.1` 轮转；UTF-8、注入清洗、无凭据；定向 CTest `6/6`、全量 CTest `23/23`；原生窗口人工验收、CAT/PTT/TX/HIL/部署未完成 |
+| P12/P13 | 有界本地控制诊断日志、Hamlib 同文件统一写入、超大既有文件边界、生命周期/重复/拒绝记录、P11 新 epoch/多浏览器恢复核对 | 已完成：复用现有数据目录的 `jtdx_recovery.log`，主动文件 `256 KiB`、仅 `.1` 轮转；保留既有本地时间/UTF-8/`key=value` 约定，定向 CTest `6/6`、全量 CTest `23/23`；普通控制恢复步骤已明确为必要时重启 JTDX；原生窗口人工验收、CAT/PTT/TX/HIL/部署未完成 |
 | HIL | CAT/PTT/TX、设备回读、长时运行和无线电行为；需独立授权 | 未授权 |
 
 ## 必测条目追踪
