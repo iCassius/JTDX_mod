@@ -84,7 +84,40 @@ P10 使用临时本机 TCP 代理把浏览器流量转发到自有 `--serve-brow
 - 错误 `server_epoch`：同样的确认后真实 POST，回包只改 `server_epoch`；页面保持未知/处理中保护，不把 HTTP 回包误当完成。
 - 确认后重复 POST：代理把同一已确认 `start-auto-call` POST 实际转发两次；页面只保留 1 条 `启用 AutoSeq/处理中/awaiting_feedback`。代理日志 `C:\JTDX64\deps-webui\p10-proxy-duplicate.stdout.log` 含 `DUPLICATE_FORWARD` 与 `DUPLICATE_COMPLETE`。
 - P9 既有专项：新鲜 DX 选择、陈旧隐藏、在途 Stop、取消/重复点击零 POST、跨 epoch、timeout 的证据见 [`PROGRESS_zh-CN.md`](PROGRESS_zh-CN.md) 和 `p9-*` 日志。
-- Timeout 未确认锁专项：最终构建 `C:\JTDX64\deps-webui\p10-timeout-ui-build-20260921-r2.log`；定向 `C:\JTDX64\deps-webui\p10-timeout-ui-focused-20260921-r2.log` 为 `3/3`；全量 `C:\JTDX64\deps-webui\p10-timeout-ui-final-ctest-20260921-r2.log` 为 `22/22`。浏览器中超时行显示 `超时/feedback_timeout`，启动 CQ/AutoSeq 按钮保持禁用、Stop 可用；确认 Stop 后服务端返回 `unconfirmed_feedback`，页面仍保持“服务端保留未确认锁”，未重新开放启动按钮。
+- P10 原始 Timeout 观察：最终构建 `C:\JTDX64\deps-webui\p10-timeout-ui-build-20260921-r2.log`；定向 `C:\JTDX64\deps-webui\p10-timeout-ui-focused-20260921-r2.log` 为 `3/3`；全量 `C:\JTDX64\deps-webui\p10-timeout-ui-final-ctest-20260921-r2.log` 为 `22/22`。当时页面显示 `超时/feedback_timeout`，启动 CQ/AutoSeq 禁用、Stop 可用；P11 已修正服务端 Stop 误拦截和前端完成后误解锁，当前权威结论见下节。
+
+## 9. P11 追加核查与当前交付边界
+
+### 9.1 主程序资源链
+
+`CMakeLists.txt` 的 `resources/web-ui/app.js` 通过 `add_resources` 进入主程序 `wsjtx_RESOURCES_RCC`，`jtdx` 目标包含生成的 RCC。`C:\JTDX64\deps-webui\p11-build-20260921-r3.log` 明确记录 `qrc_jtdx.cpp` 重新生成并最终链接 `jtdx.exe`；`p11-build-20260921-r5.log` 记录更新 fixture 资源后 `jtdx_web_server_test.exe` 最终链接。P11 因此同时核实了主程序资源目标和测试资源目标，没有把 fixture 资源当作主程序交付证明。
+
+### 9.2 未确认锁后的 Stop 语义
+
+`JtdxWebControl::submit()` 现在只对 `unconfirmed_latch_` 放行 `StopAutoCall`；其他新启动/频率/DX改变操作仍返回 `unconfirmed_feedback`。Stop 仍经过 epoch/revision、pending/一次性 begin 和现有业务回读。`MainWindow::applyWebStopAutoCall()` 的顺序仍是既有 `on_stopTxButton_clicked()` 后 `on_AutoSeqButton_clicked(false)`，没有新增 PTT/TX 直写。旧超时回调因 request/pending/epoch 校验不能复活，Stop 完成也不清除旧 latch。
+
+### 9.3 最终验证
+
+- 构建：`p11-build-20260921-r3.log`（主程序 `qrc_jtdx.cpp`、`jtdx.exe` 与受影响测试目标）及 `p11-build-20260921-r5.log`（最终 Server fixture 链接）。
+- 定向：`C:\JTDX64\deps-webui\p11-pre-final-focused-20260921.log`，`configuration_web_ui_test`、Control、MainWindow 合同、Server、Service 为 `5/5`。
+- 全量：`C:\JTDX64\deps-webui\p11-final-ctest-20260921.log`，CTest `22/22`、`100% tests passed`、58.38 秒。
+- 浏览器：更新 timeout fixture 实际先显示 `AutoSeq enabled`/`armed/calling`，超时后启动按钮禁用、Stop 可用；确认 Stop 后操作卡为 `已完成（已确认）/automation_stopped`，回读为 `idle/idle` 与 AutoSeq `disabled`，启动按钮仍禁用；页面状态说明 Stop 完成不解除旧未确认锁。
+
+### 9.4 MainWindow 集成边界与人工步骤
+
+已有 `configuration_web_ui_test` 真实运行 Configuration 对话框，覆盖取消不落盘、确认保存、重载、默认 `Rig=None`/loopback/控制关闭、无 token 编辑器和非法端口 fail-closed。完整 MainWindow 没有可安全复用的测试构造/注入层；直接创建它会启动既有音频线程、解码子进程、QSettings 和 CAT 初始化，所以不以源码字符串或重复进程启动冒充人工窗口验收。
+
+用户后续若授权桌面手工验收，可在独立实例中按以下步骤执行：
+
+1. 用 `jtdx.exe --test-mode --rig-name <唯一名>` 启动，确认默认 Web 关闭、`Rig=None`、UDP 控制关闭。
+2. 设置 → Web UI：开启 Web、保持 `127.0.0.1`、自动端口；保存后确认状态为运行中且地址可打开。
+3. 重开设置确认值保持；改手动端口后保存，再次重开确认；重复点击菜单只保持一个服务/一个地址。
+4. 用另一个本机 TCP 监听占住手动端口，确认页面/设置显示失败且不改 UDP；切回自动端口后确认服务恢复。
+5. 停止/重启服务和关闭窗口，确认监听释放；全程不连接 CAT、不启用 LAN、不执行 PTT/TX。
+
+### 9.5 诊断与分层结论
+
+Web 未新增远程日志 API，也未新增 Web 专用本地诊断文件；这是有意遵守有限操作摘要边界。`/api/v1/state` 与 SSE 的有界 `operations` 已实际实现并回归 `request_id`、`received_ms`/`deadline_ms`/`completed_ms`、`reason`、generation 和 `readback.confirmed`；既有 MainWindow recovery log 只属于既有音频/AutoSeq/CAT 诊断，不宣称为 Web 访问日志。软件实现、自动 CTest、loopback 浏览器已验证；原生 MainWindow 人工操作、真实 CAT/DX/CQ 回读、PTT/TX、HIL、部署和 LAN 启用仍未验证/未授权。
 
 ## 8. 构建、测试与未完成事项
 

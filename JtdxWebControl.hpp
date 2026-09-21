@@ -215,7 +215,7 @@ private:
   bool shutdown_ {false};
   bool server_epoch_bound_ {false};
   // 超时或已 begin 操作被服务停止后保持未确认门，避免迟到 CAT 回读与下一请求混淆；
-  // 只有显式的上层恢复策略才能清除此门。
+  // Stop 仍可走既有 fail-safe 停止路径，但不会因此清除此门。
   bool unconfirmed_latch_ {false};
   bool submit_in_progress_ {false};
   quint64 operation_revision_ {0};

@@ -37,6 +37,17 @@
 - 超时锁收口：最终浏览器观察到 `超时/feedback_timeout` 后启动按钮禁用、Stop 可用；确认 Stop 被服务端以 `unconfirmed_feedback` 拒绝后，启动按钮仍禁用。最终构建 `p10-timeout-ui-build-20260921-r2.log`、定向 `p10-timeout-ui-focused-20260921-r2.log`（3/3）和全量 `p10-timeout-ui-final-ctest-20260921-r2.log`（22/22）。
 - 交付：新增 [`P10-软件交付报告_zh-CN.md`](P10-软件交付报告_zh-CN.md)，覆盖 14 项原交付要求、API/配置/调用路径、简短使用说明、浏览器证据、唯一权威构建/CTest 日志和未验证边界。P9 权威构建/测试日志不因本批纯文档与流量观察而重测。
 
+### 2026-09-21 P11 超时 Stop 恢复、主程序资源重建与集成边界核查
+
+- 构建来源：CMake 的 `add_resources(... /web-ui ... app.js)` 进入 `wsjtx_RESOURCES_RCC`，`jtdx` 目标实际包含该 RCC；`C:\JTDX64\deps-webui\p11-build-20260921-r3.log` 明确重新生成 `qrc_jtdx.cpp` 并链接 `jtdx.exe`，同时重建 Control/Server/Service 测试目标。测试 fixture 资源在 `p11-build-20260921-r5.log` 中重新链接；因此本批没有把测试 QRC 当作主程序资源证明。
+- Stop 语义：源码原先在全局 `unconfirmed_latch_` 判断处连 Stop 一并拒绝，和已有 `safe_to_dispatch()` 高优先级 Stop 规则及 `MainWindow::applyWebStopAutoCall()` 的“先停 TX、再关闭 AutoSeq”路径不一致。最小修复仅允许 `StopAutoCall` 穿过该锁；启动、频率、DX 和其他改变操作仍拒绝 `unconfirmed_feedback`。Stop 仍须经过当前 epoch/revision、一次性 begin 和 idle/disabled 业务回读，完成后不清除旧 latch；迟到旧回调仍因 pending/request 校验失败而不能复活。
+- 自动证据：`p11-pre-final-focused-20260921.log` 为配置、Control、MainWindow 合同、Server、Service `5/5`；最终 `p11-final-ctest-20260921.log` 为全量 `22/22`、58.38 秒。新增 Control 测试覆盖“已 begin 超时 → Stop 完成 → 启动仍被锁定”，Server fixture 让未确认 AutoSeq 进入 `armed/calling` 后再由 Stop 回读 `idle/disabled`。
+- 浏览器证据：更新后的 timeout fixture 实际显示 `AutoSeq enabled` 与 `armed/calling`；超时后启动 CQ/AutoSeq 禁用、Stop 可用；确认 Stop 后操作结果为 `已完成（已确认）/automation_stopped`，页面回读 `idle/idle`、AutoSeq `disabled`，启动按钮仍禁用，状态显示“停止已由业务状态回读确认；服务端仍保留旧操作的未确认锁”。
+- 前端收口：`resources/web-ui/app.js` 增加请求级 `preserveUnknown`，Stop 完成或 epoch 变化时不把旧未知操作误解锁；`node --check` 与 `git diff --check` 通过。当前页面不再把“Stop 可执行”与“旧不确定操作已被证明完成”混为一谈。
+- MainWindow 集成评估：已有 `configuration_web_ui_test` 真实执行 Configuration 对话框取消/确认、持久化重载、默认 `Rig=None`/loopback/控制关闭和非法端口；仓库没有可复用的完整 MainWindow 测试构造/注入层，直接纳入会启动既有音频线程、解码子进程、QSettings 和 CAT 初始化，无法证明无硬件隔离，因此不做大规模测试重构。完整 Settings Tab、菜单重复、端口冲突/重启/退出释放和窗口视觉保留人工验收，并在 P11 报告附简短步骤/预期结果。
+- 诊断与结果字段：未新增远程日志或日志 API；现有 `/api/v1/state`/SSE 有界 `operations` 实际保留 `request_id`、`received_ms`/`deadline_ms`/`completed_ms`、`reason`、generation 和 `readback.confirmed`，Server timeout/Stop 回归已观察这些字段。Web 不写新的本地诊断文件；现有 MainWindow recovery log 仍是既有音频/AutoSeq/CAT 诊断，不冒充 Web 访问日志。该边界作为明确未新增小项记录。
+- 层级结论：软件实现/自动 CTest/loopback 浏览器已通过；原生 MainWindow 人工操作、真实 CAT/DX/CQ 状态回读、PTT/TX、HIL、部署和 LAN 启用仍未验证/未授权。
+
 ### 2026-09-21 P6 页面确认与浏览器业务回归收尾记录
 
 - 范围：基于 `main/c6f14fd`，只处理页面确认可控性、CQ/AutoSeq/Stop 的 loopback 浏览器链路和交付记录；不启动真实 `jtdx.exe`，不连接 CAT/电台，不执行 PTT/TX/HIL，不改 UDP、不新增生产 API/线程/进程。

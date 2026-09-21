@@ -379,25 +379,31 @@
     if (!businessRequest || !snapshot) return;
     const epoch = typeof snapshot.server_epoch === "string" ? snapshot.server_epoch : "";
     if (epoch && epoch !== businessRequest.epoch) {
+      const preserveUnknown = businessRequest.preserveUnknown === true;
       businessRequest = null;
-      businessUnknown = false;
-      businessStatus("服务状态已刷新，旧 CQ/AutoSeq 请求已失效。", "warning");
+      businessUnknown = preserveUnknown;
+      businessStatus(preserveUnknown
+        ? "服务状态已刷新，但服务端未确认锁仍保留；请先确认停止状态。"
+        : "服务状态已刷新，旧 CQ/AutoSeq 请求已失效。", "warning");
       return;
     }
     const row = operationForBusiness(snapshot);
     if (row && terminalOperation(row)) {
+      const preserveUnknown = businessRequest.preserveUnknown === true;
       if (row.status === "completed" && readbackMatchesBusiness(row, businessRequest)) {
-        businessStatus(businessRequest.operation === "start-auto-call"
-          ? "AutoSeq 已启用，等待下一批实时解码驱动自动呼叫；未表示已开始具体呼叫。"
-          : "CQ/AutoSeq 操作已由业务状态回读确认。", "success");
+        businessStatus(preserveUnknown
+          ? "停止已由业务状态回读确认；服务端仍保留旧操作的未确认锁。"
+          : businessRequest.operation === "start-auto-call"
+            ? "AutoSeq 已启用，等待下一批实时解码驱动自动呼叫；未表示已开始具体呼叫。"
+            : "CQ/AutoSeq 操作已由业务状态回读确认。", preserveUnknown ? "warning" : "success");
         businessRequest = null;
-        businessUnknown = false;
+        businessUnknown = preserveUnknown;
       } else if (row.status === "completed") {
         businessUnknown = true;
         businessStatus("服务报告完成，但业务回读不匹配，结果未知。", "warning");
       } else {
         businessRequest = null;
-        businessUnknown = row.status === "timeout";
+        businessUnknown = preserveUnknown || row.status === "timeout";
         businessStatus(businessUnknown
           ? "CQ/AutoSeq 请求结果未知，服务端保留未确认锁："
             + boundedString(row.reason || "feedback_timeout", 180)
@@ -951,9 +957,10 @@
       businessStatus("浏览器没有可用的安全随机源，无法发送命令。", "error");
       return;
     }
-    const request = {requestId, operation, epoch: currentSnapshot.server_epoch, session: connectionSession};
+    const request = {requestId, operation, epoch: currentSnapshot.server_epoch, session: connectionSession,
+      preserveUnknown: operation === "stop-auto-call" && businessUnknown};
     businessRequest = request;
-    businessUnknown = false;
+    businessUnknown = request.preserveUnknown === true;
     businessStatus("正在发送" + labels[operation] + "…", "processing");
     updateBusinessControls();
     const local = new AbortController();
@@ -977,10 +984,12 @@
         businessStatus("命令已登记，等待业务状态回读；HTTP 响应不代表完成。", "processing");
       } else if (payload.status === "completed" && response.ok && readbackMatchesBusiness(payload, request)) {
         businessRequest = null;
-        businessUnknown = false;
-        businessStatus(request.operation === "start-auto-call"
-          ? "AutoSeq 已启用，等待实时解码驱动自动呼叫；未表示已开始具体呼叫。"
-          : "操作已由业务状态回读确认。", "success");
+        businessUnknown = request.preserveUnknown === true;
+        businessStatus(request.preserveUnknown
+          ? "停止已由业务状态回读确认；服务端仍保留旧操作的未确认锁。"
+          : request.operation === "start-auto-call"
+            ? "AutoSeq 已启用，等待实时解码驱动自动呼叫；未表示已开始具体呼叫。"
+            : "操作已由业务状态回读确认。", request.preserveUnknown ? "warning" : "success");
       } else if (payload.status === "timeout") {
         businessRequest = null;
         businessUnknown = true;
@@ -989,7 +998,7 @@
       } else if (payload.status === "failed" || payload.status === "rejected") {
         const reason = responseReason(payload, "服务未提供原因");
         businessRequest = null;
-        businessUnknown = reason === "unconfirmed_feedback";
+        businessUnknown = request.preserveUnknown === true || reason === "unconfirmed_feedback";
         businessStatus(businessUnknown
           ? "服务端保留未确认锁：" + reason
           : "命令未完成：" + reason,

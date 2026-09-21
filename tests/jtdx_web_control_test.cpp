@@ -302,6 +302,54 @@ int main ()
          == QStringLiteral ("unconfirmed_feedback"),
          "epoch rotation does not clear unconfirmed latch");
 
+  Control recovery {100};
+  bind_fixture_epoch (recovery);
+  recovery.set_clock_for_test (0);
+  recovery.set_observed_state (safe_state (1));
+  Control::Dispatch timed_out_business;
+  recovery.set_business_dispatcher ([&] (Control::Dispatch const& dispatch) {
+      timed_out_business = dispatch;
+      Control::Dispatch prepared;
+      check (recovery.prepare_dispatch (dispatch.request_id, dispatch.server_epoch, &prepared),
+             "timed-out business operation prepares before execution");
+      check (recovery.begin_dispatch (prepared), "timed-out business operation begins once");
+    });
+  Control::Request start_auto;
+  start_auto.request_id = QStringLiteral ("recovery-start");
+  start_auto.operation = Control::Operation::StartAutoCall;
+  start_auto.server_epoch = recovery.server_epoch ();
+  start_auto.state_revision = 1;
+  check (recovery.submit (start_auto).status == Control::Status::Pending,
+         "business operation can become an uncertain begun request");
+  recovery.advance_clock_for_test (100);
+  check (recovery.expire () && recovery.result (start_auto.request_id).status == Control::Status::Timeout,
+         "begun business operation asserts timeout latch");
+  check (!recovery.feedback_business (timed_out_business.request_id, timed_out_business.server_epoch,
+                                      1, QStringLiteral ("armed"), true, 2),
+         "late business feedback cannot revive the timed-out operation");
+  Control::Dispatch recovery_stop;
+  recovery.set_business_dispatcher ([&] (Control::Dispatch const& dispatch) {
+      recovery_stop = dispatch;
+      Control::Dispatch prepared;
+      check (recovery.prepare_dispatch (dispatch.request_id, dispatch.server_epoch, &prepared),
+             "stop remains executable while the old operation is uncertain");
+      check (recovery.begin_dispatch (prepared), "recovery stop begins through the existing path");
+    });
+  Control::Request stop_after_timeout;
+  stop_after_timeout.request_id = QStringLiteral ("recovery-stop");
+  stop_after_timeout.operation = Control::Operation::StopAutoCall;
+  stop_after_timeout.server_epoch = recovery.server_epoch ();
+  stop_after_timeout.state_revision = 1;
+  check (recovery.submit (stop_after_timeout).status == Control::Status::Pending,
+         "Stop remains admissible after an uncertain begun operation");
+  check (recovery.feedback_business (recovery_stop.request_id, recovery_stop.server_epoch,
+                                    1, QStringLiteral ("idle"), false, 2),
+         "recovery Stop completes only after idle business readback");
+  auto blocked_after_stop = start_auto;
+  blocked_after_stop.request_id = QStringLiteral ("recovery-start-again");
+  check (recovery.submit (blocked_after_stop).reason == QStringLiteral ("unconfirmed_feedback"),
+         "completed recovery Stop does not clear the old-operation latch");
+
   Control provider {100};
   bind_fixture_epoch (provider);
   provider.set_clock_for_test (0);

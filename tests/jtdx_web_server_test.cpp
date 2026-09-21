@@ -367,7 +367,13 @@ int main (int argc, char ** argv)
           JtdxWebControl::Dispatch prepared;
           if (!control.prepare_dispatch (dispatch.request_id, dispatch.server_epoch, &prepared)
               || !control.begin_dispatch (prepared)) return;
-          QTimer::singleShot (browser_automation_p9_fixture ? 60000 : 250,
+          if (browser_automation_p9_timeout_fixture
+              && prepared.operation == JtdxWebControl::Operation::StartAutoCall)
+            state.observe_business_state (true, QStringLiteral ("calling"), QStringLiteral ("armed"),
+                                          QStringLiteral ("CQ N0CALL FN31"));
+          QTimer::singleShot (browser_automation_p9_fixture
+                                  && prepared.operation != JtdxWebControl::Operation::StopAutoCall
+                              ? 60000 : 250,
                               &state, [&state, &control, prepared] {
               if (control.result (prepared.request_id).status != JtdxWebControl::Status::Pending)
                 return;

@@ -280,7 +280,11 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
         return existing.value ().result;
       return reject (request, QStringLiteral ("request_id_conflict"), 409);
     }
-  if (unconfirmed_latch_) return reject (request, QStringLiteral ("unconfirmed_feedback"), 409);
+  // An already-begun operation may still have taken effect after its feedback
+  // deadline.  Keep the latch for every new start/change, but preserve the
+  // existing fail-safe Stop path so the caller can quiesce that unknown work.
+  if (unconfirmed_latch_ && request.operation != Operation::StopAutoCall)
+    return reject (request, QStringLiteral ("unconfirmed_feedback"), 409);
   if (records_.size () >= hard_record_limit_)
     return reject (request, QStringLiteral ("record_limit"), 429);
   if (!pending_request_id_.isEmpty ())
