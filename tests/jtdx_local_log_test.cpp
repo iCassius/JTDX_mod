@@ -57,8 +57,37 @@ int main ()
          "unicode diagnostic line writes");
   QByteArray current = read (directory.absoluteFilePath (QStringLiteral ("control.log")));
   check (current.contains ("unicode-\xe8\xaf\x8a\xe6\x96\xad")
+             && current.contains ("injected=field")
              && current.count ('\n') == 1 && !current.contains ("\r\n"),
          "Unicode is retained and newline injection stays on one line");
+
+  JtdxLocalLog::Limits short_limits;
+  short_limits.max_bytes = 64;
+  check (JtdxLocalLog::append (directory, QStringLiteral ("oversize.log"),
+                               QStringLiteral ("legacy"), QString (2000, QLatin1Char ('x')),
+                               short_limits),
+         "overlong diagnostic line writes within the limit");
+  check (QFileInfo {directory.absoluteFilePath (QStringLiteral ("oversize.log"))}.size ()
+             <= short_limits.max_bytes,
+         "overlong single line stays within the limit");
+
+  QFile existing {directory.absoluteFilePath (QStringLiteral ("existing.log"))};
+  check (existing.open (QIODevice::WriteOnly), "oversize existing log fixture opens");
+  check (existing.write (QByteArray (400, 'e')) == 400, "oversize existing log fixture writes");
+  existing.close ();
+  JtdxLocalLog::Limits existing_limits;
+  existing_limits.max_bytes = 128;
+  check (JtdxLocalLog::append (directory, QStringLiteral ("existing.log"),
+                               QStringLiteral ("legacy"), QStringLiteral ("key=value"),
+                               existing_limits),
+         "oversize existing log is rotated and appended");
+  check (QFileInfo {directory.absoluteFilePath (QStringLiteral ("existing.log"))}.size ()
+             <= existing_limits.max_bytes
+             && QFileInfo {directory.absoluteFilePath (QStringLiteral ("existing.log.1"))}.size ()
+             <= existing_limits.max_bytes,
+         "active and rotated files stay bounded after an oversize existing file");
+  check (read (directory.absoluteFilePath (QStringLiteral ("existing.log"))).contains ("key=value"),
+         "legacy key-value separators remain parseable");
 
   for (int i = 0; i != 12; ++i)
     check (JtdxLocalLog::append (directory, QStringLiteral ("control.log"),

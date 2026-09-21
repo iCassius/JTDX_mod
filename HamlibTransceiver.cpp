@@ -2,6 +2,7 @@
 // All changes are shown in the patch file coming together with the full JTDX source code.
 
 #include "HamlibTransceiver.hpp"
+#include "JtdxLocalLog.hpp"
 
 #include <cstring>
 #include <cmath>
@@ -36,20 +37,10 @@ namespace
   // model from contaminating the poll that is being evaluated here.
   thread_local std::uint64_t hamlib_wrong_reply_generation {0};
 
-  QString recovery_log_path ()
+  void append_recovery_log (QString area, QString message)
   {
-    return QDir (QStandardPaths::writableLocation (QStandardPaths::DataLocation))
-      .absoluteFilePath (QStringLiteral ("jtdx_recovery.log"));
-  }
-
-  void rotate_recovery_log_if_needed (QString const& path)
-  {
-    QFileInfo const info {path};
-    if (info.exists () && info.size () >= 256 * 1024)
-      {
-        QFile::remove (path + ".1");
-        QFile::rename (path, path + ".1");
-      }
+    JtdxLocalLog::append (QDir (QStandardPaths::writableLocation (QStandardPaths::DataLocation)),
+                          QStringLiteral ("jtdx_recovery.log"), std::move (area), std::move (message));
   }
 
   bool is_ftx1_model (unsigned model)
@@ -121,31 +112,19 @@ namespace
                              unsigned protocol_sync_mismatches = 0)
   {
     QMutexLocker locker {&recovery_log_mutex};
-    auto const path = recovery_log_path ();
-    rotate_recovery_log_if_needed (path);
-
-    QFile log {path};
-    if (log.open (QIODevice::WriteOnly | QIODevice::Text | QIODevice::Append))
-      {
-        QTextStream stream {&log};
-        stream.setCodec ("UTF-8");
-        stream << QDateTime::currentDateTime ().toString (Qt::ISODateWithMs)
-               << " [rig-control] ftx1-cat-poll operation="
-               << poll_operation_name (operation)
-               << " rc=" << rc
-               << " category=" << hamlib_error_category (rc)
-               << " consecutive=" << consecutive
-               << " overall_consecutive=" << overall_consecutive
-               << " ftx1=true"
-               << " ptt_intent=" << (ptt_intent ? "true" : "false")
-               << " ptt_actual=" << (ptt_actual ? "true" : "false")
-               << " ptt_known=" << (ptt_known ? "true" : "false")
-               << " ptt_pending=" << (ptt_pending ? "true" : "false")
-               << " ptt_transition=" << (ptt_transition ? "true" : "false")
-               << " safe_idle=" << (safe_idle ? "true" : "false")
-               << " protocol_sync_mismatches=" << protocol_sync_mismatches
-               << " decision=" << poll_decision_name (decision) << '\n';
-      }
+    append_recovery_log (QStringLiteral ("rig-control"),
+                         QStringLiteral ("ftx1-cat-poll operation=%1 rc=%2 category=%3 "
+                                         "consecutive=%4 overall_consecutive=%5 ftx1=true "
+                                         "ptt_intent=%6 ptt_actual=%7 ptt_known=%8 ptt_pending=%9 "
+                                         "ptt_transition=%10 safe_idle=%11 protocol_sync_mismatches=%12 "
+                                         "decision=%13")
+                           .arg (poll_operation_name (operation)).arg (rc)
+                           .arg (hamlib_error_category (rc)).arg (consecutive)
+                           .arg (overall_consecutive).arg (ptt_intent ? "true" : "false")
+                           .arg (ptt_actual ? "true" : "false").arg (ptt_known ? "true" : "false")
+                           .arg (ptt_pending ? "true" : "false").arg (ptt_transition ? "true" : "false")
+                           .arg (safe_idle ? "true" : "false").arg (protocol_sync_mismatches)
+                           .arg (poll_decision_name (decision)));
   }
 
   void append_hamlib_error_log (QString diagnostic)
@@ -153,16 +132,8 @@ namespace
     diagnostic.replace (QRegularExpression ("\\s+"), " ");
     diagnostic = diagnostic.left (512).trimmed ();
     QMutexLocker locker {&recovery_log_mutex};
-    auto const path = recovery_log_path ();
-    rotate_recovery_log_if_needed (path);
-    QFile log {path};
-    if (log.open (QIODevice::WriteOnly | QIODevice::Text | QIODevice::Append))
-      {
-        QTextStream stream {&log};
-        stream.setCodec ("UTF-8");
-        stream << QDateTime::currentDateTime ().toString (Qt::ISODateWithMs)
-               << " [rig-control] hamlib-error level=ERR message=" << diagnostic << '\n';
-      }
+    append_recovery_log (QStringLiteral ("rig-control"),
+                         QStringLiteral ("hamlib-error level=ERR message=") + diagnostic);
   }
 
   void append_bounded_wrong_reply_log (QString diagnostic)
@@ -179,17 +150,9 @@ namespace
         return;
       }
 
-    auto const path = recovery_log_path ();
-    rotate_recovery_log_if_needed (path);
-    QFile log {path};
-    if (log.open (QIODevice::WriteOnly | QIODevice::Text | QIODevice::Append))
-      {
-        QTextStream stream {&log};
-        stream.setCodec ("UTF-8");
-        stream << QDateTime::currentDateTime ().toString (Qt::ISODateWithMs)
-               << " [rig-control] hamlib-wrong-reply message=" << diagnostic
-               << " suppressed=" << suppressed << '\n';
-      }
+    append_recovery_log (QStringLiteral ("rig-control"),
+                         QStringLiteral ("hamlib-wrong-reply message=") + diagnostic
+                         + QStringLiteral (" suppressed=") + QString::number (suppressed));
     last_log_ms = now_ms;
     suppressed = 0;
   }
