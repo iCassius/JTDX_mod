@@ -4,7 +4,7 @@
 
 本阶段在现有 `MessageClient → JtdxWebState → JtdxWebServer → Web UI` 链路上增加了截图对应的 WebUI 菜单、紧凑解码表和受限电台操作面板。未增加第二套 UDP 解码器，未恢复或新增 token 认证，未绕过 JTDX 原有 CAT/PTT/TX 调度。
 
-源码基线为 `2f0c061`；本阶段只保留工作树变更和本地提交，不 push、不 tag。
+源码基线为 `2f0c061`，功能提交为 `ee505fb`；本阶段只保留本地提交，不 push、不 tag。
 
 ## 截图到现有业务入口的映射
 
@@ -34,14 +34,21 @@
 已完成：
 
 1. `jtdx` Release 增量构建。
-2. `jtdx_web_state_test`、`jtdx_web_control_test`、`jtdx_web_server_test`、`configuration_web_ui_test` 通过。
+2. 全量 CTest `23/23`、`100% tests passed`；其中 `jtdx_web_state_test`、`jtdx_web_control_test`、`jtdx_web_server_test`、`configuration_web_ui_test` 均通过。
 3. 本地浏览器夹具宽屏检查：紧凑解码行、国家字段、选择 DX、受限电台面板、Tx6 当前选择和有界滚动均可见。
 4. `node --check resources/web-ui/app.js` 通过。
+5. 最终 Release 安装、ZIP 和干净解压复核通过：
+   - RC 目录：`C:\JTDX64\deps-webui\p17-install-20260921-ee505fb`
+   - ZIP：`C:\JTDX64\deps-webui\JTDX-2.2.159.2.10-rc-local-ee505fb.zip`
+   - SHA256：`aabb4191b2c9322a1b4dc052cdf7c7c6fd11ff2dc86f9c56f8f26f7aee20daa6`
+   - 解压目录：`C:\JTDX64\deps-webui\p17-rc-extract-2.2.159.2.10-ee505fb-r1`
+   - ZIP 直接根目录为 `bin/plugins/share`，75 个文件，解压后逐文件 SHA256 差异为 0。
 
 未完成且不应虚构：
 
 - 没有真实电台、CAT、PTT、音频、发射或 HIL 证明。
 - 没有公网/LAN 部署、推送、tag 或正式发布证明。
+- RC 仅做无硬件 `--test-mode --rig-name p17-rc-smoke-ee505fb` 启动检查，不替代完整桌面、长时或 HIL 验收。
 - `Log QSO` 在 WebUI 中只打开原生记录对话框，是否最终写入 ADIF 仍由桌面用户在原生对话框确认。
 
 ## 交接与恢复
