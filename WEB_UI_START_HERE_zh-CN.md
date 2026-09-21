@@ -1,8 +1,14 @@
 # JTDX 内置 Web UI：阶段入口与恢复说明
 
-本目录记录 JTDX 内置轻量 Web UI 的需求、边界、设计和阶段证据。P3 生产 service/QAction、P4 普通控制和 P5 CQ/AutoSeq 软件控制链路已完成本批隔离验证；完整 MainWindow 窗口人工验收留到 P6，仍不代表已经启动 JTDX、连接 JTDX 电台或完成 HIL/部署验证。频率、DX、CQ/AutoSeq 控制均可由用户在设置中分别显式开启，默认仍关闭；完成仍须实际业务/CAT 状态回读，不能把隔离夹具的 `accepted/pending` 当作硬件完成。较早 CAT `.10` 交付提交 `a89c9da` 仅作外部历史参考。
+本目录记录 JTDX 内置轻量 Web UI 的需求、边界、设计和阶段证据。P3 生产 service/QAction、P4 普通控制、P5 CQ/AutoSeq 软件控制链路和 P7 Web 页面收口已完成本批隔离验证；仍不代表已经启动 JTDX、连接 JTDX 电台或完成 HIL/部署验证。频率、DX、CQ/AutoSeq 控制均可由用户在设置中分别显式开启，默认仍关闭；完成仍须实际业务/CAT 状态回读，不能把隔离夹具的 `accepted/pending` 当作硬件完成。较早 CAT `.10` 交付提交 `a89c9da` 仅作外部历史参考。
 
 ## 最新恢复结果（2026-09-21）
+
+### P7 Web 访问与页面布局收口（2026-09-21）
+
+Web UI 已移除 token 访问保护及前端令牌输入；旧 `WebUiTokenSha256` 配置键不再显示、写回或参与服务签名。默认 loopback、显式 LAN 地址、Host/Origin/JSON/CSRF 边界、控制默认关闭、确认、幂等、超时、业务 generation 和实际回读均保持不变。页面改为自动连接/断线重连，桌面按“左侧 RX/解码/操作、右侧频率/DX/TX/CQ/AutoSeq”排列，窄屏按左侧后右侧纵向排列；删去开发合同、epoch/revision 等实现性页面文案，保留未知/陈旧/断线和“HTTP 登记不等于完成”的提示。
+
+本批使用无硬件 loopback fixture 和受支持浏览器观察页面；未处理既有浏览器残留页，不启动真实 `jtdx.exe`，不连接 CAT/PTT/TX，不做 HIL、部署或真实无线电验证。最终构建日志为 `C:\JTDX64\deps-webui\p7-final-build-20260921.log`，全量 CTest 为 `22/22`、`100% tests passed`，日志为 `C:\JTDX64\deps-webui\p7-final-ctest-20260921.log`。浏览器观察到桌面左右布局、自动连接、无令牌输入和陈旧/操作结果提示；移动窄屏以静态契约覆盖，未声称真实 MainWindow 视觉验收。
 
 ### P6 页面确认与隔离浏览器业务回归（2026-09-21）
 
@@ -68,10 +74,10 @@ loopback 浏览器人工证据：连接隔离夹具后，点击 CQ 出现页面�
 
 ## 当前状态
 
-- 阶段：`P5 CQ/AutoSeq 软件链路已接入并完成语义修正`，P0/P1/P2/P3 已完成，P4 frequency/DX 与 P5 业务命令的 Service/Server/Control 生命周期、独立 generation 回读、MainWindow 隔离适配契约和独立显式配置开关已完成；完整 MainWindow 窗口人工验收留到 P6，真实 CAT/DX/CQ 设备回读/HIL 未验证。
-- 基线：本批从分支 `main`、HEAD `bfa0c34` 开始，结果尚未提交；P4 HTTP 契约见 [`docs/web-ui/P4-FREQUENCY-HTTP_契约_zh-CN.md`](docs/web-ui/P4-FREQUENCY-HTTP_契约_zh-CN.md)，当前结果与恢复点见进度日志。
+- 阶段：`P7 Web 访问与页面布局收口`，P0/P1/P2/P3 已完成，P4 frequency/DX、P5 业务命令和 P7 页面收口的 Service/Server/Control 生命周期、独立 generation 回读、MainWindow 隔离适配契约和独立显式配置开关已完成；真实 CAT/DX/CQ 设备回读/HIL 未验证。
+- 基线：本批从分支 `main`、HEAD `363ec14` 开始；结果提交号以本批本地提交为准。P4 HTTP 契约见 [`docs/web-ui/P4-FREQUENCY-HTTP_契约_zh-CN.md`](docs/web-ui/P4-FREQUENCY-HTTP_契约_zh-CN.md)，当前结果与恢复点见进度日志。
 - 代码根目录：`C:\JTDX64\jtdx_sourcecode`。用户需求中的 `jtdx\_sourcecode` 按当前实际仓库路径解释。
-- P3 历史范围：增加 Web UI 配置 Tab、持久化摘要令牌、MainWindow 唯一服务生命周期、菜单入口和 Qt Resource 原生深色响应式只读页；服务仍为单进程主 Qt 事件循环，不新增 UDP/线程/进程或控制 API。
+- P3 历史范围：增加 Web UI 配置 Tab、MainWindow 唯一服务生命周期、菜单入口和 Qt Resource 原生深色响应式只读页；历史版本曾有摘要令牌，本批已移除其运行时和设置入口。服务仍为单进程主 Qt 事件循环，不新增 UDP/线程/进程或控制 API。
 - 已确认：主程序已有 Qt5 Network、`MessageClient`、`MessageServer` 和 `JTDX_BUILD_LOCAL_TESTS`；P1 状态模型、P2 只读服务、P3 代码/资源/测试/文档、P4 生命周期/dispatch、HTTP 隔离基础、operations/SSE 有界回读、频率/DX/CQ/AutoSeq 显式配置门均已有本地修改；完整窗口和真实 CAT/DX/CQ 回读仍未完成。
 - CAT 交付基线：代码提交 `328cc7a` 的错序检测及后续 artifact code HEAD `9984c38` 已由 `a89c9da` 记录最终 Release、完整 CTest `19/19`（含既有 `ftx1_cat_policy_test`）；该测试并非本 Web 文档批次新增。Web 仍只呈现实际状态，不把 CAT 构建证据或 HTTP `accepted` 当成设备回读或通联完成。
 - 进程边界：Web 功能必须零新增进程、零新增常驻线程，优先使用 JTDX 主 Qt 事件循环。当前程序已有 `proc_jtdxjt9` 解码子进程，Web 任务不得把它误写成 Web 新增进程，也不得为了 Web 重构或删除它。

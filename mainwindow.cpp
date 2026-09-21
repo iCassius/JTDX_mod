@@ -2234,7 +2234,6 @@ void MainWindow::applyWebUiConfiguration ()
   configuration.port = configuration.automatic_port ? 0 : m_config.web_ui_port ();
   configuration.allow_lan = m_config.web_ui_allow_lan ();
   configuration.bind_address = QHostAddress {m_config.web_ui_bind_address ()};
-  configuration.bearer_token_sha256 = m_config.web_ui_token_sha256 ();
   configuration.allowed_origin = m_config.web_ui_allowed_origin ();
   // 配置开关只决定是否暴露频率 POST；实际 dispatch 仍由
   // JtdxWebControl 在主线程重新读取 CAT/发送安全状态并等待实际回读。

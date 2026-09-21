@@ -8,24 +8,27 @@
 </head>
 <body>
   <main>
-    <section class="card auth"><label for="token_input">访问令牌（仅保存在本页内存）</label><input id="token_input" type="password" autocomplete="off"><button id="connect_button">连接</button><span id="auth_error"></span></section>
-    <header class="hero"><div><p class="eyebrow">JTDX · <span id="access_mode">按能力开放 · 当前仅只读</span></p><h1>电台状态</h1><small id="last_update">最后更新：—</small></div><span id="connection" class="pill">未连接</span></header>
-    <section class="grid">
-      <article class="card"><h2>运行状态</h2><dl><dt>服务</dt><dd id="web_server_state">—</dd><dt>应用</dt><dd id="application_name">—</dd><dt>模式 / 频段</dt><dd id="mode_band">—</dd><dt>实例</dt><dd id="instance_id">—</dd></dl></article>
-      <article class="card frequency"><h2>实际频率</h2><strong id="frequency">—</strong><small id="frequency_freshness">等待状态</small></article>
-      <article class="card frequency-control"><h2>频率选择</h2><p class="frequency-control-help">候选来自桌面当前模式与地区的常用频率。选择只填入目标，不会自动发送；也可继续手动输入 MHz。</p><div class="frequency-form"><label for="frequency_band">频段筛选</label><select id="frequency_band"><option value="">全部频段</option></select><label for="frequency_preset">常用频率</label><select id="frequency_preset"><option value="">选择常用频率</option></select><label for="frequency_input">目标 MHz</label><input id="frequency_input" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" maxlength="24" placeholder="例如 14.075000"><button id="frequency_send" type="button" disabled>发送频率</button></div><p id="frequency_candidates_meta" class="frequency-control-status" aria-live="polite">等待当前模式与地区的候选</p><p id="frequency_control_status" class="frequency-control-status blocked" aria-live="polite">等待新鲜状态快照</p><p id="frequency_result" class="frequency-result" aria-live="polite">尚未发送请求</p></article>
-      <article class="card frequency-control"><h2>CQ / AutoSeq</h2><p class="frequency-control-help">高风险操作默认关闭。每次操作都需要页面二次确认；CQ 会通过既有 Enable Tx 安全入口，AutoSeq 只登记为等待实时解码驱动，不代表已经开始具体呼叫或发射。</p><div class="frequency-form"><button id="business_start_cq" type="button" disabled>启动 CQ</button><button id="business_start_auto" type="button" disabled>启用 AutoSeq</button><button id="business_stop" type="button" disabled>停止</button></div><p id="business_control_status" class="frequency-control-status blocked" aria-live="polite">等待新鲜状态快照</p><p id="business_result" class="frequency-result" aria-live="polite">尚未发送命令</p></article>
-      <article class="card"><h2>RX</h2><dl><dt>在线</dt><dd id="online">—</dd><dt>数据新鲜度</dt><dd id="freshness">—</dd><dt>状态更新时间</dt><dd id="last_status_update">—</dd><dt>最近解码</dt><dd id="last_decode_update">—</dd><dt>解码年龄</dt><dd id="decode_age">—</dd><dt>解码数量</dt><dd id="decode_count">—</dd></dl></article>
-      <article class="card"><h2>DX</h2><dl><dt>呼号</dt><dd id="dx_call">—</dd><dt>网格</dt><dd id="dx_grid">—</dd><dt>报告</dt><dd id="report">—</dd><dt>RX / TX DF</dt><dd id="df">—</dd><dt>TX 模式</dt><dd id="tx_mode">—</dd></dl><p id="dx_selection_status" class="frequency-control-status blocked" aria-live="polite">等待新鲜状态快照</p><p id="dx_selection_result" class="frequency-result" aria-live="polite">尚未选择 DX</p></article>
-      <article class="card"><h2>TX</h2><dl><dt>允许发射</dt><dd id="tx_enabled">—</dd><dt>发射中</dt><dd id="transmitting">—</dd><dt>解码中</dt><dd id="decoding">—</dd><dt>TX First</dt><dd id="tx_first">—</dd><dt>看门狗</dt><dd id="watchdog_timeout">—</dd><dt>CQ / QSO</dt><dd id="cq_qso">—</dd><dt>AutoSeq</dt><dd id="auto_sequence_state">—</dd><dt>当前文本</dt><dd id="current_tx_text">—</dd></dl></article>
-    </section>
-    <section class="card"><h2>最近解码</h2><div id="decodes" class="decodes"><p>等待数据…</p></div></section>
-    <section id="operations_card" class="card operations-card" aria-live="polite">
-      <div class="operations-heading"><div><h2>操作结果</h2><p class="operations-help">只读回显：操作登记或排队不代表已完成；只有真实读回确认才显示已完成。</p></div><span id="operations_meta" class="operations-meta">未取得操作快照</span></div>
-      <div id="operations" class="operations"><p class="operation-empty">等待操作结果…</p></div>
+    <header class="hero"><div><p class="eyebrow">JTDX · <span id="access_mode">状态与已开放功能</span></p><h1>电台状态</h1><small id="last_update">更新：—</small></div><span id="connection" class="pill">未连接</span></header>
+    <section class="workbench">
+      <div class="workbench-left">
+        <article class="card"><h2>运行状态</h2><dl><dt>服务</dt><dd id="web_server_state">—</dd><dt>应用</dt><dd id="application_name">—</dd><dt>模式 / 频段</dt><dd id="mode_band">—</dd><dt>实例</dt><dd id="instance_id">—</dd></dl></article>
+        <article class="card"><h2>RX</h2><dl><dt>在线</dt><dd id="online">—</dd><dt>数据新鲜度</dt><dd id="freshness">—</dd><dt>状态更新时间</dt><dd id="last_status_update">—</dd><dt>最近解码</dt><dd id="last_decode_update">—</dd><dt>解码年龄</dt><dd id="decode_age">—</dd><dt>解码数量</dt><dd id="decode_count">—</dd></dl></article>
+        <section class="card"><h2>最近解码</h2><div id="decodes" class="decodes"><p>等待数据…</p></div></section>
+        <section id="operations_card" class="card operations-card" aria-live="polite">
+          <div class="operations-heading"><div><h2>操作结果</h2><p class="operations-help">只有实际状态回读确认才显示完成。</p></div><span id="operations_meta" class="operations-meta">未取得操作快照</span></div>
+          <div id="operations" class="operations"><p class="operation-empty">等待操作结果…</p></div>
+        </section>
+      </div>
+      <div class="workbench-right">
+        <article class="card frequency"><h2>实际频率</h2><strong id="frequency">—</strong><small id="frequency_freshness">等待状态</small></article>
+        <article class="card frequency-control"><h2>频率</h2><p class="frequency-control-help">选择只填写目标，不会自动发送。</p><div class="frequency-form"><label class="field" for="frequency_band">频段<select id="frequency_band"><option value="">全部频段</option></select></label><label class="field" for="frequency_preset">常用频率<select id="frequency_preset"><option value="">选择常用频率</option></select></label><label class="field" for="frequency_input">目标 MHz<input id="frequency_input" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" maxlength="24" placeholder="例如 14.075000"></label><button id="frequency_send" type="button" disabled>发送</button></div><p id="frequency_candidates_meta" class="frequency-control-status" aria-live="polite">等待候选</p><p id="frequency_control_status" class="frequency-control-status blocked" aria-live="polite">等待状态</p><p id="frequency_result" class="frequency-result" aria-live="polite">尚未发送</p></article>
+        <article class="card"><h2>DX</h2><dl><dt>呼号</dt><dd id="dx_call">—</dd><dt>网格</dt><dd id="dx_grid">—</dd><dt>报告</dt><dd id="report">—</dd><dt>RX / TX DF</dt><dd id="df">—</dd><dt>TX 模式</dt><dd id="tx_mode">—</dd></dl><p id="dx_selection_status" class="frequency-control-status blocked" aria-live="polite">等待新鲜状态快照</p><p id="dx_selection_result" class="frequency-result" aria-live="polite">尚未选择 DX</p></article>
+        <article class="card"><h2>TX</h2><dl><dt>允许发射</dt><dd id="tx_enabled">—</dd><dt>发射中</dt><dd id="transmitting">—</dd><dt>解码中</dt><dd id="decoding">—</dd><dt>TX First</dt><dd id="tx_first">—</dd><dt>看门狗</dt><dd id="watchdog_timeout">—</dd><dt>CQ / QSO</dt><dd id="cq_qso">—</dd><dt>AutoSeq</dt><dd id="auto_sequence_state">—</dd><dt>当前文本</dt><dd id="current_tx_text">—</dd></dl></article>
+        <article class="card frequency-control"><h2>CQ / AutoSeq</h2><p class="frequency-control-help">高风险操作需确认；完成以业务状态为准。</p><div class="button-row"><button id="business_start_cq" type="button" disabled>启动 CQ</button><button id="business_start_auto" type="button" disabled>启用 AutoSeq</button><button id="business_stop" type="button" disabled>停止</button></div><p id="business_control_status" class="frequency-control-status blocked" aria-live="polite">等待状态</p><p id="business_result" class="frequency-result" aria-live="polite">尚未发送</p></article>
+      </div>
     </section>
     <p id="demo_notice" class="notice" hidden>本地演示夹具：数据为模拟状态，不代表真实电台。</p>
-    <p class="notice">频率、DX 与 CQ/AutoSeq 控制必须在桌面设置中分别显式开放；所有完成状态都以主程序回读为准，不代表真实发射。</p>
+    <p class="notice">控制能力需在桌面设置中单独开启；页面状态不代表真实发射。</p>
   </main>
   <div id="confirm_dialog" class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="confirm_title" aria-describedby="confirm_message" hidden tabindex="-1">
     <div class="confirm-dialog-panel">

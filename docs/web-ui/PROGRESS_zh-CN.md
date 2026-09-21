@@ -1,5 +1,13 @@
 # JTDX 内置 Web UI：进度与中断恢复日志
 
+### 2026-09-21 P7 Web 访问与页面布局收口（完成）
+
+- 范围：移除 Web token 访问保护和前端令牌输入；保留默认 loopback、显式 LAN、Host/Origin/JSON/CSRF 边界、控制默认关闭、确认、幂等、超时、epoch/revision、业务 generation 与实际回读；同时精简页面开发文案并按 JTDX 结构重排桌面/移动布局。
+- 实现：GET、SSE 和已开放控制 POST 不再要求或发送 Authorization；旧 `WebUiTokenSha256` 只安全忽略，不再显示、写回或进入 Service 签名。页面自动连接/断线重连；桌面左侧为运行/RX/解码/操作，右侧为频率/DX/TX/CQ/AutoSeq，窄屏改为左后右纵向排列且禁止横向溢出。
+- 文案：移除 token 输入、开发合同、epoch/revision 等实现性展示，保留真实错误、未知/陈旧/断线提示和“登记/HTTP 成功不等于完成”的回读提示。
+- 边界：使用无硬件 loopback fixture 和受支持浏览器观察页面；不处理既有浏览器残留页；未启动真实 `jtdx.exe`，未连接 CAT/PTT/TX，未做 HIL、部署或真实无线电验证。移动窄屏由静态契约覆盖，未声称真实 MainWindow 视觉验收。
+- 验证：最终目标构建退出码 `0`，日志 `C:\JTDX64\deps-webui\p7-final-build-20260921.log`；全量 CTest `22/22`、`100% tests passed`、57.37 秒，日志 `C:\JTDX64\deps-webui\p7-final-ctest-20260921.log`；浏览器观察到桌面左右布局、自动连接、无令牌输入、陈旧提示和操作结果状态分层。
+
 ### 2026-09-21 P6 页面确认与浏览器业务回归收尾记录
 
 - 范围：基于 `main/c6f14fd`，只处理页面确认可控性、CQ/AutoSeq/Stop 的 loopback 浏览器链路和交付记录；不启动真实 `jtdx.exe`，不连接 CAT/电台，不执行 PTT/TX/HIL，不改 UDP、不新增生产 API/线程/进程。

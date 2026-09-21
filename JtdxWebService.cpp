@@ -27,13 +27,10 @@ QString JtdxWebService::signature (JtdxWebServer::Configuration const& configura
   QStringList udp_ports;
   for (auto const port : configuration.udp_ports) udp_ports << QString::number (port);
   udp_ports.sort ();
-  QString bearer_token_digest = configuration.bearer_token_sha256.trimmed ();
-  if (bearer_token_digest.isEmpty () && !configuration.bearer_token.isEmpty ())
-    bearer_token_digest = JtdxWebServer::bearer_token_digest (configuration.bearer_token);
   return QStringList {
     QString::number (configuration.automatic_port), QString::number (configuration.port),
     configuration.bind_address.toString (), QString::number (configuration.allow_lan),
-    bearer_token_digest, configuration.allowed_origin,
+    configuration.allowed_origin,
     QString::number (configuration.enable_frequency_control),
     QString::number (configuration.enable_dx_control),
     QString::number (configuration.enable_automation_control),

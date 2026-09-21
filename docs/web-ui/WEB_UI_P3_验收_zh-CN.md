@@ -2,9 +2,9 @@
 
 本批基线为 `ed04be6`，范围限于 P3。`JtdxWebServer` 在 JTDX 主 Qt 事件循环内运行；默认配置关闭，不新增进程、常驻线程或 UDP listener，不提供控制 API。
 
-配置 Tab 使用 `WebUi*` 专用持久键。自动 TCP 端口候选为 P2 既定范围并排除两个已有 UDP 端口；手动端口在设置确认前只读校验，不执行 UDP bind。绑定默认 `127.0.0.1`，LAN 必须填写具体地址。令牌原文只在设置对话框临时编辑控件和浏览器内存出现，QSettings 只保存 `WebUiTokenSha256`，服务用 SHA-256 摘要恒定时间比较。取消设置会丢弃令牌草稿；只有点击确定后才保存并重启 Web 服务。
+本文件记录历史 P3 版本的配置合同；当前 P7 已移除访问令牌。自动 TCP 端口候选为 P2 既定范围并排除两个已有 UDP 端口；手动端口在设置确认前只读校验，不执行 UDP bind。绑定默认 `127.0.0.1`，LAN 必须填写具体地址。旧 `WebUiTokenSha256` 键不再显示、写回或参与服务签名。
 
-`/`、`/style.css`、`/app.js` 由 Qt Resource 提供。页面使用原生 HTML/CSS/JavaScript，SSE 通过 `fetch` 读取并携带 `Authorization`，解析 `snapshot` 事件，保留 `Last-Event-ID`，断线退避并显示未知/未连接状态。所有动态文本使用 `textContent`。
+`/`、`/style.css`、`/app.js` 由 Qt Resource 提供。页面使用原生 HTML/CSS/JavaScript，SSE 通过 `fetch` 读取并解析 `snapshot` 事件，保留 `Last-Event-ID`，断线退避并显示未知/未连接状态。所有动态文本使用 `textContent`。
 
 ## 已执行验证
 

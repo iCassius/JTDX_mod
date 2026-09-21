@@ -23,15 +23,6 @@ constexpr qint64 snapshot_interval_ms = 2000;
 constexpr qint64 heartbeat_interval_ms = 10000;
 constexpr int response_drain_timeout_ms = 2000;
 
-bool valid_digest (QString const& digest)
-{
-  if (digest.size () != 64) return false;
-  for (QChar const ch : digest)
-    if (!ch.isDigit () && !(ch >= QChar {'a'} && ch <= QChar {'f'})
-        && !(ch >= QChar {'A'} && ch <= QChar {'F'})) return false;
-  return true;
-}
-
 QByteArray status_reason (int status)
 {
   switch (status)
@@ -129,21 +120,6 @@ bool JtdxWebServer::validate_configuration (Configuration const& configuration,
       if (error) *error = QStringLiteral ("web port is reserved by UDP configuration");
       return false;
     }
-  QString digest = configuration.bearer_token_sha256.trimmed ();
-  if (digest.isEmpty () && !configuration.bearer_token.isEmpty ())
-    digest = bearer_token_digest (configuration.bearer_token);
-  if (!configuration.bearer_token.isEmpty () && configuration.allow_lan
-      && configuration.bearer_token.toUtf8 ().size () < 32)
-    {
-      if (error) *error = QStringLiteral ("LAN bearer token is too short");
-      return false;
-    }
-  QByteArray const digest_bytes = QByteArray::fromHex (digest.toLatin1 ());
-  if (!valid_digest (digest) || digest_bytes.size () != 32)
-    {
-      if (error) *error = QStringLiteral ("a valid SHA-256 bearer token digest is required");
-      return false;
-    }
   if (configuration.allow_lan && configuration.allowed_origin.isEmpty())
     {
       if (error) *error = QStringLiteral ("LAN binding requires an exact allowed_origin");
@@ -208,16 +184,6 @@ bool JtdxWebServer::start (Configuration configuration)
   if (!validate_configuration (configuration, &error))
     {
       last_error_ = error;
-      web_server_state_ = QStringLiteral ("error");
-      return false;
-    }
-  if (configuration.bearer_token_sha256.isEmpty () && !configuration.bearer_token.isEmpty ())
-    configuration.bearer_token_sha256 = bearer_token_digest (configuration.bearer_token);
-  configuration.bearer_token.clear ();
-  bearer_token_digest_ = QByteArray::fromHex (configuration.bearer_token_sha256.trimmed ().toLatin1 ());
-  if (bearer_token_digest_.size () != 32)
-    {
-      last_error_ = QStringLiteral ("a valid SHA-256 bearer token digest is required");
       web_server_state_ = QStringLiteral ("error");
       return false;
     }
@@ -293,11 +259,6 @@ QString JtdxWebServer::web_server_state () const
 int JtdxWebServer::active_connection_count () const
 {
   return clients_.size ();
-}
-
-QString JtdxWebServer::bearer_token_digest (QString const& bearer_token)
-{
-  return QString::fromLatin1 (QCryptographicHash::hash (bearer_token.toUtf8 (), QCryptographicHash::Sha256).toHex ());
 }
 
 void JtdxWebServer::set_control (JtdxWebControl * control)
@@ -577,19 +538,6 @@ bool JtdxWebServer::origin_allowed (QByteArray const& origin) const
   QString const ipv4 = QStringLiteral ("http://127.0.0.1:") + QString::number (actual_port_);
   QString const ipv6 = QStringLiteral ("http://[::1]:") + QString::number (actual_port_);
   return value == base || value == local || value == ipv4 || value == ipv6;
-}
-
-bool JtdxWebServer::authorized (QHash<QByteArray, QByteArray> const& headers) const
-{
-  QByteArray const value = headers.value (QByteArrayLiteral ("authorization"));
-  QByteArray const prefix = QByteArrayLiteral ("Bearer ");
-  if (!value.startsWith (prefix)) return false;
-  QByteArray const supplied = QCryptographicHash::hash (value.mid (prefix.size ()), QCryptographicHash::Sha256);
-  if (supplied.size () != bearer_token_digest_.size ()) return false;
-  unsigned char diff {0};
-  for (int i = 0; i < supplied.size (); ++i)
-    diff = static_cast<unsigned char> (diff | static_cast<unsigned char> (supplied.at (i) ^ bearer_token_digest_.at (i)));
-  return diff == 0;
 }
 
 QByteArray JtdxWebServer::event_id () const
@@ -990,11 +938,6 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
           return;
         }
       send_http (socket, 200, QByteArrayLiteral ("OK"), content_type, body);
-      return;
-    }
-  if (!authorized (headers))
-    {
-      reject_connection (socket, 401, QByteArrayLiteral ("bearer authentication required"));
       return;
     }
   if (method == QByteArrayLiteral ("POST")

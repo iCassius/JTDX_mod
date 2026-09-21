@@ -162,8 +162,6 @@
 #include <QSerialPortInfo>
 #include <QScopedPointer>
 #include <QDebug>
-#include <QCryptographicHash>
-#include <QUuid>
 #include <QtGui>
 #include "qt_helpers.hpp"
 #include "MetaDataRegistry.hpp"
@@ -547,7 +545,6 @@ private:
   Q_SLOT void on_bandComboBox_3_currentTextChanged (QString const&);
   Q_SLOT void on_bandComboBox_4_currentTextChanged (QString const&);
   Q_SLOT void on_bandComboBox_5_currentTextChanged (QString const&);
-  Q_SLOT void on_web_ui_generate_token_push_button_clicked ();
   Q_SLOT void on_web_ui_open_push_button_clicked ();
   Q_SLOT void on_web_ui_restart_push_button_clicked ();
 
@@ -904,7 +901,6 @@ private:
   port_type web_ui_port_;
   QString web_ui_bind_address_;
   bool web_ui_allow_lan_;
-  QString web_ui_token_sha256_;
   QString web_ui_allowed_origin_;
   bool web_ui_frequency_control_enabled_;
   bool web_ui_dx_control_enabled_;
@@ -955,7 +951,6 @@ bool Configuration::web_ui_automatic_port () const {return m_->web_ui_automatic_
 Configuration::port_type Configuration::web_ui_port () const {return m_->web_ui_port_;}
 QString Configuration::web_ui_bind_address () const {return m_->web_ui_bind_address_;}
 bool Configuration::web_ui_allow_lan () const {return m_->web_ui_allow_lan_;}
-QString Configuration::web_ui_token_sha256 () const {return m_->web_ui_token_sha256_;}
 QString Configuration::web_ui_allowed_origin () const {return m_->web_ui_allowed_origin_;}
 bool Configuration::web_ui_frequency_control_enabled () const {return m_->web_ui_frequency_control_enabled_;}
 bool Configuration::web_ui_dx_control_enabled () const {return m_->web_ui_dx_control_enabled_;}
@@ -2298,8 +2293,6 @@ Radio::convert_dark("#fafbfe",useDarkStyle_),Radio::convert_dark("#dcdef1",useDa
   ui_->web_ui_bind_address_line_edit->setText (web_ui_bind_address_);
   ui_->web_ui_automatic_port_check_box->setChecked (web_ui_automatic_port_);
   ui_->web_ui_port_spin_box->setValue (web_ui_port_ ? web_ui_port_ : 49200);
-  ui_->web_ui_token_line_edit->clear ();
-  ui_->web_ui_token_line_edit->setEchoMode (QLineEdit::Password);
   ui_->write_decoded_check_box->setChecked (write_decoded_);
   ui_->write_decoded_debug_check_box->setChecked (write_decoded_debug_);
 
@@ -2806,7 +2799,6 @@ void Configuration::impl::read_settings ()
   web_ui_frequency_control_enabled_ = settings_->value ("WebUiFrequencyControlEnabled", false).toBool ();
   web_ui_dx_control_enabled_ = settings_->value ("WebUiDxControlEnabled", false).toBool ();
   web_ui_automation_control_enabled_ = settings_->value ("WebUiAutomationControlEnabled", false).toBool ();
-  web_ui_token_sha256_ = settings_->value ("WebUiTokenSha256").toString ().trimmed ();
   web_ui_allowed_origin_ = settings_->value ("WebUiAllowedOrigin").toString ().trimmed ();
 
   write_decoded_ = settings_->value ("WriteDecodedALLTXT", true).toBool ();
@@ -3108,7 +3100,6 @@ void Configuration::impl::write_settings ()
   settings_->setValue ("WebUiFrequencyControlEnabled", web_ui_frequency_control_enabled_);
   settings_->setValue ("WebUiDxControlEnabled", web_ui_dx_control_enabled_);
   settings_->setValue ("WebUiAutomationControlEnabled", web_ui_automation_control_enabled_);
-  settings_->setValue ("WebUiTokenSha256", web_ui_token_sha256_);
   settings_->setValue ("WebUiAllowedOrigin", web_ui_allowed_origin_);
   settings_->setValue ("WriteDecodedALLTXT", write_decoded_);
   settings_->setValue ("WriteDecodedDebugALLTXT", write_decoded_debug_);
@@ -3295,19 +3286,6 @@ bool Configuration::impl::validate ()
           || address == QHostAddress::AnyIPv6)
         {
           message_box_critical (tr ("Web UI 绑定地址无效；LAN 必须使用具体本机地址。"));
-          return false;
-        }
-      QString digest = web_ui_token_sha256_;
-      QString const entered = ui_->web_ui_token_line_edit->text ();
-      if (!entered.isEmpty () && entered.toUtf8 ().size () < 32)
-        {
-          message_box_critical (tr ("Web UI 访问令牌至少需要 32 个 UTF-8 字节。"));
-          return false;
-        }
-      if (!entered.isEmpty ()) digest = QString::fromLatin1 (QCryptographicHash::hash (entered.toUtf8 (), QCryptographicHash::Sha256).toHex ());
-      if (digest.size () != 64 || !QRegExp {QStringLiteral ("^[0-9A-Fa-f]{64}$")}.exactMatch (digest))
-        {
-          message_box_critical (tr ("Web UI 需要访问令牌；请生成令牌并保存设置。"));
           return false;
         }
       if (!ui_->web_ui_automatic_port_check_box->isChecked ()
@@ -3820,9 +3798,6 @@ void Configuration::impl::accept ()
   web_ui_allow_lan_ = ui_->web_ui_bind_combo_box->currentIndex () == 1;
   web_ui_bind_address_ = web_ui_allow_lan_ ? ui_->web_ui_bind_address_line_edit->text ().trimmed ()
                                            : QStringLiteral ("127.0.0.1");
-  QString const entered_web_token = ui_->web_ui_token_line_edit->text ();
-  if (!entered_web_token.isEmpty ())
-    web_ui_token_sha256_ = QString::fromLatin1 (QCryptographicHash::hash (entered_web_token.toUtf8 (), QCryptographicHash::Sha256).toHex ());
   QString origin_host = web_ui_bind_address_;
   QHostAddress origin_address;
   if (origin_address.setAddress (origin_host)
@@ -3854,8 +3829,6 @@ void Configuration::impl::accept ()
     }
  
   write_settings ();		// make visible to all
-  ui_->web_ui_token_line_edit->clear ();
-  ui_->web_ui_token_line_edit->setEchoMode (QLineEdit::Password);
 }
 
 void Configuration::impl::reject ()
@@ -6029,16 +6002,6 @@ bool Configuration::impl::have_rig ()
   // user has not been given a visible window or a route to Settings yet.
   open_rig ();
   return rig_active_;
-}
-
-void Configuration::impl::on_web_ui_generate_token_push_button_clicked ()
-{
-  QString const token = QUuid::createUuid ().toString (QUuid::WithoutBraces)
-      + QUuid::createUuid ().toString (QUuid::WithoutBraces);
-  ui_->web_ui_token_line_edit->setEchoMode (QLineEdit::Normal);
-  ui_->web_ui_token_line_edit->setText (token);
-  ui_->web_ui_token_line_edit->selectAll ();
-  ui_->web_ui_help_label->setText (tr ("已生成新令牌，请复制保存；点击确定后只保存 SHA-256 摘要，原文不会再次显示。"));
 }
 
 void Configuration::impl::on_web_ui_open_push_button_clicked ()

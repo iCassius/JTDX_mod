@@ -44,6 +44,9 @@ int main ()
   QFile web_index {QStringLiteral (JTDX_SOURCE_DIR "/resources/web-ui/index.html")};
   check (web_index.open (QIODevice::ReadOnly), "open Web UI document");
   QByteArray const web_index_source = web_index.readAll ();
+  QFile web_style {QStringLiteral (JTDX_SOURCE_DIR "/resources/web-ui/style.css")};
+  check (web_style.open (QIODevice::ReadOnly), "open Web UI stylesheet");
+  QByteArray const web_style_source = web_style.readAll ();
   check (web_index_source.contains ("role=\"dialog\"")
              && web_index_source.contains ("aria-modal=\"true\"")
              && web_app_source.contains ("function requestConfirmation")
@@ -51,8 +54,21 @@ int main ()
              && web_app_source.contains ("await requestConfirmation")
              && web_app_source.contains ("if (value === \"start-cq\") return \"启动 CQ\";")
              && web_app_source.contains ("if (value === \"stop-auto-call\") return \"停止 CQ/AutoSeq\";")
+             && web_app_source.contains ("function startConnection()")
+             && !web_app_source.contains ("Authorization")
+             && !web_app_source.contains ("token_input")
+             && !web_index_source.contains ("token_input")
+             && web_index_source.contains ("class=\"workbench\"")
+             && web_index_source.contains ("class=\"workbench-left\"")
+             && web_index_source.contains ("class=\"workbench-right\"")
+             && !web_index_source.contains ("epoch")
+             && !web_index_source.contains ("revision")
+             && !web_index_source.contains ("开发")
+             && web_style_source.contains ("@media (max-width: 850px)")
+             && web_style_source.contains (".workbench { grid-template-columns: 1fr; }")
+             && web_style_source.contains ("overflow-x: hidden")
              && !web_app_source.contains ("globalThis.confirm"),
-         "business controls use an explicit keyboard-accessible in-page confirmation instead of a native dialog");
+         "business controls use an accessible confirmation and the page keeps the compact responsive layout");
   check (source.contains ("configuration.enable_frequency_control = m_config.web_ui_frequency_control_enabled ()"),
          "MainWindow forwards the explicit frequency-control setting");
   check (source.contains ("configuration.enable_dx_control = m_config.web_ui_dx_control_enabled ()"),

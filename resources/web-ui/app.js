@@ -3,7 +3,6 @@
 
   const MAX_OPERATION_ROWS = 128;
   const DISPLAY_OPERATION_ROWS = 20;
-  let token = "";
   let lastId = "";
   let lastUpdate = 0;
   let controller = null;
@@ -327,7 +326,7 @@
     if (epoch && epoch !== frequencyRequest.epoch) {
       frequencyRequest = null;
       frequencyUnknown = false;
-      frequencyStatus("服务 epoch 已变化，旧频率请求已失效；请以新快照为准。", "warning");
+      frequencyStatus("服务状态已刷新，旧频率请求已失效；请以当前状态为准。", "warning");
       return;
     }
     const row = operationForRequest(snapshot);
@@ -355,7 +354,7 @@
     if (epoch && epoch !== dxRequest.epoch) {
       dxRequest = null;
       dxUnknown = false;
-      dxStatus("服务 epoch 已变化，旧 DX 选择已失效；请以新快照为准。", "warning");
+      dxStatus("服务状态已刷新，旧 DX 选择已失效；请以当前状态为准。", "warning");
       return;
     }
     const row = operationForDx(snapshot);
@@ -382,7 +381,7 @@
     if (epoch && epoch !== businessRequest.epoch) {
       businessRequest = null;
       businessUnknown = false;
-      businessStatus("服务 epoch 已变化，旧 CQ/AutoSeq 请求已失效。", "warning");
+      businessStatus("服务状态已刷新，旧 CQ/AutoSeq 请求已失效。", "warning");
       return;
     }
     const row = operationForBusiness(snapshot);
@@ -416,10 +415,10 @@
     if (snapshot.transmitting !== false) return "当前正在发射或发射状态未知";
     if (snapshot.ptt !== false) return "PTT 状态不是明确关闭";
     if (snapshot.watchdog_timeout !== false) return "看门狗状态不是明确安全值";
-    if (typeof snapshot.server_epoch !== "string" || snapshot.server_epoch.length === 0) return "缺少有效服务 epoch";
-    if (integerValue(snapshot.state_revision) == null || integerValue(snapshot.state_revision) < 0) return "缺少安全状态 revision";
+    if (typeof snapshot.server_epoch !== "string" || snapshot.server_epoch.length === 0) return "状态快照缺少必要信息";
+    if (integerValue(snapshot.state_revision) == null || integerValue(snapshot.state_revision) < 0) return "状态快照版本无效";
     if (!lastUpdate || Date.now() - lastUpdate > 15000) return "状态快照已超时";
-    if (frequencyUnknown) return "上一次请求结果未知，等待明确回读或新 epoch";
+    if (frequencyUnknown) return "上一次请求结果未知，等待明确回读或新状态";
     if (frequencyRequest) return "已有频率请求处理中";
     return "";
   }
@@ -454,9 +453,9 @@
     if (snapshot.rig_fresh !== true || snapshot.freshness !== "fresh") return "状态快照陈旧";
     if (snapshot.tx_enabled !== false || snapshot.transmitting !== false || snapshot.ptt !== false
         || snapshot.watchdog_timeout !== false) return "当前 TX/PTT 状态不是明确安全值";
-    if (integerValue(snapshot.state_revision) == null || integerValue(snapshot.state_revision) < 0) return "缺少安全状态 revision";
+    if (integerValue(snapshot.state_revision) == null || integerValue(snapshot.state_revision) < 0) return "状态快照版本无效";
     if (!lastUpdate || Date.now() - lastUpdate > 15000) return "状态快照已超时";
-    if (dxUnknown) return "上一次 DX 选择结果未知，等待明确回读或新 epoch";
+    if (dxUnknown) return "上一次 DX 选择结果未知，等待明确回读或新状态";
     if (dxRequest) return "已有 DX 选择处理中";
     return "";
   }
@@ -475,15 +474,15 @@
     if (snapshot.automation_control_enabled !== true) return "桌面尚未开放 CQ/AutoSeq 控制";
     if (!connected) return "等待连接和最新状态快照";
     if (operation === "stop-auto-call") {
-      if (integerValue(snapshot.state_revision) == null) return "缺少安全状态 revision";
+      if (integerValue(snapshot.state_revision) == null) return "状态快照版本无效";
       return "";
     }
     if (snapshot.online !== true || snapshot.rig_online !== true) return "主程序或电台未在线";
     if (snapshot.rig_fresh !== true || snapshot.freshness !== "fresh") return "状态快照陈旧";
     if (snapshot.tx_enabled !== false || snapshot.transmitting !== false || snapshot.ptt !== false
         || snapshot.watchdog_timeout !== false) return "当前 TX/PTT 状态不是明确安全值";
-    if (integerValue(snapshot.state_revision) == null) return "缺少安全状态 revision";
-    if (businessUnknown) return "上一次 CQ/AutoSeq 结果未知，等待回读或新 epoch";
+    if (integerValue(snapshot.state_revision) == null) return "状态快照版本无效";
+    if (businessUnknown) return "上一次 CQ/AutoSeq 结果未知，等待回读或新状态";
     if (businessRequest) return "已有 CQ/AutoSeq 请求处理中";
     return "";
   }
@@ -521,7 +520,7 @@
       .forEach((id) => text(id, null));
     const box = el("decodes");
     if (box) box.replaceChildren();
-    renderOperations("unknown", message || "等待新令牌对应的状态快照");
+    renderOperations("unknown", message || "等待当前会话的状态快照");
     updateFrequencyChoices(null);
     updateFrequencyForm();
     updateDxControls();
@@ -567,13 +566,6 @@
     return (value / 1000000).toFixed(6) + " MHz";
   }
 
-  function operationElapsed(row) {
-    const received = integerValue(row.received_ms);
-    const completed = integerValue(row.completed_ms);
-    if (received == null || completed == null || received < 0 || completed < received) return "未知";
-    return (completed - received) + " ms";
-  }
-
   function appendField(list, label, value) {
     const term = document.createElement("dt");
     term.textContent = label;
@@ -602,7 +594,7 @@
       const heading = document.createElement("div");
       heading.className = "operation-heading";
       const title = document.createElement("strong");
-      title.textContent = boundedString(row.request_id, 96);
+      title.textContent = operationLabel(row.operation);
       const status = statusLabel(row);
       const badge = document.createElement("span");
       badge.className = "operation-status " + status.className;
@@ -612,10 +604,8 @@
       item.appendChild(heading);
 
       const fields = document.createElement("dl");
-      appendField(fields, "操作名", operationLabel(row.operation));
       appendField(fields, "原因", boundedString(row.reason, 160));
       appendField(fields, "确认频率", confirmedFrequency(row, row.status));
-      appendField(fields, "操作耗时", operationElapsed(row));
       item.appendChild(fields);
       box.appendChild(item);
     });
@@ -627,7 +617,7 @@
     if (!epoch) {
       operationEpoch = null;
       operationRows = [];
-      renderOperations("unknown", "当前快照缺少服务 epoch");
+      renderOperations("unknown", "当前快照缺少操作状态");
       return;
     }
     if (operationEpoch !== epoch) operationRows = [];
@@ -644,7 +634,7 @@
       : snapshot.freshness === "stale" ? "stale" : "unknown";
     const message = freshness === "stale" ? "服务状态陈旧，以下为旧操作快照"
       : freshness === "unknown" ? "操作快照新鲜度未知"
-      : "当前服务 epoch · 保留 " + operationRows.length + " 条，显示最近 "
+      : "保留 " + operationRows.length + " 条，显示最近 "
         + Math.min(operationRows.length, DISPLAY_OPERATION_ROWS) + " 条";
     renderOperations(freshness, message);
     reconcileFrequency(snapshot);
@@ -723,10 +713,6 @@
     updateBusinessControls();
   }
 
-  function auth() {
-    return token ? { Authorization: "Bearer " + token } : {};
-  }
-
   function responseIdentityMatches(payload, request) {
     return !!(payload && typeof payload === "object"
       && payload.request_id === request.requestId
@@ -741,7 +727,7 @@
   function settleFrequencyResponse(payload, request, httpOk) {
     if (!responseIdentityMatches(payload, request)) {
       frequencyUnknown = true;
-      frequencyStatus("响应无法与本次请求安全匹配，结果未知；等待回读或新 epoch。", "warning");
+      frequencyStatus("响应无法与本次请求安全匹配，结果未知；等待回读或新状态。", "warning");
       updateFrequencyForm();
       return;
     }
@@ -755,7 +741,7 @@
     if (status === "completed") {
       if (!httpOk) {
         frequencyUnknown = true;
-        frequencyStatus("服务返回非成功 HTTP 状态，结果未知；等待回读或新 epoch。", "warning");
+        frequencyStatus("服务返回非成功状态，结果未知；等待回读或新状态。", "warning");
       } else if (readbackMatches(payload, request.targetHz)) {
         frequencyStatus("频率已完成，并已由实际回读确认。", "success");
         frequencyRequest = null;
@@ -775,7 +761,7 @@
       return;
     }
     frequencyUnknown = true;
-    frequencyStatus("响应状态未知，等待实际回读或新 epoch。", "warning");
+    frequencyStatus("响应状态未知，等待实际回读或新状态。", "warning");
     updateFrequencyForm();
   }
 
@@ -810,7 +796,7 @@
     try {
       const response = await fetch("/api/v1/control/frequency", {
         method: "POST",
-        headers: Object.assign({ "Content-Type": "application/json", "Accept": "application/json" }, auth()),
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
         body: JSON.stringify({
           request_id: request.requestId,
           server_epoch: request.epoch,
@@ -826,7 +812,7 @@
       if (request.session !== connectionSession || frequencyRequest !== request) return;
       if (!payload || typeof payload !== "object") {
         frequencyUnknown = true;
-        frequencyStatus("服务响应无法解析，结果未知；等待回读或新 epoch。", "warning");
+        frequencyStatus("服务响应无法解析，结果未知；等待回读或新状态。", "warning");
         updateFrequencyForm();
       } else {
         settleFrequencyResponse(payload, request, response.ok);
@@ -841,8 +827,8 @@
       if (request.session !== connectionSession || frequencyRequest !== request) return;
       frequencyUnknown = true;
       frequencyStatus(error && error.name === "AbortError"
-        ? "请求超时，结果未知；等待明确回读或新 epoch。"
-        : "传输异常，结果未知；等待明确回读或新 epoch。", "warning");
+        ? "请求超时，结果未知；等待明确回读或新状态。"
+        : "传输异常，结果未知；等待明确回读或新状态。", "warning");
       updateFrequencyForm();
     } finally {
       clearTimeout(timer);
@@ -875,7 +861,7 @@
       dxStatus("DX 请求未完成：" + responseReason(payload, "服务未提供原因"), "error");
     } else {
       dxUnknown = true;
-      dxStatus("响应状态未知，等待回读或新 epoch。", "warning");
+      dxStatus("响应状态未知，等待回读或新状态。", "warning");
     }
     updateDxControls();
   }
@@ -911,7 +897,7 @@
     try {
       const response = await fetch("/api/v1/control/select-dx", {
         method: "POST",
-        headers: Object.assign({ "Content-Type": "application/json", "Accept": "application/json" }, auth()),
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
         body: JSON.stringify({
           request_id: request.requestId,
           server_epoch: request.epoch,
@@ -939,8 +925,8 @@
       if (request.session !== connectionSession || dxRequest !== request) return;
       dxUnknown = true;
       dxStatus(error && error.name === "AbortError"
-        ? "DX 请求超时，结果未知；等待明确回读或新 epoch。"
-        : "DX 请求传输异常，结果未知；等待明确回读或新 epoch。", "warning");
+        ? "DX 请求超时，结果未知；等待明确回读或新状态。"
+        : "DX 请求传输异常，结果未知；等待明确回读或新状态。", "warning");
       updateDxControls();
     } finally {
       clearTimeout(timer);
@@ -972,7 +958,7 @@
     try {
       const response = await fetch("/api/v1/control/" + operation, {
         method: "POST",
-        headers: Object.assign({"Content-Type": "application/json", "Accept": "application/json"}, auth()),
+        headers: {"Content-Type": "application/json", "Accept": "application/json"},
         body: JSON.stringify({request_id: request.requestId, server_epoch: request.epoch,
           state_revision: integerValue(currentSnapshot.state_revision), confirm: true}),
         cache: "no-store", signal: local.signal
@@ -1027,18 +1013,12 @@
       const local = new AbortController();
       controller = local;
       try {
-        const headers = auth();
+        const headers = {};
         if (lastId) headers["Last-Event-ID"] = lastId;
         const response = await fetch("/api/v1/events", {
           headers, cache: "no-store", signal: local.signal
         });
         if (run !== runId) throw new Error("superseded");
-        if (response.status === 401) {
-          el("auth_error").textContent = "令牌无效";
-          running = false;
-          setConnected(false);
-          break;
-        }
         if (!response.ok || !response.body) throw new Error("HTTP " + response.status);
         setConnected(true);
         const reader = response.body.getReader();
@@ -1077,7 +1057,7 @@
     }
   }
 
-  el("connect_button").addEventListener("click", () => {
+  function startConnection() {
     runId++;
     connectionSession++;
     running = false;
@@ -1087,13 +1067,13 @@
     if (businessAbort) businessAbort.abort();
     if (frequencyRequest) {
       frequencyUnknown = true;
-      frequencyStatus("会话已更换，旧频率请求结果未知；等待匹配回读或新 epoch。", "warning");
+      frequencyStatus("会话已更换，旧频率请求结果未知；等待匹配回读或新状态。", "warning");
     } else {
       frequencyUnknown = false;
     }
     if (dxRequest) {
       dxUnknown = true;
-      dxStatus("会话已更换，旧 DX 请求结果未知；等待匹配回读或新 epoch。", "warning");
+      dxStatus("会话已更换，旧 DX 请求结果未知；等待匹配回读或新状态。", "warning");
     } else {
       dxUnknown = false;
     }
@@ -1103,13 +1083,11 @@
     } else {
       businessUnknown = false;
     }
-    token = el("token_input").value;
-    el("auth_error").textContent = "";
-    clearRenderedSnapshot("令牌已更换，等待对应会话的状态快照");
+    clearRenderedSnapshot("等待当前会话的状态快照");
     setConnected(false);
     running = true;
     stream(runId);
-  });
+  }
 
   el("frequency_send").addEventListener("click", sendFrequency);
   el("confirm_cancel").addEventListener("click", () => finishConfirmation(false));
@@ -1142,4 +1120,5 @@
   updateFrequencyChoices(null);
   updateFrequencyForm();
   updateBusinessControls();
+  startConnection();
 }());

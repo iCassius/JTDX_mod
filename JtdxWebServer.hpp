@@ -34,8 +34,6 @@ public:
     bool automatic_port {true};
     bool allow_lan {false};           // 非 loopback 绑定必须显式开启
     QSet<quint16> udp_ports;          // 仅排除数字，不执行 UDP bind
-    QString bearer_token;             // P2 测试兼容：启动时立即转换为摘要
-    QString bearer_token_sha256;      // 生产配置只保存 64 位十六进制摘要
     QString allowed_origin;            // LAN 时必须精确匹配；空值拒绝 Origin
     bool enable_frequency_control {false}; // 仅显式开启时允许频率 POST
     bool enable_dx_control {false}; // 仅显式开启时允许选择 DX POST
@@ -68,8 +66,6 @@ public:
   void set_control (JtdxWebControl * control);
   using FrequencyValidator = std::function<JtdxWebFrequency::Result (QString const&)>;
   void set_frequency_validator (FrequencyValidator validator) { frequency_validator_ = std::move (validator); }
-  // 将用户输入的原始令牌转换为持久化摘要；原文不得写入配置、URL、日志或 HTML。
-  static QString bearer_token_digest (QString const& bearer_token);
 
 Q_SIGNALS:
   // 仅报告 TCP 监听生命周期；控制层由 JtdxWebService 绑定到成功监听的 epoch。
@@ -93,7 +89,6 @@ private:
   bool validate_configuration (Configuration const& configuration, QString * error) const;
   bool host_allowed (QByteArray const& host) const;
   bool origin_allowed (QByteArray const& origin) const;
-  bool authorized (QHash<QByteArray, QByteArray> const& headers) const;
   QByteArray event_id () const;
   QJsonObject state_snapshot () const;
   QJsonObject operation_result (JtdxWebControl::Result const& result) const;
@@ -124,7 +119,6 @@ private:
   Configuration configuration_;
   QHostAddress actual_address_;
   quint16 actual_port_ {0};
-  QByteArray bearer_token_digest_;
   quint64 control_generation_ {0};
   QString server_epoch_;
   QString last_error_;

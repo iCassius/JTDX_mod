@@ -2,7 +2,6 @@
 #include "Bands.hpp"
 
 #include <QCoreApplication>
-#include <QCryptographicHash>
 #include <QEventLoop>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -68,6 +67,7 @@ QByteArray request (quint16 port, QByteArray const& target,
                     QByteArray const& token = {}, QByteArray const& extra = {},
                     int timeout_ms = 2000)
 {
+  Q_UNUSED (token);
   QTcpSocket socket;
   QEventLoop loop;
   QByteArray response;
@@ -80,7 +80,6 @@ QByteArray request (quint16 port, QByteArray const& target,
   if (!socket.waitForConnected (timeout_ms)) return response;
   QByteArray wire = QByteArrayLiteral ("GET ") + target + QByteArrayLiteral (" HTTP/1.1\r\nHost: 127.0.0.1:")
       + QByteArray::number (port) + QByteArrayLiteral ("\r\n");
-  if (!token.isEmpty ()) wire += QByteArrayLiteral ("Authorization: Bearer ") + token + QByteArrayLiteral ("\r\n");
   wire += extra + QByteArrayLiteral ("\r\n");
   socket.write (wire);
   socket.flush ();
@@ -113,6 +112,7 @@ QByteArray raw_request (quint16 port, QByteArray const& wire, int timeout_ms = 2
 QByteArray post_frequency (quint16 port, QByteArray const& token, QByteArray const& body,
                            QByteArray const& origin, bool fragmented = false)
 {
+  Q_UNUSED (token);
   QTcpSocket socket;
   QEventLoop loop;
   QByteArray response;
@@ -124,8 +124,7 @@ QByteArray post_frequency (quint16 port, QByteArray const& token, QByteArray con
   socket.connectToHost (QHostAddress::LocalHost, port);
   if (!socket.waitForConnected (1000)) return response;
   QByteArray wire = QByteArrayLiteral ("POST /api/v1/control/frequency HTTP/1.1\r\nHost: 127.0.0.1:")
-      + QByteArray::number (port) + QByteArrayLiteral ("\r\nAuthorization: Bearer ") + token
-      + QByteArrayLiteral ("\r\nOrigin: ") + origin
+      + QByteArray::number (port) + QByteArrayLiteral ("\r\nOrigin: ") + origin
       + QByteArrayLiteral ("\r\nContent-Type: application/json\r\nContent-Length: ")
       + QByteArray::number (body.size ()) + QByteArrayLiteral ("\r\n\r\n");
   socket.write (wire);
@@ -151,9 +150,9 @@ QByteArray post_frequency (quint16 port, QByteArray const& token, QByteArray con
 QByteArray post_select_dx (quint16 port, QByteArray const& token, QByteArray const& body,
                            QByteArray const& origin)
 {
+  Q_UNUSED (token);
   QByteArray wire = QByteArrayLiteral ("POST /api/v1/control/select-dx HTTP/1.1\r\nHost: 127.0.0.1:")
-      + QByteArray::number (port) + QByteArrayLiteral ("\r\nAuthorization: Bearer ") + token
-      + QByteArrayLiteral ("\r\nOrigin: ") + origin
+      + QByteArray::number (port) + QByteArrayLiteral ("\r\nOrigin: ") + origin
       + QByteArrayLiteral ("\r\nContent-Type: application/json\r\nContent-Length: ")
       + QByteArray::number (body.size ()) + QByteArrayLiteral ("\r\n\r\n") + body;
   return raw_request (port, wire);
@@ -162,9 +161,10 @@ QByteArray post_select_dx (quint16 port, QByteArray const& token, QByteArray con
 QByteArray post_business (quint16 port, QByteArray const& token, QByteArray const& path,
                           QByteArray const& body, QByteArray const& origin)
 {
+  Q_UNUSED (token);
   QByteArray wire = QByteArrayLiteral ("POST /api/v1/control/") + path
       + QByteArrayLiteral (" HTTP/1.1\r\nHost: 127.0.0.1:") + QByteArray::number (port)
-      + QByteArrayLiteral ("\r\nAuthorization: Bearer ") + token + QByteArrayLiteral ("\r\nOrigin: ")
+      + QByteArrayLiteral ("\r\nOrigin: ")
       + origin + QByteArrayLiteral ("\r\nContent-Type: application/json\r\nContent-Length: ")
       + QByteArray::number (body.size ()) + QByteArrayLiteral ("\r\n\r\n") + body;
   return raw_request (port, wire);
@@ -193,6 +193,7 @@ bool partial_header_times_out (quint16 port)
 QByteArray sse_request (quint16 port, QByteArray const& token, QByteArray const& last_event_id,
                         int timeout_ms = 1000)
 {
+  Q_UNUSED (token);
   QTcpSocket socket;
   QEventLoop loop;
   QByteArray response;
@@ -216,8 +217,7 @@ QByteArray sse_request (quint16 port, QByteArray const& token, QByteArray const&
   socket.connectToHost (QHostAddress::LocalHost, port);
   if (!socket.waitForConnected (timeout_ms)) return response;
   QByteArray wire = QByteArrayLiteral ("GET /api/v1/events HTTP/1.1\r\nHost: 127.0.0.1:")
-      + QByteArray::number (port) + QByteArrayLiteral ("\r\nAuthorization: Bearer ")
-      + token + QByteArrayLiteral ("\r\n");
+      + QByteArray::number (port) + QByteArrayLiteral ("\r\n");
   if (!last_event_id.isEmpty ()) wire += QByteArrayLiteral ("Last-Event-ID: ") + last_event_id + QByteArrayLiteral ("\r\n");
   wire += QByteArrayLiteral ("\r\n");
   socket.write (wire);
@@ -248,8 +248,7 @@ int main (int argc, char ** argv)
                         QStringLiteral ("K1ABC"), QStringLiteral ("FN31"));
   JtdxWebServer server {&state};
   JtdxWebServer::Configuration config;
-  QByteArray const token = QByteArrayLiteral ("p3-test-token-0123456789-abcdefghijklmnopqrstuvwxyz");
-  config.bearer_token_sha256 = QString::fromLatin1 (QCryptographicHash::hash (token, QCryptographicHash::Sha256).toHex ());
+  QByteArray const token = QByteArrayLiteral ("legacy-token-ignored-by-web-ui");
   JtdxWebControl control {1000};
   control.set_clock_for_test (0);
   JtdxWebControl::ObservedState observed;
@@ -372,8 +371,7 @@ int main (int argc, char ** argv)
       if (!server.start (config)) return 2;
       control.bind_server_epoch (server.server_epoch ());
       QByteArray const fixture_url = server.url ().toUtf8 () + QByteArrayLiteral ("/#fixture");
-      std::fprintf (stdout, "WEB_UI_FIXTURE_URL=%s\nWEB_UI_FIXTURE_TOKEN=%s\n",
-                    fixture_url.constData (), token.constData ());
+      std::fprintf (stdout, "WEB_UI_FIXTURE_URL=%s\n", fixture_url.constData ());
       std::fflush (stdout);
       QTimer::singleShot (300000, &app, &QCoreApplication::quit);
       return app.exec ();
@@ -447,8 +445,7 @@ int main (int argc, char ** argv)
       if (!server.start (config)) return 2;
       control.bind_server_epoch (server.server_epoch ());
       QByteArray const fixture_url = server.url ().toUtf8 () + QByteArrayLiteral ("/#fixture");
-      std::fprintf (stdout, "WEB_UI_FIXTURE_URL=%s\nWEB_UI_FIXTURE_TOKEN=%s\n",
-                    fixture_url.constData (), token.constData ());
+      std::fprintf (stdout, "WEB_UI_FIXTURE_URL=%s\n", fixture_url.constData ());
       std::fflush (stdout);
       if (invalidated_frequency_fixture)
         {
@@ -520,8 +517,7 @@ int main (int argc, char ** argv)
                  == JtdxWebControl::Status::Pending,
              "browser fixture leaves a pending operation for the UI");
       QByteArray fixture_url = server.url ().toUtf8 () + QByteArrayLiteral ("/#fixture");
-      std::fprintf (stdout, "WEB_UI_FIXTURE_URL=%s\nWEB_UI_FIXTURE_TOKEN=%s\n",
-                    fixture_url.constData (), token.constData ());
+      std::fprintf (stdout, "WEB_UI_FIXTURE_URL=%s\n", fixture_url.constData ());
       std::fflush (stdout);
       QTimer::singleShot (7000, &state, [&state] { state.advance_clock_for_test (7000); });
       QTimer::singleShot (300000, &app, &QCoreApplication::quit);
@@ -594,8 +590,8 @@ int main (int argc, char ** argv)
                                 QByteArrayLiteral ("http://127.0.0.1:") + QByteArray::number (port))) == 409,
          "same request id with a different payload is rejected as conflict");
   check (status (post_frequency (port, {}, frequency_body,
-                                QByteArrayLiteral ("http://127.0.0.1:") + QByteArray::number (port))) == 401,
-         "frequency POST requires bearer authentication");
+                                QByteArrayLiteral ("http://127.0.0.1:") + QByteArray::number (port))) == 202,
+         "frequency POST works without bearer authentication");
   check (status (post_frequency (port, token, frequency_body, QByteArrayLiteral ("http://evil.example"))) == 403,
          "frequency POST rejects an incorrect Origin");
   check (control.feedback_frequency (captured_dispatch.request_id, captured_dispatch.server_epoch,
@@ -742,8 +738,7 @@ int main (int argc, char ** argv)
   operation_sse.connectToHost (QHostAddress::LocalHost, port);
   check (operation_sse.waitForConnected (1000), "operation SSE fixture must connect");
   operation_sse.write (QByteArrayLiteral ("GET /api/v1/events HTTP/1.1\r\nHost: 127.0.0.1:")
-                       + QByteArray::number (port) + QByteArrayLiteral ("\r\nAuthorization: Bearer ")
-                       + token + QByteArrayLiteral ("\r\n\r\n"));
+                       + QByteArray::number (port) + QByteArrayLiteral ("\r\n\r\n"));
   operation_sse.flush ();
   operation_sse_timer.start (2000);
   operation_sse_loop.exec ();
@@ -820,8 +815,7 @@ int main (int argc, char ** argv)
   timeout_sse.connectToHost (QHostAddress::LocalHost, port);
   check (timeout_sse.waitForConnected (1000), "timeout SSE fixture must connect");
   timeout_sse.write (QByteArrayLiteral ("GET /api/v1/events HTTP/1.1\r\nHost: 127.0.0.1:")
-                     + QByteArray::number (port) + QByteArrayLiteral ("\r\nAuthorization: Bearer ")
-                     + token + QByteArrayLiteral ("\r\n\r\n"));
+                     + QByteArray::number (port) + QByteArrayLiteral ("\r\n\r\n"));
   timeout_sse.flush ();
   timeout_sse_timer.start (2000);
   timeout_sse_loop.exec ();
@@ -944,10 +938,9 @@ int main (int argc, char ** argv)
   check (status (response) == 200 && response.contains (QByteArrayLiteral ("JTDX Web UI")), "root must serve the read-only page");
   check (status (request (port, QByteArrayLiteral ("/style.css"))) == 200, "stylesheet resource must be available without API token");
   check (status (request (port, QByteArrayLiteral ("/app.js"))) == 200, "javascript resource must be available without API token");
-  check (status (request (port, QByteArrayLiteral ("/healthz"))) == 401, "health must require bearer token");
-  response = request (port, QByteArrayLiteral ("/healthz"), token);
+  response = request (port, QByteArrayLiteral ("/healthz"));
   check (status (response) == 200 && !response.contains (QByteArrayLiteral ("online")), "health must describe service only");
-  response = request (port, QByteArrayLiteral ("/api/v1/state"), token);
+  response = request (port, QByteArrayLiteral ("/api/v1/state"));
   check (status (response) == 200, "state endpoint must respond");
   QJsonDocument state_document = QJsonDocument::fromJson (response.mid (response.indexOf ("\r\n\r\n") + 4));
   check (state_document.isObject () && state_document.object ().value (QStringLiteral ("server_epoch")).toString () == server.server_epoch(),
@@ -962,8 +955,7 @@ int main (int argc, char ** argv)
          "body framing must be rejected before any control path");
   quint64 const revision_before_post = state.revision ();
   QByteArray const post = QByteArrayLiteral ("POST /api/v1/control/frequency HTTP/1.1\r\nHost: 127.0.0.1:")
-      + QByteArray::number (port) + QByteArrayLiteral ("\r\nAuthorization: Bearer ") + token
-      + QByteArrayLiteral ("\r\nOrigin: http://127.0.0.1:") + QByteArray::number (port)
+      + QByteArray::number (port) + QByteArrayLiteral ("\r\nOrigin: http://127.0.0.1:") + QByteArray::number (port)
       + QByteArrayLiteral ("\r\nContent-Type: application/json\r\n\r\n");
   int const post_status = status (raw_request (port, post));
   check (post_status == 400,
@@ -975,7 +967,7 @@ int main (int argc, char ** argv)
                          QByteArrayLiteral ("Origin: https://evil.invalid\r\n"))) == 403,
          "cross origin must be rejected");
   QByteArray const evil_host = QByteArrayLiteral ("GET /api/v1/state HTTP/1.1\r\nHost: evil.invalid:")
-      + QByteArray::number (port) + QByteArrayLiteral ("\r\nAuthorization: Bearer ") + token + QByteArrayLiteral ("\r\n\r\n");
+      + QByteArray::number (port) + QByteArrayLiteral ("\r\n\r\n");
   check (status (raw_request (port, evil_host)) == 400,
          "unexpected host must be rejected");
 
@@ -1041,7 +1033,7 @@ int main (int argc, char ** argv)
   slow.connectToHost (QHostAddress::LocalHost, port);
   check (slow.waitForConnected (1000), "slow SSE client must connect");
   slow.write (QByteArrayLiteral ("GET /api/v1/events HTTP/1.1\r\nHost: 127.0.0.1:")
-              + QByteArray::number (port) + QByteArrayLiteral ("\r\nAuthorization: Bearer ") + token + QByteArrayLiteral ("\r\n\r\n"));
+              + QByteArray::number (port) + QByteArrayLiteral ("\r\n\r\n"));
   slow.flush ();
   slow_timer.start (25000);
   slow_loop.exec ();
@@ -1068,7 +1060,6 @@ int main (int argc, char ** argv)
   manual_probe.close ();
   JtdxWebServer manual_server {&state};
   JtdxWebServer::Configuration manual_ok;
-  manual_ok.bearer_token_sha256 = config.bearer_token_sha256;
   manual_ok.automatic_port = false;
   manual_ok.port = manual_port;
   check (manual_server.start (manual_ok) && manual_server.actual_port () == manual_port,
@@ -1080,7 +1071,6 @@ int main (int argc, char ** argv)
     {
       JtdxWebServer auto_server {&state};
       JtdxWebServer::Configuration auto_skip;
-      auto_skip.bearer_token_sha256 = config.bearer_token_sha256;
       auto_skip.udp_ports.insert (JtdxWebServer::automatic_port_first + 1);
       check (auto_server.start (auto_skip), "automatic server should find a bounded free port");
       check (auto_server.actual_port () != JtdxWebServer::automatic_port_first
@@ -1102,7 +1092,6 @@ int main (int argc, char ** argv)
   check (occupied.listen (QHostAddress::LocalHost, 0), "test occupied TCP port should bind");
   JtdxWebServer conflict {&state};
   JtdxWebServer::Configuration manual;
-  manual.bearer_token_sha256 = config.bearer_token_sha256;
   manual.automatic_port = false;
   manual.port = occupied.serverPort ();
   check (!conflict.start (manual) && conflict.web_server_state () == QStringLiteral ("error"), "occupied manual port must fail");

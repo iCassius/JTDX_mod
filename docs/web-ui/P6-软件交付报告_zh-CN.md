@@ -1,5 +1,13 @@
 # JTDX 内置 Web UI：P6 软件交付报告
 
+## P7 页面与访问收口补充（2026-09-21）
+
+本补充对应后续页面收口批次：Web 服务和前端已移除 token 访问保护，旧 `WebUiTokenSha256` 只安全忽略，不显示、不写回、不进入服务签名。默认 loopback、显式 LAN 地址、Host/Origin/JSON/CSRF 边界、控制默认关闭、页面确认、幂等、超时、业务 generation 和实际回读保持不变。
+
+页面改为自动连接/断线重连；桌面采用左侧 RX/解码/操作、右侧频率/DX/TX/CQ/AutoSeq，窄屏按左后右纵向排列并禁止横向溢出。删去 token 输入和开发合同、epoch/revision 等实现性展示，只保留真实错误、未知/陈旧/断线及“登记不等于完成”的回读提示。
+
+本补充使用无硬件 loopback fixture 和受支持浏览器观察页面；不处理浏览器残留页，不包含真实 `jtdx.exe`、CAT/PTT/TX、HIL、部署或无线电验证。最终构建日志为 `C:\JTDX64\deps-webui\p7-final-build-20260921.log`，全量 CTest 为 `22/22`、`100% tests passed`，日志为 `C:\JTDX64\deps-webui\p7-final-ctest-20260921.log`。
+
 ## 范围与结论
 
 本报告对应分支 `main`、基线提交 `c6f14fd` 之后的 P6 有界批次。范围限定为页面二次确认可控性、CQ/AutoSeq/Stop loopback 业务链路、既有 DX 软件合同回归和交付证据整理。结论为“软件隔离部分完成，整体验收未完成”，不代表真实 JTDX、CAT、PTT、TX 或无线电行为已验证。

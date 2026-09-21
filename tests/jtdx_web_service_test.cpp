@@ -72,8 +72,6 @@ int main (int argc, char ** argv)
   QObject::connect (&open_action, &QAction::triggered, &service, &JtdxWebService::open);
 
   JtdxWebServer::Configuration configuration;
-  configuration.bearer_token_sha256 = JtdxWebServer::bearer_token_digest (
-      QStringLiteral ("p3-service-test-token-0123456789"));
 
   check (service.apply (false, configuration), "disabled configuration is accepted");
   check (!service.is_listening (), "disabled configuration keeps the server stopped");

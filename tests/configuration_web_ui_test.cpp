@@ -6,7 +6,6 @@
 #include <QCheckBox>
 #include <QDialog>
 #include <QDialogButtonBox>
-#include <QLineEdit>
 #include <QPushButton>
 #include <QSettings>
 #include <QStandardPaths>
@@ -116,8 +115,6 @@ namespace
       dialog->findChild<QCheckBox *> ("web_ui_automation_control_check_box")->setChecked (true);
       dialog->findChild<QCheckBox *> ("web_ui_automatic_port_check_box")->setChecked (false);
       dialog->findChild<QSpinBox *> ("web_ui_port_spin_box")->setValue (49201);
-      dialog->findChild<QLineEdit *> ("web_ui_token_line_edit")
-        ->setText (QStringLiteral ("0123456789abcdef0123456789abcdef"));
       dialog->findChild<QDialogButtonBox *> ("configuration_dialog_button_box")
         ->button (QDialogButtonBox::Ok)->click ();
     });
@@ -129,10 +126,12 @@ namespace
     check (!configuration.web_ui_automatic_port (), "accepted manual port mode is live");
     check (configuration.web_ui_port () == 49201, "accepted Web UI port is live");
     check (configuration.web_ui_bind_address () == QStringLiteral ("127.0.0.1"), "default bind stays loopback");
-    check (configuration.web_ui_token_sha256 ().size () == 64, "only token digest is exposed after accept");
+    check (configuration_dialog () == nullptr
+               || configuration_dialog ()->findChild<QWidget *> ("web_ui_token_line_edit") == nullptr,
+           "Web UI settings no longer expose a token editor");
     settings.beginGroup (QStringLiteral ("Configuration"));
-    check (settings.value ("WebUiTokenSha256").toString ().size () == 64, "QSettings stores token digest");
-    check (!settings.contains ("WebUiToken"), "QSettings never stores token plaintext");
+    check (!settings.contains ("WebUiTokenSha256") && !settings.contains ("WebUiToken"),
+           "Web UI settings do not write legacy token keys");
     settings.endGroup ();
   }
 }
@@ -150,7 +149,6 @@ int main (int argc, char ** argv)
   if (!temporary.isValid ()) return 1;
 
   QString const settings_path = temporary.filePath (QStringLiteral ("isolated.ini"));
-  QString accepted_digest;
   {
     QSettings settings {settings_path, QSettings::IniFormat};
     set_safe_rig_defaults (settings);
@@ -176,8 +174,6 @@ int main (int argc, char ** argv)
       dialog->findChild<QCheckBox *> ("web_ui_automation_control_check_box")->setChecked (true);
       dialog->findChild<QCheckBox *> ("web_ui_automatic_port_check_box")->setChecked (false);
       dialog->findChild<QSpinBox *> ("web_ui_port_spin_box")->setValue (49202);
-      dialog->findChild<QLineEdit *> ("web_ui_token_line_edit")
-        ->setText (QStringLiteral ("abcdef0123456789abcdef0123456789"));
       dialog->findChild<QDialogButtonBox *> ("configuration_dialog_button_box")
         ->button (QDialogButtonBox::Cancel)->click ();
     });
@@ -197,7 +193,6 @@ int main (int argc, char ** argv)
            "Cancel does not write temporary configuration settings");
 
     configure_and_accept (configuration, settings);
-    accepted_digest = configuration.web_ui_token_sha256 ();
 
     result = run_dialog (configuration, [] (QDialog * dialog) {
       dialog->findChild<QCheckBox *> ("web_ui_enabled_check_box")->setChecked (false);
@@ -217,8 +212,6 @@ int main (int argc, char ** argv)
   check (reloaded.web_ui_enabled (), "accepted Web UI enabled state reloads");
   check (!reloaded.web_ui_automatic_port () && reloaded.web_ui_port () == 49201,
          "accepted manual port reloads");
-  check (reloaded.web_ui_token_sha256 () == accepted_digest,
-         "accepted token digest reloads identically");
     check (reloaded.web_ui_frequency_control_enabled (), "accepted frequency control gate reloads");
   check (reloaded.web_ui_dx_control_enabled (), "accepted DX control gate reloads");
   check (reloaded.web_ui_automation_control_enabled (), "accepted automation control gate reloads");
