@@ -17,6 +17,7 @@
 | P10 | 错误身份回包、确认后重复提交、MainWindow 无硬件隔离审查、软件交付报告 | 已完成软件收尾：错误 `request_id`/`server_epoch` 回包均保持未知/处理中保护；同一确认 POST 实际重复转发仍只保留一条记录；自有 `--test-mode` MainWindow 安全启动/停止通过；原生窗口人工验收、CAT/PTT/TX/HIL/部署未完成 |
 | P11 | 主程序嵌入资源重建、未确认锁后的安全 Stop、结果字段和 MainWindow 集成边界 | 已完成最小 operation-specific Stop 修复：超时后 Stop 以 `automation_stopped`/`idle/disabled` 回读完成但不解除旧 latch；主程序 `qrc_jtdx.cpp`/`jtdx.exe` 已重建，最终 CTest `22/22`；原生窗口人工验收、CAT/PTT/TX/HIL/部署未完成 |
 | P12/P13 | 有界本地控制诊断日志、Hamlib 同文件统一写入、超大既有文件边界、生命周期/重复/拒绝记录、P11 新 epoch/多浏览器恢复核对 | 已完成：复用现有数据目录的 `jtdx_recovery.log`，主动文件 `256 KiB`、仅 `.1` 轮转；保留既有本地时间/UTF-8/`key=value` 约定，定向 CTest `6/6`、全量 CTest `23/23`；普通控制恢复步骤已明确为必要时重启 JTDX；原生窗口人工验收、CAT/PTT/TX/HIL/部署未完成 |
+| P14 | 本地 Release Candidate：CMake 安装、Qt/MinGW/Hamlib 依赖闭包、ZIP 直根目录、SHA256、干净解压和无硬件启动 | 已完成有界 RC 审计：75 文件、`bin/plugins/share` 直根目录、逐文件解压比对 0 差异、两个目录各观察 20 秒；完整 MainWindow、无硬件长时/故障恢复、CAT/PTT/TX/HIL、最终发布批准仍待人工或另行授权 |
 | HIL | CAT/PTT/TX、设备回读、长时运行和无线电行为；需独立授权 | 未授权 |
 
 ## 必测条目追踪

@@ -1,6 +1,10 @@
 # JTDX 内置 Web UI：阶段入口与恢复说明
 
-本目录记录 JTDX 内置轻量 Web UI 的需求、边界、设计和阶段证据。P3 生产 service/QAction、P4 普通控制、P5 CQ/AutoSeq 软件控制链路、P7 页面收口、P8 视口/断线验收、P9 DX/异常闭环、P10 软件交付收尾、P11 超时 Stop 恢复/资源核查和 P12 有界本地控制诊断日志已完成本批隔离验证；仍不代表已经完成完整 MainWindow、真实 CAT/DX/CQ 设备回读或 HIL/部署验证。频率、DX、CQ/AutoSeq 控制均可由用户在设置中分别显式开启，默认仍关闭；完成仍须实际业务/CAT 状态回读，不能把隔离夹具的 `accepted/pending` 当作硬件完成。较早 CAT `.10` 交付提交 `a89c9da` 仅作外部历史参考。
+本目录记录 JTDX 内置轻量 Web UI 的需求、边界、设计和阶段证据。P3 生产 service/QAction、P4 普通控制、P5 CQ/AutoSeq 软件控制链路、P7 页面收口、P8 视口/断线验收、P9 DX/异常闭环、P10 软件交付收尾、P11 超时 Stop 恢复/资源核查、P12/P13 有界本地控制诊断日志和 P14 本地 Release Candidate 审计已完成本批隔离验证；仍不代表已经完成完整 MainWindow、真实 CAT/DX/CQ 设备回读或 HIL/部署验证。频率、DX、CQ/AutoSeq 控制均可由用户在设置中分别显式开启，默认仍关闭；完成仍须实际业务/CAT 状态回读，不能把隔离夹具的 `accepted/pending` 当作硬件完成。较早 CAT `.10` 交付提交 `a89c9da` 仅作外部历史参考。
+
+## P14 本地 Release Candidate（2026-09-21）
+
+已生成隔离 RC 目录和 ZIP，直接根目录为 `bin/plugins/share`，75 个文件，ZIP SHA256 为 `776df727a46242d65a1bdf1908fd86ac98019b39fb9935d7aadd1c28000e70cc`。候选包和全新解压目录均以 `--test-mode` 无硬件启动并持续观察 20 秒；完整 MainWindow 人工验收、无硬件长时/故障恢复、真实 CAT/PTT/TX/HIL、发布批准仍未完成或未授权。详见 [`docs/web-ui/P14-Release候选审计_zh-CN.md`](docs/web-ui/P14-Release候选审计_zh-CN.md)。
 
 ## 最新恢复结果（2026-09-21）
 
