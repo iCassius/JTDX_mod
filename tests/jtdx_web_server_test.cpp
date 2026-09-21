@@ -249,7 +249,11 @@ int main (int argc, char ** argv)
   JtdxWebServer server {&state};
   JtdxWebServer::Configuration config;
   QByteArray const token = QByteArrayLiteral ("legacy-token-ignored-by-web-ui");
-  JtdxWebControl control {1000};
+  bool const browser_automation_p9_timeout_fixture = app.arguments ().contains (
+      QStringLiteral ("--serve-browser-automation-p9-timeout"));
+  JtdxWebControl control {browser_automation_p9_timeout_fixture ? 3000
+                          : app.arguments ().contains (QStringLiteral ("--serve-browser-automation-p9"))
+                              ? 120000 : 1000};
   control.set_clock_for_test (0);
   JtdxWebControl::ObservedState observed;
   observed.safety.known = true;
@@ -292,7 +296,9 @@ int main (int argc, char ** argv)
       QStringLiteral ("--serve-browser-automation"));
   bool const browser_automation_p6_fixture = app.arguments ().contains (
       QStringLiteral ("--serve-browser-automation-p6"));
-  if (browser_automation_fixture || browser_automation_p6_fixture)
+  bool const browser_automation_p9_fixture = app.arguments ().contains (
+      QStringLiteral ("--serve-browser-automation-p9")) || browser_automation_p9_timeout_fixture;
+  if (browser_automation_fixture || browser_automation_p6_fixture || browser_automation_p9_fixture)
     {
       // Loopback-only browser fixture.  It drives the production HTTP,
       // Control and State objects with an in-memory business adapter; no
@@ -301,6 +307,10 @@ int main (int argc, char ** argv)
       state.observe_status (14074000, QStringLiteral ("FT8"), {}, QStringLiteral ("-10"),
                             QStringLiteral ("FT8"), false, false, true, -100, 150,
                             QStringLiteral ("N0CALL"), QStringLiteral ("AA00"), {}, false, {}, false, false);
+      if (browser_automation_p9_fixture)
+        state.observe_decode (true, QTime {12, 34, 56}, -10, 0.1F, 1500,
+                              QStringLiteral ("FT8"), QStringLiteral ("K1ABC FN31"), false, false,
+                              QStringLiteral ("K1ABC"), QStringLiteral ("FN31"));
       state.observe_rig (true, 14074000, 14074000, false);
       state.observe_business_state (false, QStringLiteral ("idle"), QStringLiteral ("idle"), {});
       state.set_frequency_candidates (
@@ -327,13 +337,38 @@ int main (int argc, char ** argv)
           current.frequency_generation = state.rig_generation ();
           current.frequency_known = snapshot.value (QStringLiteral ("frequency")).isDouble ();
           current.actual_frequency_hz = snapshot.value (QStringLiteral ("frequency")).toVariant ().toLongLong ();
+          current.dx_generation = state.dx_generation ();
+          current.dx_call = snapshot.value (QStringLiteral ("dx_call")).toString ();
+          current.dx_grid = snapshot.value (QStringLiteral ("dx_grid")).toString ();
+          current.dx_known = !current.dx_call.isEmpty ();
           return current;
         });
-      control.set_business_dispatcher ([&state, &control] (JtdxWebControl::Dispatch const& dispatch) {
+      if (browser_automation_p9_fixture)
+        control.set_select_dx_dispatcher ([&state, &control] (JtdxWebControl::Dispatch const& dispatch) {
+            JtdxWebControl::Dispatch prepared;
+            if (!control.prepare_dispatch (dispatch.request_id, dispatch.server_epoch, &prepared)
+                || !control.begin_dispatch (prepared)) return;
+            QTimer::singleShot (350, &state, [&state, &control, prepared] {
+                if (control.result (prepared.request_id).status != JtdxWebControl::Status::Pending)
+                  return;
+                state.observe_web_dx_selection (prepared.dx_call, prepared.dx_grid,
+                                                prepared.dx_selection_source, prepared.dx_source_decode_id,
+                                                prepared.dx_frequency_offset, prepared.dx_time);
+                control.feedback_select_dx (prepared.request_id, prepared.server_epoch,
+                                            state.dx_generation (), prepared.dx_call, prepared.dx_grid,
+                                            state.revision (), prepared.dx_report, prepared.dx_frequency_offset,
+                                            prepared.dx_time, prepared.dx_selection_source,
+                                            prepared.dx_source_decode_id);
+              });
+          });
+      control.set_business_dispatcher ([&state, &control, browser_automation_p9_fixture,
+                                        browser_automation_p9_timeout_fixture]
+                                       (JtdxWebControl::Dispatch const& dispatch) {
           JtdxWebControl::Dispatch prepared;
           if (!control.prepare_dispatch (dispatch.request_id, dispatch.server_epoch, &prepared)
               || !control.begin_dispatch (prepared)) return;
-          QTimer::singleShot (250, &state, [&state, &control, prepared] {
+          QTimer::singleShot (browser_automation_p9_fixture ? 60000 : 250,
+                              &state, [&state, &control, prepared] {
               if (control.result (prepared.request_id).status != JtdxWebControl::Status::Pending)
                 return;
               if (prepared.operation == JtdxWebControl::Operation::StartCq)
@@ -365,14 +400,23 @@ int main (int argc, char ** argv)
                                          snapshot.value (QStringLiteral ("auto_sequence_state")).toString () == QStringLiteral ("enabled"),
                                          state.revision ());
             });
+          if (browser_automation_p9_timeout_fixture)
+            QTimer::singleShot (3500, &state, [&control] {
+                control.advance_clock_for_test (4000);
+                control.expire ();
+              });
         });
-      config.automatic_port = !browser_automation_p6_fixture;
+      config.automatic_port = !browser_automation_p6_fixture && !browser_automation_p9_fixture;
       if (browser_automation_p6_fixture) config.port = 49153;
+      if (browser_automation_p9_timeout_fixture) config.port = 49155;
+      else if (browser_automation_p9_fixture) config.port = 49154;
       if (!server.start (config)) return 2;
       control.bind_server_epoch (server.server_epoch ());
       QByteArray const fixture_url = server.url ().toUtf8 () + QByteArrayLiteral ("/#fixture");
       std::fprintf (stdout, "WEB_UI_FIXTURE_URL=%s\n", fixture_url.constData ());
       std::fflush (stdout);
+      if (browser_automation_p9_fixture)
+        QTimer::singleShot (180000, &state, [&state] { state.advance_clock_for_test (6000); });
       QTimer::singleShot (300000, &app, &QCoreApplication::quit);
       return app.exec ();
     }

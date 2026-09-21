@@ -17,6 +17,17 @@
 - 断线重连：停止自有 fixture 后观察到“未连接”、状态陈旧提示及旧操作记录保留；重启同一 fixture 后自动恢复“已连接/新鲜”。
 - 收尾边界：检查时五小时窗口剩余约 `29%`，按规则停止新实现。既有 fixture 的 250ms 回读窗口不足以稳定完成“在途启动被 Stop 取代”专项时序；DX 有效/过期选择、浏览器级超时/身份不匹配和网络 POST 次数也未在本批补做。不能将本批隔离浏览器证据解释为完整 MainWindow、CAT/PTT/TX、HIL 或部署证据。
 
+### 2026-09-21 P9 DX、在途停止与异常状态浏览器闭环
+
+- 基线：`main/bd1a91c`，工作树开始时干净。本批只扩展 `tests/jtdx_web_server_test.cpp` 的 loopback 浏览器 fixture，不改生产代码、API、线程、UDP 或服务架构。
+- Fixture：`--serve-browser-automation-p9` 固定端口 `49154`，提供新鲜解码、DX 选择匹配回读和 60 秒在途业务窗口；`--serve-browser-automation-p9-timeout` 固定端口 `49155`，使用测试时钟推进既有 `JtdxWebControl::expire()`，只用于浏览器 timeout 验收。
+- DX：浏览器实际观察到唯一 `POST /api/v1/control/select-dx`，请求携带当前 `decode_id`；回读 `K1ABC/FN31`、原因 `feedback_matched`，TX 允许发射/发射中均为否。fixture stale 后 `freshness=陈旧`、DX 状态为“状态快照陈旧”、选择按钮数为 `0`，未产生过期选择 POST。
+- 在途 Stop：AutoSeq 确认后页面先显示“命令已登记，等待业务状态回读”，Stop 在启动回读前确认；CDP 网络记录恰好 2 个 POST。最终 Stop 为 `completed/already_selected`，旧 AutoSeq 为 `rejected/superseded_by_stop`，未出现旧启动状态复活。
+- 去重与取消：CQ 取消、重复点击启动按钮后取消，均观察到确认框只保留一个流程、POST 数为 `0`、操作记录无新增。已有 AutoSeq/Stop 组合只产生各自一次 POST。
+- 跨 epoch：pending AutoSeq 后停止 fixture，页面显示未连接并保留处理中记录；重启同一 fixture 后显示“服务状态已刷新，旧 CQ/AutoSeq 请求已失效”，连接恢复但不误报完成，旧记录不跨新 epoch 复用。
+- Timeout：timeout fixture 中 1 个 POST 先保持 pending，约 4.2 秒后显示 `超时/feedback_timeout`，按钮恢复可用，未显示业务完成。
+- 自动验证：`p9-fixture-build-20260921-r9.log` 构建通过；`p9-server-focused-20260921.log` 为 `1/1`、34.34 秒；`p9-final-ctest-20260921.log` 为全量 `22/22`、57.51 秒。未启动真实 JTDX，未连接 CAT/PTT/TX，未做 HIL、部署或完整 MainWindow 验收。
+
 ### 2026-09-21 P6 页面确认与浏览器业务回归收尾记录
 
 - 范围：基于 `main/c6f14fd`，只处理页面确认可控性、CQ/AutoSeq/Stop 的 loopback 浏览器链路和交付记录；不启动真实 `jtdx.exe`，不连接 CAT/电台，不执行 PTT/TX/HIL，不改 UDP、不新增生产 API/线程/进程。

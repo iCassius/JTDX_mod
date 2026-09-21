@@ -13,6 +13,7 @@
 | P6 | 全 API、异常隔离、UDP/CAT/解码/自动呼叫回归、浏览器结果、交付报告 | 进行中：页面确认取消/确认与 CQ pending→business readback 已人工观察；DX/频率及 CQ/Stop/AutoSeq 的软件合同已有自动证据；残留浏览器页清理阻塞全量 server 回归，断线/epoch/重复/timeout 浏览器场景、完整 MainWindow/CAT/PTT/TX/HIL 待后续 |
 | P7 | 移除 token、精简页面文案、JTDX 结构化桌面/移动布局；保留 Host/Origin/CSRF、安全门和业务回读 | 已完成软件隔离验收：最终构建与 CTest `22/22` 通过；loopback 浏览器观察确认桌面左右布局、自动连接、无 token 输入、陈旧/操作结果提示；移动布局由静态契约覆盖 |
 | P8 | 支持浏览器实际宽/窄视口、页面确认、业务回读、断线重连和横向溢出 | 进行中：`1280x720` 与 `390x844` 均有实际 DOM/截图证据；CQ 取消无操作记录，CQ/Stop/AutoSeq 完成回读，断线保留快照并可自动重连；在途 Stop 替换、DX 过期选择、浏览器异常身份/超时待后续批次 |
+| P9 | DX 新鲜/过期选择、在途 Stop 接管、取消/重复 POST 计数、跨 epoch 与 timeout | 已完成隔离浏览器闭环：DX 匹配回读且不触发 TX；stale 锁定；Stop 以 `superseded_by_stop` 接管旧启动；取消/重复点击无额外 POST；跨 epoch 不误报完成；timeout 显示 `feedback_timeout`；定向/全量 CTest 通过 |
 | HIL | CAT/PTT/TX、设备回读、长时运行和无线电行为；需独立授权 | 未授权 |
 
 ## 必测条目追踪

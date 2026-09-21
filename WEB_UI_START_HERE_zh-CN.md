@@ -1,6 +1,6 @@
 # JTDX 内置 Web UI：阶段入口与恢复说明
 
-本目录记录 JTDX 内置轻量 Web UI 的需求、边界、设计和阶段证据。P3 生产 service/QAction、P4 普通控制、P5 CQ/AutoSeq 软件控制链路和 P7 Web 页面收口已完成本批隔离验证；仍不代表已经启动 JTDX、连接 JTDX 电台或完成 HIL/部署验证。频率、DX、CQ/AutoSeq 控制均可由用户在设置中分别显式开启，默认仍关闭；完成仍须实际业务/CAT 状态回读，不能把隔离夹具的 `accepted/pending` 当作硬件完成。较早 CAT `.10` 交付提交 `a89c9da` 仅作外部历史参考。
+本目录记录 JTDX 内置轻量 Web UI 的需求、边界、设计和阶段证据。P3 生产 service/QAction、P4 普通控制、P5 CQ/AutoSeq 软件控制链路、P7 页面收口、P8 视口/断线验收和 P9 DX/异常浏览器闭环已完成本批隔离验证；仍不代表已经启动 JTDX、连接 JTDX 电台或完成 HIL/部署验证。频率、DX、CQ/AutoSeq 控制均可由用户在设置中分别显式开启，默认仍关闭；完成仍须实际业务/CAT 状态回读，不能把隔离夹具的 `accepted/pending` 当作硬件完成。较早 CAT `.10` 交付提交 `a89c9da` 仅作外部历史参考。
 
 ## 最新恢复结果（2026-09-21）
 
@@ -17,6 +17,14 @@ Web UI 已移除 token 访问保护及前端令牌输入；旧 `WebUiTokenSha256
 浏览器业务证据：页面内确认框为 `role=dialog`，默认焦点为取消；取消 CQ 后操作记录保持为空。确认后 CQ 记录为“已完成（已确认）/cq_armed”，fixture 呈现模拟活动 TX，Stop 可用；Stop 经“命令已登记，等待业务状态回读”后成为“已完成（已确认）/automation_stopped”；AutoSeq 同样完成业务回读。窄屏操作记录保留 3 条，记录区宽度 `313` 且没有额外横向滚动；停止自有 fixture 后页面显示未连接并保留旧记录，重启同一 fixture 后自动恢复已连接。
 
 本批额度在收尾检查时五小时窗口剩余约 `29%`，按规则停止新实现。因此未扩展 fixture：尚未完成“启动在途时被 Stop 取代”的专项浏览器时序、DX 有效/过期选择、浏览器级超时/身份不匹配和 POST 次数网络计数；它们不被本批宣称为已验收。上述浏览器证据仍只代表隔离软件链路，不代表完整 MainWindow、CAT/PTT/TX、HIL 或生产部署。
+
+### P9 DX、在途停止与异常状态浏览器闭环（2026-09-21）
+
+新增仅测试参数 `--serve-browser-automation-p9`（49154）和 `--serve-browser-automation-p9-timeout`（49155），均复用生产 State/Control/Server 路径，不新增生产 API、线程、UDP 或调试端点。新鲜解码选择实际只产生 1 个 `select-dx` POST，回读 `K1ABC/FN31`、`feedback_matched`，TX 允许/发射仍为否；fixture 进入 stale 后 DX 选择按钮消失、状态显示陈旧，不再发送选择请求。
+
+AutoSeq 在页面确认后保持 pending，Stop 在其回读前确认并只产生 2 个业务 POST；Stop 以 `already_selected` 完成，旧 AutoSeq 以 `superseded_by_stop` 拒绝，旧回调未复活状态。取消 CQ 和重复点击确认流程均为 0 个 POST、无新增操作记录。pending 请求断开并重启 fixture 后显示旧请求已失效，不误报完成；timeout fixture 以 1 个 POST 经 pending 后显示 `feedback_timeout`，按钮恢复可用。
+
+P9 构建日志为 `C:\JTDX64\deps-webui\p9-fixture-build-20260921-r9.log`，服务定向 CTest 为 `1/1`、34.34 秒，日志为 `C:\JTDX64\deps-webui\p9-server-focused-20260921.log`；全量 CTest 为 `22/22`、57.51 秒，日志为 `C:\JTDX64\deps-webui\p9-final-ctest-20260921.log`。仍未启动真实 `jtdx.exe`，未连接 CAT/PTT/TX，未做 HIL、生产部署或完整 MainWindow 验收。
 
 ### P6 页面确认与隔离浏览器业务回归（2026-09-21）
 
@@ -82,8 +90,8 @@ loopback 浏览器人工证据：连接隔离夹具后，点击 CQ 出现页面�
 
 ## 当前状态
 
-- 阶段：`P7 Web 访问与页面布局收口`，P0/P1/P2/P3 已完成，P4 frequency/DX、P5 业务命令和 P7 页面收口的 Service/Server/Control 生命周期、独立 generation 回读、MainWindow 隔离适配契约和独立显式配置开关已完成；真实 CAT/DX/CQ 设备回读/HIL 未验证。
-- 基线：本批从分支 `main`、HEAD `363ec14` 开始；结果提交号以本批本地提交为准。P4 HTTP 契约见 [`docs/web-ui/P4-FREQUENCY-HTTP_契约_zh-CN.md`](docs/web-ui/P4-FREQUENCY-HTTP_契约_zh-CN.md)，当前结果与恢复点见进度日志。
+- 阶段：`P9 DX、在途停止与异常状态浏览器闭环`，P0/P1/P2/P3 已完成，P4 frequency/DX、P5 业务命令、P7 页面收口、P8 视口/断线和 P9 DX/异常闭环的隔离验证已完成；完整 MainWindow、真实 CAT/DX/CQ 设备回读、HIL/部署未验证。
+- 基线：本批从分支 `main`、HEAD `bd1a91c` 开始；结果提交号以本批本地提交为准。P4 HTTP 契约见 [`docs/web-ui/P4-FREQUENCY-HTTP_契约_zh-CN.md`](docs/web-ui/P4-FREQUENCY-HTTP_契约_zh-CN.md)，当前结果与恢复点见进度日志。
 - 代码根目录：`C:\JTDX64\jtdx_sourcecode`。用户需求中的 `jtdx\_sourcecode` 按当前实际仓库路径解释。
 - P3 历史范围：增加 Web UI 配置 Tab、MainWindow 唯一服务生命周期、菜单入口和 Qt Resource 原生深色响应式只读页；历史版本曾有摘要令牌，本批已移除其运行时和设置入口。服务仍为单进程主 Qt 事件循环，不新增 UDP/线程/进程或控制 API。
 - 已确认：主程序已有 Qt5 Network、`MessageClient`、`MessageServer` 和 `JTDX_BUILD_LOCAL_TESTS`；P1 状态模型、P2 只读服务、P3 代码/资源/测试/文档、P4 生命周期/dispatch、HTTP 隔离基础、operations/SSE 有界回读、频率/DX/CQ/AutoSeq 显式配置门均已有本地修改；完整窗口和真实 CAT/DX/CQ 回读仍未完成。
@@ -95,7 +103,7 @@ loopback 浏览器人工证据：连接隔离夹具后，点击 CQ 出现页面�
 1. 先读本文件、`docs/web-ui/PROGRESS_zh-CN.md`，再读与当前阶段对应的设计文档。
 2. 检查 `git status --short --branch`、`git log -1 --oneline`；若基线或工作树与记录不符，先更新恢复日志，不覆盖已有修改。
 3. 每一阶段只做一个可审查批次：先源码事实和文件计划，再实现，再做该阶段静态/单元/API 验证，最后写恢复记录并提交中文 commit。
-4. 每批开始读取当前配额；本批按用户要求，当五小时窗口剩余低于 `30%` 时立即把已完成、未完成、命令和证据写入恢复日志，只做有界收尾、静态检查、精确提交和交接，不开启新的实现面；不把“请求已发出”当成完成。后续批次应在开始检查点明确记录其收尾阈值。
+4. 按用户最新授权推进，不因额度百分比主动暂停，也不消费 reset；只有平台真实限制或工程边界阻塞时记录恢复点。每批仍需把已完成、未完成、命令和证据写入恢复日志，不把“请求已发出”当成完成。
 5. P0 文档阶段不启动 JTDX、不连接真实电台、不执行 CAT/PTT/TX/HIL、不向群晖部署。用户后续继续到 P3/P6 时，可在隔离配置、`Rig=None` 且无真实 CAT 连接的条件下进行本地浏览器验证；开始前必须证明不会自动连接硬件。真实 CAT/PTT/TX 和无线电行为仍需单独授权。
 
 ## 阶段顺序
@@ -108,12 +116,14 @@ loopback 浏览器人工证据：连接隔离夹具后，点击 CQ 出现页面�
 | P3 | 设置/菜单/前端骨架 | Web UI 设置 Tab、端口/绑定策略、菜单入口、内置资源、响应式只读页面 | 代码/资源/CTest/浏览器夹具复验已完成；完整 MainWindow 窗口人工验收留到 P6 |
 | P4 | 普通控制 | `JtdxWebControl`、频率切换、过期解码 ID、DX 选择、状态回读 | 频率与 DX 软件安全门、独立显式配置、独立 generation/source 回读、跨客户端未确认锁和 MainWindow 隔离契约已通过；完整窗口/CAT 回读待后续批次 |
 | P5 | 高风险控制 | CQ/AutoSeq 启动、停止流程、二次确认、幂等/超时/冲突和状态回读 | 软件命令与业务 generation 回读已通过隔离测试；真实设备和浏览器人工验收待后续 |
-| P6 | 整体验证 | 自动化合同、浏览器手测、异常隔离、回归和交付报告 | 未开始 |
+| P6 | 整体验证 | 自动化合同、浏览器手测、异常隔离、回归和交付报告 | 已由 P7-P9 分批完成有界隔离验收；完整 MainWindow 仍待后续 |
+| P8 | 浏览器视口与生命周期 | 实际宽/窄视口、确认、断线重连、横向溢出 | 已完成有界浏览器验收；未覆盖真实 MainWindow/CAT |
+| P9 | DX、在途停止与异常 | 新鲜/陈旧 DX、Stop 接管、取消/重复、timeout、epoch/身份边界 | 已完成隔离浏览器闭环；未覆盖真实设备/HIL |
 | HIL | 独立授权 | 真实 CAT/PTT/发射、设备反馈、长时间运行和无线电行为 | 未授权/未开始 |
 
-P1 至 P6 每次只推进一个阶段；用户检查额度后再继续。HIL 不属于普通阶段的默认验收。
+P1 至 P9 每次只推进一个阶段；HIL 不属于普通阶段的默认验收。
 
-下批最短路径：补齐 P6 全 API/异常隔离/浏览器人工验收和交付报告；真实 CAT/PTT/TX/HIL 仍需单独授权。频率、DX、CQ/AutoSeq 的软件回读都不能替代设备证据。
+下批最短路径：由根会话评估是否继续补齐完整 MainWindow 隔离验收、交付收口或另行授权 HIL；真实 CAT/PTT/TX/HIL 仍需单独授权。频率、DX、CQ/AutoSeq 的软件回读都不能替代设备证据。
 
 本批最终证据：构建日志为 `C:\JTDX64\deps-webui\p4-frequency-http-final-build-2ca51ec.log`，其中确认重新编译 `jtdx_web_service_test` 的 `JtdxWebService.cpp`/`JtdxWebServer.cpp`；全量 CTest 日志为 `C:\JTDX64\deps-webui\p4-frequency-http-final-ctest-2ca51ec.log`，`19/19` 通过。此前 `LastTestsFailed` 或旧 service 二进制状态不作为本批结论。
 
