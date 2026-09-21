@@ -308,6 +308,7 @@ int main (int argc, char ** argv)
   config.enable_frequency_control = true;
   config.enable_dx_control = true;
   config.enable_automation_control = true;
+  config.enable_radio_control = true;
   bool const browser_automation_fixture = app.arguments ().contains (
       QStringLiteral ("--serve-browser-automation"));
   bool const browser_automation_p6_fixture = app.arguments ().contains (
@@ -329,6 +330,10 @@ int main (int argc, char ** argv)
                               QStringLiteral ("K1ABC"), QStringLiteral ("FN31"));
       state.observe_rig (true, 14074000, 14074000, false);
       state.observe_business_state (false, QStringLiteral ("idle"), QStringLiteral ("idle"), {});
+      state.observe_radio_controls (false, false, false, false, false, 6,
+                                   {QStringLiteral ("K1ABC N0CALL"), QStringLiteral ("N0CALL -10"),
+                                    QStringLiteral ("N0CALL R-10"), QStringLiteral ("N0CALL RRR"),
+                                    QStringLiteral ("CQ N0CALL FN31"), QStringLiteral ("CQ N0CALL FN31")}, true);
       state.set_frequency_candidates (
           QStringLiteral ("FT8"), QStringLiteral ("All"),
           {{7074000u, QStringLiteral ("40m"), QStringLiteral ("FT8"), QStringLiteral ("All"), true},
@@ -350,6 +355,16 @@ int main (int argc, char ** argv)
           current.business_state_known = current.safety.business_state_known;
           current.auto_sequence_enabled = snapshot.value (QStringLiteral ("auto_sequence_state")).toString () == QStringLiteral ("enabled");
           current.cq_state = snapshot.value (QStringLiteral ("cq_state")).toString ();
+          QJsonObject const radio = snapshot.value (QStringLiteral ("radio_controls")).toObject ();
+          current.radio_state_known = radio.value (QStringLiteral ("known")).toBool ();
+          current.radio_multi_decode = radio.value (QStringLiteral ("multi_decode")).toBool ();
+          current.radio_agc_compensation = radio.value (QStringLiteral ("agc_compensation")).toBool ();
+          current.radio_narrow = radio.value (QStringLiteral ("narrow")).toBool ();
+          current.radio_sync = radio.value (QStringLiteral ("sync")).toBool ();
+          current.radio_skip_tx1 = radio.value (QStringLiteral ("skip_tx1")).toBool ();
+          current.radio_current_tx_index = radio.value (QStringLiteral ("current_tx_index")).toInt ();
+          for (auto const& value : radio.value (QStringLiteral ("tx_messages")).toArray ())
+            current.radio_tx_messages.append (value.toString ());
           current.frequency_generation = state.rig_generation ();
           current.frequency_known = snapshot.value (QStringLiteral ("frequency")).isDouble ();
           current.actual_frequency_hz = snapshot.value (QStringLiteral ("frequency")).toVariant ().toLongLong ();
@@ -1088,6 +1103,14 @@ int main (int argc, char ** argv)
     }
   check (server.children ().size () <= child_count + 1, "completed requests must not leak timer/socket children");
 
+  // Isolate the backpressure probe from the many intentionally short-lived
+  // HTTP/SSE clients above; the probe must measure only its own connection.
+  JtdxWebServer backpressure_server {&state};
+  auto backpressure_config = config;
+  backpressure_config.automatic_port = true;
+  check (backpressure_server.start (backpressure_config), "backpressure fixture server should start");
+  quint16 const slow_port = backpressure_server.actual_port ();
+
   // A client that never reads is disconnected when the bounded SSE queue fills.
   QTcpSocket slow;
   slow.setReadBufferSize (1);
@@ -1096,19 +1119,19 @@ int main (int argc, char ** argv)
   slow_timer.setSingleShot (true);
   QObject::connect (&slow, &QTcpSocket::disconnected, &slow_loop, &QEventLoop::quit);
   QObject::connect (&slow_timer, &QTimer::timeout, &slow_loop, &QEventLoop::quit);
-  slow.connectToHost (QHostAddress::LocalHost, port);
+  slow.connectToHost (QHostAddress::LocalHost, slow_port);
   check (slow.waitForConnected (1000), "slow SSE client must connect");
   slow.write (QByteArrayLiteral ("GET /api/v1/events HTTP/1.1\r\nHost: 127.0.0.1:")
-              + QByteArray::number (port) + QByteArrayLiteral ("\r\n\r\n"));
+              + QByteArray::number (slow_port) + QByteArrayLiteral ("\r\n\r\n"));
   slow.flush ();
   slow_timer.start (25000);
   slow_loop.exec ();
-  if (server.active_connection_count () != 0)
-    std::fprintf (stderr, "slow active count=%d socket_state=%d\\n", server.active_connection_count (), static_cast<int> (slow.state ()));
-  check (server.active_connection_count () == 0, "slow SSE client must be bounded by backpressure and released server-side");
+  check (backpressure_server.active_connection_count () == 0,
+         "slow SSE client must be bounded by backpressure and released server-side");
   check (status (request (port, QByteArrayLiteral ("/healthz"), token)) == 200,
          "server must remain responsive after slow SSE eviction");
   slow.abort ();
+  backpressure_server.stop ();
 
   QString const old_epoch = server.server_epoch ();
   server.stop ();

@@ -20,6 +20,7 @@
 | P14 | 本地 Release Candidate：CMake 安装、Qt/MinGW/Hamlib 依赖闭包、ZIP 直根目录、SHA256、干净解压和无硬件启动 | 已完成有界 RC 审计：75 文件、`bin/plugins/share` 直根目录、逐文件解压比对 0 差异、两个目录各观察 20 秒；完整 MainWindow、无硬件长时/故障恢复、CAT/PTT/TX/HIL、最终发布批准仍待人工或另行授权 |
 | P15 | 无硬件持续运行、受限 SSE/慢客户端/连接上限、周期重连、未决命令 Stop 接管、stale 安全拒绝、资源采样 | 已完成有界 fixture 证据：1802 秒、29 次采样、15 次恢复周期、连接上限第 17 个 `503`、慢客户端有界清理、fixture 自然退出 `0`、无意外失败；仅证明 State/Control/Server 隔离链路，不替代 RC MainWindow、CAT/PTT/TX/HIL |
 | P16 | 解压 RC 的真实 `jtdx.exe` 无硬件持续运行、配置隔离、安全默认值、主进程资源/网络观察和最终交接 | 已完成有界 RC 证据：1814.2 秒、30 次采样、私有内存 `70.55–70.67 MB`、句柄 `237–239`、网络 `0`；受控终止，正常 MainWindow 关闭、设置保存重载、完整视觉、CAT/PTT/TX/HIL 和最终发布批准仍待人工或授权 |
+| P17 | 截图对应的 WebUI 菜单、紧凑解码表、受限电台面板、Tx1–Tx6 编辑、能力开关、操作回读和新 RC | 软件实现与定向测试已完成；夹具宽屏已观察到解码一行布局、国家字段、面板、Tx6 选择和有界滚动；真实 MainWindow、CAT/PTT/TX/HIL、部署和最终发布批准仍未完成 |
 | HIL | CAT/PTT/TX、设备回读、长时运行和无线电行为；需独立授权 | 未授权 |
 
 ## 必测条目追踪
@@ -30,6 +31,7 @@
 4. CQ/AutoSeq 状态门、二次确认、停止优先级、业务 generation 回读；控制超时、重复 request、旧 epoch、revision 冲突、退出期间请求和未知状态提示。
 5. 无 token 的 read/control、默认 loopback、显式 LAN 地址、Host/Origin/CSRF、body/连接/慢连接/日志限长；Web 异常不影响 JTDX。
 6. 原有 UDP、CAT、解码、自动呼叫测试无回归；静态、单元、API 合同、浏览器、HIL、生产六层证据分别记录。
+7. P17 电台面板仅允许白名单 action；危险操作需确认；`Log QSO` 只打开原生记录对话框，不能由 WebUI 伪造 ADIF 完成。
 
 ## 结果口径
 

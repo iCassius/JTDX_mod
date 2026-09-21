@@ -142,6 +142,7 @@ private slots:
   void on_propLineEdit_textChanged(const QString &text);
   void on_actionSettings_triggered();
   void on_actionOpenWebUi_triggered();
+  void on_actionWebUiEnabled_toggled (bool checked);
   void on_monitorButton_clicked (bool);
   void on_swlButton_clicked (bool);
   void on_filterButton_clicked (bool);
@@ -412,6 +413,8 @@ private:
 private:
   void hideMenus (bool b);
   void applyWebUiConfiguration ();
+  void updateWebRadioState ();
+  void dispatchWebRadio (JtdxWebControl::Dispatch dispatch);
   void refreshWebFrequencyCandidates () const;
   JtdxWebControl::ObservedState webControlObservation () const;
   void dispatchWebFrequency (JtdxWebControl::Dispatch);

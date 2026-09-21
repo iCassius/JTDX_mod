@@ -20,6 +20,9 @@
   let businessRequest = null;
   let businessUnknown = false;
   let businessAbort = null;
+  let radioRequest = null;
+  let radioUnknown = false;
+  let radioAbort = null;
   let confirmationResolver = null;
   let confirmationPreviousFocus = null;
   let connectionSession = 0;
@@ -222,6 +225,13 @@
     node.className = "frequency-result " + (kind || "");
   }
 
+  function radioStatus(message, kind) {
+    const node = el("radio_result");
+    if (!node) return;
+    node.textContent = message;
+    node.className = "frequency-result " + (kind || "");
+  }
+
   function finishConfirmation(accepted) {
     const resolver = confirmationResolver;
     if (!resolver) return;
@@ -293,6 +303,13 @@
       && row.server_epoch === businessRequest.epoch) || null;
   }
 
+  function operationForRadio(snapshot) {
+    if (!radioRequest || !snapshot || !Array.isArray(snapshot.operations)) return null;
+    return snapshot.operations.find((row) => row && typeof row === "object"
+      && row.operation === "radio" && row.request_id === radioRequest.requestId
+      && row.server_epoch === radioRequest.epoch) || null;
+  }
+
   function readbackMatches(row, targetHz) {
     const readback = row && row.readback && typeof row.readback === "object" ? row.readback : null;
     return !!(readback && readback.confirmed === true
@@ -314,6 +331,26 @@
     if (request.operation === "start-auto-call") return readback.auto_sequence_enabled === true;
     return readback.auto_sequence_enabled === false
       && ["idle", "not_selected"].includes(readback.cq_state);
+  }
+
+  function readbackMatchesRadio(row, request) {
+    const readback = row && row.readback && typeof row.readback === "object" ? row.readback : null;
+    if (!readback || readback.confirmed !== true || readback.radio_state_known !== true) return false;
+    const values = {
+      "enable-tx": readback.tx_enabled === true,
+      "stop-tx": readback.tx_enabled === false,
+      "multi-decode": readback.radio_multi_decode === request.value,
+      "agc-compensation": readback.radio_agc_compensation === request.value,
+      "narrow": readback.radio_narrow === request.value,
+      "sync": readback.radio_sync === request.value,
+      "skip-tx1": readback.radio_skip_tx1 === request.value,
+      "select-tx": integerValue(readback.radio_current_tx_index) === request.index,
+      "set-tx-message": Array.isArray(readback.radio_tx_messages)
+        && readback.radio_tx_messages[request.index - 1] === request.message,
+      "log-qso": readback.radio_log_dialog_open === true,
+      "cq": readback.cq_state === "armed"
+    };
+    return Object.prototype.hasOwnProperty.call(values, request.action) ? values[request.action] : true;
   }
 
   function terminalOperation(row) {
@@ -414,6 +451,33 @@
     updateBusinessControls();
   }
 
+  function reconcileRadio(snapshot) {
+    if (!radioRequest || !snapshot) return;
+    const epoch = typeof snapshot.server_epoch === "string" ? snapshot.server_epoch : "";
+    if (epoch && epoch !== radioRequest.epoch) {
+      radioRequest = null;
+      radioUnknown = true;
+      radioStatus("服务状态已刷新，旧电台操作结果未知。", "warning");
+      return;
+    }
+    const row = operationForRadio(snapshot);
+    if (row && terminalOperation(row)) {
+      if (row.status === "completed" && readbackMatchesRadio(row, radioRequest)) {
+        radioUnknown = false;
+        radioStatus("电台操作已由实际状态回读确认。", "success");
+        radioRequest = null;
+      } else if (row.status === "completed") {
+        radioUnknown = true;
+        radioStatus("服务报告完成，但电台回读不匹配，结果未知。", "warning");
+      } else {
+        radioUnknown = row.status === "timeout";
+        radioStatus("电台操作未完成：" + boundedString(row.reason || "服务未提供原因", 180), radioUnknown ? "warning" : "error");
+        radioRequest = null;
+      }
+    }
+    updateRadioControls();
+  }
+
   function frequencyGateReason(snapshot) {
     if (!snapshot) return "等待新鲜状态快照";
     if (snapshot.frequency_control_enabled !== true) return "桌面尚未开放频率控制";
@@ -451,6 +515,7 @@
       if (currentSnapshot && currentSnapshot.frequency_control_enabled === true) enabled.push("频率");
       if (currentSnapshot && currentSnapshot.dx_control_enabled === true) enabled.push("DX");
       if (currentSnapshot && currentSnapshot.automation_control_enabled === true) enabled.push("CQ/AutoSeq");
+      if (currentSnapshot && currentSnapshot.radio_control_enabled === true) enabled.push("电台面板");
       label.textContent = enabled.length ? enabled.join("、") + "控制已开放" : "按能力开放 · 当前仅只读";
     }
   }
@@ -515,6 +580,60 @@
     }
   }
 
+  function radioGateReason(snapshot, action) {
+    if (!snapshot) return "等待新鲜状态快照";
+    if (snapshot.radio_control_enabled !== true) return "桌面尚未开放 Web 电台操作面板";
+    if (!connected || snapshot.online !== true) return "等待主程序在线";
+    if (snapshot.freshness !== "fresh" || snapshot.rig_fresh !== true) return "状态快照陈旧";
+    if (integerValue(snapshot.state_revision) == null) return "状态快照版本无效";
+    if (radioUnknown) return "上一次电台操作结果未知；先确认桌面状态或重启 JTDX";
+    if (radioRequest) return "已有电台操作处理中";
+    if (["enable-tx", "cq"].includes(action)
+        && (snapshot.rig_online !== true || snapshot.tx_enabled !== false
+            || snapshot.transmitting !== false || snapshot.ptt !== false
+            || snapshot.watchdog_timeout !== false)) return "TX/PTT 状态不是明确安全值";
+    if (action === "log-qso" && snapshot.radio_controls
+        && snapshot.radio_controls.can_log_qso !== true) return "当前没有可记录的 DX 通联";
+    return "";
+  }
+
+  function updateRadioControls() {
+    const snapshot = currentSnapshot;
+    const state = snapshot && snapshot.radio_controls && typeof snapshot.radio_controls === "object"
+      ? snapshot.radio_controls : {};
+    const known = state.known === true;
+    const actionIds = ["enable_tx", "stop_tx", "log_qso", "clear_windows", "sync", "multi_decode",
+      "agc", "narrow", "decode", "clear_dx", "generate", "cq", "skip_tx1"];
+    actionIds.forEach((id) => {
+      const node = el("radio_" + id);
+      if (!node) return;
+      const action = id === "enable_tx" ? "enable-tx" : id === "stop_tx" ? "stop-tx"
+        : id === "log_qso" ? "log-qso" : id === "clear_windows" ? "clear-windows"
+        : id === "multi_decode" ? "multi-decode" : id === "agc" ? "agc-compensation"
+        : id === "clear_dx" ? "clear-dx" : id === "generate" ? "generate-message"
+        : id === "skip_tx1" ? "skip-tx1" : id;
+      node.disabled = !!radioGateReason(snapshot, action) || !known;
+      node.classList.toggle("active", (action === "multi-decode" && state.multi_decode === true)
+        || (action === "agc-compensation" && state.agc_compensation === true)
+        || (action === "narrow" && state.narrow === true)
+        || (action === "sync" && state.sync === true)
+        || (action === "skip-tx1" && state.skip_tx1 === true));
+    });
+    const status = el("radio_control_status");
+    const reason = radioGateReason(snapshot, "clear-windows");
+    if (status) { status.textContent = reason || "操作需等待主程序实际状态回读"; status.className = "frequency-control-status " + (reason ? "blocked" : "ready"); }
+    text("radio_state_badge", known ? "已同步" : "未知");
+    for (let index = 1; index <= 6; index++) {
+      const input = el("radio_tx_" + index);
+      if (input && Array.isArray(state.tx_messages) && document.activeElement !== input)
+        input.value = typeof state.tx_messages[index - 1] === "string" ? state.tx_messages[index - 1] : "";
+    }
+    document.querySelectorAll("input[name='web_tx_index']").forEach((input) => {
+      input.checked = integerValue(state.current_tx_index) === integerValue(input.value);
+      input.disabled = !known || !!radioGateReason(snapshot, "select-tx");
+    });
+  }
+
   function clearRenderedSnapshot(message) {
     currentSnapshot = null;
     frequencyCandidates = [];
@@ -526,7 +645,8 @@
       "freshness", "frequency_freshness", "last_status_update", "last_decode_update", "decode_age",
       "dx_call", "dx_grid", "report", "df", "tx_mode", "tx_enabled", "transmitting", "decoding",
       "tx_first", "watchdog_timeout", "cq_qso", "auto_sequence_state", "current_tx_text", "decode_count",
-      "dx_selection_status", "dx_selection_result", "business_control_status", "business_result"]
+      "dx_selection_status", "dx_selection_result", "business_control_status", "business_result",
+      "radio_control_status", "radio_result", "radio_state_badge"]
       .forEach((id) => text(id, null));
     const box = el("decodes");
     if (box) box.replaceChildren();
@@ -535,6 +655,7 @@
     updateFrequencyForm();
     updateDxControls();
     updateBusinessControls();
+    updateRadioControls();
   }
 
   function operationLabel(value) {
@@ -650,6 +771,7 @@
     reconcileFrequency(snapshot);
     reconcileDx(snapshot);
     reconcileBusiness(snapshot);
+    reconcileRadio(snapshot);
   }
 
   function render(snapshot) {
@@ -696,13 +818,16 @@
     box.replaceChildren();
       rows.slice().reverse().forEach((decode) => {
       const row = document.createElement("div");
-      row.className = "decode";
-      [[decode.time, ""], [decode.snr, ""], [decode.delta_frequency, ""], [decode.mode, ""],
-        [decode.callsign, ""], [decode.grid, ""], [decode.fresh ? "新鲜" : "陈旧", ""],
-        [decode.is_new ? "新" : "旧", ""], [decode.message, "text"]].forEach(([value, className]) => {
-        const node = document.createElement(className ? "b" : "span");
+      row.className = "decode" + (decode.is_new === true ? " highlight" : "");
+      const time = typeof decode.time === "string" ? decode.time.slice(0, 8) : "未知";
+      [[time, ""], [decode.snr == null ? "未知" : decode.snr, ""],
+        [decode.delta_time == null ? "未知" : Number(decode.delta_time).toFixed(2), ""],
+        [decode.delta_frequency == null ? "未知" : decode.delta_frequency, ""],
+        [decode.mode || "—", ""], [decode.country || "—", "country"],
+        [decode.message || "未知", "message"]].forEach(([value, className]) => {
+        const node = document.createElement(className === "message" ? "b" : "span");
         node.className = className;
-        node.textContent = value == null ? "未知" : String(value);
+        node.textContent = String(value);
         row.appendChild(node);
       });
       if (decode.is_new === true && decode.fresh === true && typeof decode.callsign === "string"
@@ -721,6 +846,7 @@
     updateFrequencyForm();
     updateDxControls();
     updateBusinessControls();
+    updateRadioControls();
   }
 
   function responseIdentityMatches(payload, request) {
@@ -1019,6 +1145,65 @@
     }
   }
 
+  async function sendRadio(action, value, index, message) {
+    const gate = radioGateReason(currentSnapshot, action);
+    if (gate || !currentSnapshot) { updateRadioControls(); return; }
+    const labels = {"enable-tx": "启用发射", "stop-tx": "终止发射", "log-qso": "记录通联",
+      "clear-windows": "清空窗口", "sync": "同步", "multi-decode": "多次解码",
+      "agc-compensation": "AGC 补偿", "narrow": "窄频", "decode": "解码",
+      "clear-dx": "清除 DX", "generate-message": "生成消息", "cq": "CQ",
+      "skip-tx1": "跳过 Tx1", "select-tx": "选择 Tx", "set-tx-message": "编辑消息"};
+    const dangerous = ["enable-tx", "stop-tx", "log-qso", "cq"].includes(action);
+    if (dangerous && !await requestConfirmation(labels[action], action === "log-qso"
+        ? "确认打开 JTDX 原生 QSO 记录对话框？Web UI 不会伪造已写入 ADIF。"
+        : "确认" + labels[action] + "？完成必须等待主程序实际状态回读。")) return;
+    let requestId;
+    try { requestId = secureRequestId(); } catch (_) { radioStatus("浏览器没有可用的安全随机源，无法发送操作。", "error"); return; }
+    const request = {requestId, epoch: currentSnapshot.server_epoch, action, value: value === true,
+      index: integerValue(index) || 0, message: typeof message === "string" ? message : "",
+      session: connectionSession};
+    radioRequest = request;
+    radioUnknown = false;
+    radioStatus("正在发送" + labels[action] + "…", "processing");
+    updateRadioControls();
+    const local = new AbortController();
+    radioAbort = local;
+    const timer = setTimeout(() => local.abort(), 5000);
+    try {
+      const response = await fetch("/api/v1/control/radio", {
+        method: "POST", headers: {"Content-Type": "application/json", "Accept": "application/json"},
+        body: JSON.stringify({request_id: request.requestId, server_epoch: request.epoch,
+          state_revision: integerValue(currentSnapshot.state_revision), action: request.action,
+          value: request.value, tx_index: request.index, text: request.message, confirm: dangerous}),
+        cache: "no-store", signal: local.signal
+      });
+      if (request.session !== connectionSession || radioRequest !== request) return;
+      let payload = null; try { payload = await response.json(); } catch (_) {}
+      if (!responseIdentityMatches(payload, request)) {
+        radioUnknown = true; radioStatus("响应无法与本次电台操作安全匹配，结果未知。", "warning");
+      } else if (["received", "accepted", "pending"].includes(payload.status)) {
+        radioStatus("操作已登记，等待主程序状态回读。", "processing");
+      } else if (payload.status === "completed" && response.ok && readbackMatchesRadio(payload, request)) {
+        radioRequest = null; radioUnknown = false; radioStatus("电台操作已由实际状态回读确认。", "success");
+      } else if (["failed", "rejected", "timeout"].includes(payload.status)) {
+        radioUnknown = payload.status === "timeout";
+        radioStatus("电台操作" + (radioUnknown ? "结果未知" : "未完成") + "："
+          + responseReason(payload, "服务未提供原因"), radioUnknown ? "warning" : "error");
+        radioRequest = null;
+      } else {
+        radioUnknown = true; radioStatus("完成响应缺少匹配回读，结果未知。", "warning");
+      }
+      updateRadioControls();
+    } catch (error) {
+      if (request.session !== connectionSession || radioRequest !== request) return;
+      radioUnknown = true;
+      radioStatus(error && error.name === "AbortError" ? "电台操作超时，结果未知。" : "电台操作传输异常，结果未知。", "warning");
+      updateRadioControls();
+    } finally {
+      clearTimeout(timer); if (radioAbort === local) radioAbort = null;
+    }
+  }
+
   function timedRead(reader, run) {
     let timer;
     const timeout = new Promise((_, reject) => {
@@ -1087,6 +1272,7 @@
     if (frequencyAbort) frequencyAbort.abort();
     if (dxAbort) dxAbort.abort();
     if (businessAbort) businessAbort.abort();
+    if (radioAbort) radioAbort.abort();
     if (frequencyRequest) {
       frequencyUnknown = true;
       frequencyStatus("会话已更换，旧频率请求结果未知；等待匹配回读或新状态。", "warning");
@@ -1105,6 +1291,12 @@
     } else {
       businessUnknown = false;
     }
+    if (radioRequest) {
+      radioUnknown = true;
+      radioStatus("会话已更换，旧电台操作结果未知。", "warning");
+    } else {
+      radioUnknown = false;
+    }
     clearRenderedSnapshot("等待当前会话的状态快照");
     setConnected(false);
     running = true;
@@ -1118,6 +1310,30 @@
   el("business_start_cq").addEventListener("click", () => sendBusiness("start-cq"));
   el("business_start_auto").addEventListener("click", () => sendBusiness("start-auto-call"));
   el("business_stop").addEventListener("click", () => sendBusiness("stop-auto-call"));
+  const radioButtons = {
+    radio_enable_tx: ["enable-tx", true], radio_stop_tx: ["stop-tx", false],
+    radio_log_qso: ["log-qso", false], radio_clear_windows: ["clear-windows", false],
+    radio_sync: ["sync", true], radio_multi_decode: ["multi-decode", true],
+    radio_agc: ["agc-compensation", true], radio_narrow: ["narrow", true],
+    radio_decode: ["decode", false], radio_clear_dx: ["clear-dx", false],
+    radio_generate: ["generate-message", false], radio_cq: ["cq", false],
+    radio_skip_tx1: ["skip-tx1", true]
+  };
+  Object.entries(radioButtons).forEach(([id, config]) => {
+    el(id).addEventListener("click", () => {
+      const state = currentSnapshot && currentSnapshot.radio_controls ? currentSnapshot.radio_controls : {};
+      const toggles = ["sync", "multi-decode", "agc-compensation", "narrow", "skip-tx1"];
+      const value = toggles.includes(config[0]) ? !(state[config[0].replace("agc-compensation", "agc_compensation").replace("multi-decode", "multi_decode").replace("skip-tx1", "skip_tx1")] === true) : config[1];
+      sendRadio(config[0], value, 0, "");
+    });
+  });
+  document.querySelectorAll("input[name='web_tx_index']").forEach((input) => {
+    input.addEventListener("change", () => sendRadio("select-tx", true, integerValue(input.value), ""));
+  });
+  for (let index = 1; index <= 6; index++) {
+    const input = el("radio_tx_" + index);
+    input.addEventListener("change", () => sendRadio("set-tx-message", false, index, input.value));
+  }
   el("frequency_band").addEventListener("change", () => {
     el("frequency_preset").value = "";
     updateFrequencyChoices(currentSnapshot);
@@ -1142,5 +1358,6 @@
   updateFrequencyChoices(null);
   updateFrequencyForm();
   updateBusinessControls();
+  updateRadioControls();
   startConnection();
 }());

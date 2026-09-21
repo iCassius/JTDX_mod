@@ -208,6 +208,15 @@ void JtdxWebServer::stop ()
 {
   if (publish_timer_) publish_timer_->stop ();
   server_.close ();
+  while (server_.hasPendingConnections ())
+    {
+      QTcpSocket * socket = server_.nextPendingConnection ();
+      if (socket)
+        {
+          socket->abort ();
+          socket->deleteLater ();
+        }
+    }
   QList<QTcpSocket *> sockets = clients_.keys ();
   for (QTcpSocket * socket : sockets) close_client (socket);
   actual_address_ = QHostAddress {};
@@ -599,6 +608,15 @@ QJsonObject JtdxWebServer::operation_result (JtdxWebControl::Result const& resul
                    ? QJsonValue {result.snapshot.auto_sequence_enabled} : QJsonValue {QJsonValue::Null});
   readback.insert (QStringLiteral ("cq_state"), result.snapshot.business_state_known
                    ? QJsonValue {result.snapshot.cq_state} : QJsonValue {QJsonValue::Null});
+  readback.insert (QStringLiteral ("radio_state_known"), result.snapshot.radio_state_known);
+  readback.insert (QStringLiteral ("radio_multi_decode"), result.snapshot.radio_state_known ? QJsonValue {result.snapshot.radio_multi_decode} : QJsonValue {QJsonValue::Null});
+  readback.insert (QStringLiteral ("radio_agc_compensation"), result.snapshot.radio_state_known ? QJsonValue {result.snapshot.radio_agc_compensation} : QJsonValue {QJsonValue::Null});
+  readback.insert (QStringLiteral ("radio_narrow"), result.snapshot.radio_state_known ? QJsonValue {result.snapshot.radio_narrow} : QJsonValue {QJsonValue::Null});
+  readback.insert (QStringLiteral ("radio_sync"), result.snapshot.radio_state_known ? QJsonValue {result.snapshot.radio_sync} : QJsonValue {QJsonValue::Null});
+  readback.insert (QStringLiteral ("radio_skip_tx1"), result.snapshot.radio_state_known ? QJsonValue {result.snapshot.radio_skip_tx1} : QJsonValue {QJsonValue::Null});
+  readback.insert (QStringLiteral ("radio_current_tx_index"), result.snapshot.radio_state_known ? QJsonValue {result.snapshot.radio_current_tx_index} : QJsonValue {QJsonValue::Null});
+  readback.insert (QStringLiteral ("radio_tx_messages"), QJsonArray::fromStringList (result.snapshot.radio_tx_messages));
+  readback.insert (QStringLiteral ("radio_log_dialog_open"), result.snapshot.radio_log_dialog_open);
   output.insert (QStringLiteral ("readback"), readback);
   return output;
 }
@@ -644,6 +662,11 @@ QJsonObject JtdxWebServer::state_snapshot () const
                    && control_->server_epoch () == server_epoch_
                    && !control_->is_shutdown ()
                    && static_cast<bool> (state_));
+  snapshot.insert (QStringLiteral ("radio_control_enabled"),
+                   configuration_.enable_radio_control
+                   && control_ && control_->server_epoch_bound ()
+                   && control_->server_epoch () == server_epoch_
+                   && !control_->is_shutdown () && static_cast<bool> (state_));
   QJsonObject const operations = operations_snapshot ();
   snapshot.insert (QStringLiteral ("operation_revision"), operations.value (QStringLiteral ("operation_revision")));
   snapshot.insert (QStringLiteral ("operations"), operations.value (QStringLiteral ("operations")));
@@ -748,15 +771,24 @@ QByteArray JtdxWebServer::sse_event (QByteArray const& name, QByteArray const& i
 void JtdxWebServer::send_sse (Client * client, QByteArray const& payload)
 {
   if (!client || !client->socket || !clients_.contains (client->socket)) return;
+  // The OS send buffer is intentionally 16 KiB.  If a peer has already left
+  // data queued there while our application queue is non-empty, it is a
+  // non-reading peer; evict it before another snapshot can grow the queue.
+  constexpr qint64 unread_socket_limit = 16 * 1024;
   if (payload.size () > max_sse_event_bytes
       || client->pending.size () + payload.size () > max_sse_pending_bytes
-      || client->socket->bytesToWrite () + client->pending.size () + payload.size () > max_sse_pending_bytes)
+      || client->socket->bytesToWrite () + client->pending.size () + payload.size () > max_sse_pending_bytes
+      || (!client->pending.isEmpty () && client->socket->bytesToWrite () >= unread_socket_limit))
     {
       close_client (client->socket);
       return;
     }
   client->pending += payload;
   pump_sse (client);
+  if (client->pending.isEmpty ())
+    client->drain_timer->stop ();
+  else
+    client->drain_timer->start (response_drain_timeout_ms);
 }
 
 void JtdxWebServer::pump_sse (Client * client)
@@ -776,6 +808,8 @@ void JtdxWebServer::pump_sse (Client * client)
       return;
     }
   client->pending.remove (0, static_cast<int> (written));
+  if (client->pending.isEmpty () && client->drain_timer)
+    client->drain_timer->stop ();
 }
 
 void JtdxWebServer::send_initial_sse (Client * client, QByteArray const& last_event_id)
@@ -883,7 +917,7 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
     }
   if (method != QByteArrayLiteral ("GET") && method != QByteArrayLiteral ("POST"))
     {
-      reject_connection (socket, 405, QByteArrayLiteral ("GET and frequency POST only"));
+      reject_connection (socket, 405, QByteArrayLiteral ("GET and supported control POST only"));
       return;
     }
   if (method == QByteArrayLiteral ("POST")
@@ -991,6 +1025,76 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
       control_request.server_epoch = input.value (QStringLiteral ("server_epoch")).toString ();
       control_request.state_revision = static_cast<quint64> (revision_number);
       control_request.operation = operation;
+      auto const result = control_->submit (std::move (control_request));
+      send_http (socket, result.http_status, status_reason (result.http_status),
+                 QByteArrayLiteral ("application/json"), json_response (control_response (result)));
+      return;
+    }
+  if (method == QByteArrayLiteral ("POST") && path == QByteArrayLiteral ("/api/v1/control/radio"))
+    {
+      constexpr double max_safe_json_integer = 9007199254740991.0;
+      bool const valid_utf8_body = !body.isEmpty () && body.size () <= 4096
+          && QString::fromUtf8 (body).toUtf8 () == body;
+      QJsonParseError parse_error {};
+      QJsonDocument document;
+      bool parsed_object = false;
+      QString trusted_request_id;
+      if (valid_utf8_body)
+        {
+          document = QJsonDocument::fromJson (body, &parse_error);
+          parsed_object = parse_error.error == QJsonParseError::NoError && document.isObject ();
+          if (parsed_object && document.object ().value (QStringLiteral ("request_id")).isString ())
+            trusted_request_id = JtdxWebControl::normalize_request_id (
+                document.object ().value (QStringLiteral ("request_id")).toString ());
+        }
+      auto reject_control = [&] (int status, QString reason) {
+        send_http (socket, status, status_reason (status), QByteArrayLiteral ("application/json"),
+                   json_response (control_error_response (status, std::move (reason),
+                                                         trusted_request_id, JtdxWebControl::Operation::Radio)));
+      };
+      if (!configuration_.enable_radio_control) { reject_control (409, QStringLiteral ("radio_control_disabled")); return; }
+      if (!control_ || !state_) { reject_control (409, QStringLiteral ("control_unavailable")); return; }
+      if (!valid_utf8_body || !parsed_object) { reject_control (400, QStringLiteral ("invalid_json")); return; }
+      QJsonObject const input = document.object ();
+      static const QSet<QString> fields {QStringLiteral ("request_id"), QStringLiteral ("server_epoch"),
+                                         QStringLiteral ("state_revision"), QStringLiteral ("action"),
+                                         QStringLiteral ("value"), QStringLiteral ("tx_index"),
+                                         QStringLiteral ("text"), QStringLiteral ("confirm")};
+      for (QString const& key : input.keys ())
+        if (!fields.contains (key)) { reject_control (400, QStringLiteral ("unknown_json_field")); return; }
+      if (trusted_request_id.isEmpty () || !input.value (QStringLiteral ("server_epoch")).isString ()
+          || !input.value (QStringLiteral ("state_revision")).isDouble ()
+          || !input.value (QStringLiteral ("action")).isString ())
+        { reject_control (400, QStringLiteral ("invalid_control_fields")); return; }
+      double const revision_number = input.value (QStringLiteral ("state_revision")).toDouble ();
+      if (!std::isfinite (revision_number) || revision_number < 0 || revision_number > max_safe_json_integer
+          || revision_number != std::floor (revision_number))
+        { reject_control (400, QStringLiteral ("invalid_state_revision")); return; }
+      QString const action = input.value (QStringLiteral ("action")).toString ().trimmed ();
+      static const QSet<QString> dangerous {QStringLiteral ("enable-tx"), QStringLiteral ("stop-tx"),
+                                             QStringLiteral ("log-qso"), QStringLiteral ("cq")};
+      if (dangerous.contains (action)
+          && (!input.value (QStringLiteral ("confirm")).isBool ()
+              || !input.value (QStringLiteral ("confirm")).toBool ()))
+        { reject_control (400, QStringLiteral ("confirmation_required")); return; }
+      int tx_index = input.value (QStringLiteral ("tx_index")).toInt (0);
+      if (input.contains (QStringLiteral ("tx_index"))
+          && (!input.value (QStringLiteral ("tx_index")).isDouble () || tx_index < 0 || tx_index > 6))
+        { reject_control (400, QStringLiteral ("invalid_tx_index")); return; }
+      if (input.contains (QStringLiteral ("value")) && !input.value (QStringLiteral ("value")).isBool ())
+        { reject_control (400, QStringLiteral ("invalid_value")); return; }
+      QString radio_text = input.value (QStringLiteral ("text")).toString ();
+      if (radio_text.size () > 64 || (input.contains (QStringLiteral ("text")) && !input.value (QStringLiteral ("text")).isString ()))
+        { reject_control (400, QStringLiteral ("invalid_text")); return; }
+      JtdxWebControl::Request control_request;
+      control_request.request_id = input.value (QStringLiteral ("request_id")).toString ();
+      control_request.server_epoch = input.value (QStringLiteral ("server_epoch")).toString ();
+      control_request.state_revision = static_cast<quint64> (revision_number);
+      control_request.operation = JtdxWebControl::Operation::Radio;
+      control_request.radio_action = action;
+      control_request.radio_value = input.value (QStringLiteral ("value")).toBool (false);
+      control_request.radio_index = tx_index;
+      control_request.radio_text = radio_text;
       auto const result = control_->submit (std::move (control_request));
       send_http (socket, result.http_status, status_reason (result.http_status),
                  QByteArrayLiteral ("application/json"), json_response (control_response (result)));

@@ -36,6 +36,7 @@ QString JtdxWebControl::operation_name (Operation operation)
     case Operation::StartCq: return QStringLiteral ("start-cq");
     case Operation::StartAutoCall: return QStringLiteral ("start-auto-call");
     case Operation::StopAutoCall: return QStringLiteral ("stop-auto-call");
+    case Operation::Radio: return QStringLiteral ("radio");
     }
   return QStringLiteral ("unknown");
 }
@@ -78,6 +79,11 @@ QString JtdxWebControl::canonical_payload (Request const& request)
   if (request.operation == Operation::StartCq || request.operation == Operation::StartAutoCall
       || request.operation == Operation::StopAutoCall)
     return operation_name (request.operation);
+  if (request.operation == Operation::Radio)
+    return QStringLiteral ("radio:") + request.radio_action + QStringLiteral (":")
+        + (request.radio_value ? QStringLiteral ("1") : QStringLiteral ("0"))
+        + QStringLiteral (":") + QString::number (request.radio_index)
+        + QStringLiteral (":") + request.radio_text;
   QString const call = request.dx_call.trimmed ().toUpper ();
   QString const grid = request.dx_grid.trimmed ().toUpper ();
   return QStringLiteral ("select-dx:") + QString::number (call.size ()) + QStringLiteral (":") + call
@@ -307,6 +313,27 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
       request.dx_call = normalized.call;
       request.dx_grid = normalized.grid;
     }
+  else if (request.operation == Operation::Radio)
+    {
+      static const QSet<QString> actions {
+        QStringLiteral ("enable-tx"), QStringLiteral ("stop-tx"),
+        QStringLiteral ("log-qso"), QStringLiteral ("clear-windows"),
+        QStringLiteral ("sync"), QStringLiteral ("multi-decode"),
+        QStringLiteral ("agc-compensation"), QStringLiteral ("narrow"),
+        QStringLiteral ("decode"), QStringLiteral ("clear-dx"),
+        QStringLiteral ("generate-message"), QStringLiteral ("cq"),
+        QStringLiteral ("skip-tx1"), QStringLiteral ("select-tx"),
+        QStringLiteral ("set-tx-message")};
+      if (!actions.contains (request.radio_action))
+        return reject (request, QStringLiteral ("invalid_radio_action"), 400);
+      if (request.radio_index < 0 || request.radio_index > 6
+          || (!printable_ascii (request.radio_text, 64) && !request.radio_text.isEmpty ()))
+        return reject (request, QStringLiteral ("invalid_radio_fields"), 400);
+      if ((request.radio_action == QStringLiteral ("select-tx")
+           || request.radio_action == QStringLiteral ("set-tx-message"))
+          && (request.radio_index < 1 || request.radio_index > 6))
+        return reject (request, QStringLiteral ("invalid_tx_index"), 400);
+    }
 
   QString const request_epoch = epoch_;
 
@@ -371,7 +398,8 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
   if (current.state_revision != request.state_revision)
     return reject (request, QStringLiteral ("state_revision_conflict"), 409);
   QString safety_reason;
-  if (!safe_to_dispatch (current.safety, request.operation, &safety_reason))
+  if (!safe_to_dispatch (current.safety, request.operation, &safety_reason)
+      && !(request.operation == Operation::Radio && request.radio_action == QStringLiteral ("stop-tx")))
     return reject (request, safety_reason, 409);
 
   Record record;
@@ -390,6 +418,10 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
   record.dx_time = request.dx_time;
   record.dx_selection_source = request.dx_selection_source;
   record.dx_source_decode_id = request.dx_source_decode_id;
+  record.radio_action = request.radio_action;
+  record.radio_value = request.radio_value;
+  record.radio_index = request.radio_index;
+  record.radio_text = request.radio_text;
   record.baseline_business_generation = current.business_generation;
   record.target_cq_state = request.operation == Operation::StartCq ? QStringLiteral ("armed")
       : request.operation == Operation::StopAutoCall ? QStringLiteral ("idle") : QString {};
@@ -415,14 +447,16 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
   stored.result.snapshot = current;
   stored.baseline_generation = request.operation == Operation::Frequency
       ? current.frequency_generation : request.operation == Operation::SelectDx
-        ? current.dx_generation : current.business_generation;
+        ? current.dx_generation : request.operation == Operation::Radio
+          ? current.state_revision : current.business_generation;
   stored.baseline_state_revision = current.state_revision;
   bool const already_matches = request.operation == Operation::Frequency
       ? (current.frequency_known && current.actual_frequency_hz == request.frequency_hz)
       : request.operation == Operation::SelectDx
         ? (current.dx_known && current.dx_call.trimmed ().toUpper () == request.dx_call
            && current.dx_grid.trimmed ().toUpper () == request.dx_grid)
-        : (current.business_state_known
+      : request.operation == Operation::Radio ? false
+      : (current.business_state_known
            && current.auto_sequence_enabled == (request.operation == Operation::StartAutoCall)
            && (request.operation != Operation::StartCq || current.cq_state == QStringLiteral ("armed"))
            && (request.operation != Operation::StopAutoCall || current.cq_state == QStringLiteral ("idle")));
@@ -459,6 +493,10 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
   dispatch.dx_time = request.dx_time;
   dispatch.dx_selection_source = request.dx_selection_source;
   dispatch.dx_source_decode_id = request.dx_source_decode_id;
+  dispatch.radio_action = request.radio_action;
+  dispatch.radio_value = request.radio_value;
+  dispatch.radio_index = request.radio_index;
+  dispatch.radio_text = request.radio_text;
   DispatchHandler handler = request.operation == Operation::Frequency ? frequency_dispatcher_
       : request.operation == Operation::SelectDx ? select_dx_dispatcher_ : business_dispatcher_;
   try
@@ -540,7 +578,9 @@ bool JtdxWebControl::prepare_dispatch (QString const& request_id, QString const&
       return false;
     }
   QString safety_reason;
-  if (!safe_to_dispatch (current.safety, it.value ().result.operation, &safety_reason))
+  if (!safe_to_dispatch (current.safety, it.value ().result.operation, &safety_reason)
+      && !(it.value ().result.operation == Operation::Radio
+           && it.value ().radio_action == QStringLiteral ("stop-tx")))
     {
       finish (it.value (), Status::Rejected, std::move (safety_reason));
       return false;
@@ -565,7 +605,8 @@ bool JtdxWebControl::prepare_dispatch (QString const& request_id, QString const&
   it.value ().result.snapshot = current;
   it.value ().baseline_generation = it.value ().result.operation == Operation::Frequency
       ? current.frequency_generation : it.value ().result.operation == Operation::SelectDx
-        ? current.dx_generation : current.business_generation;
+        ? current.dx_generation : it.value ().result.operation == Operation::Radio
+          ? current.state_revision : current.business_generation;
   it.value ().baseline_state_revision = current.state_revision;
   it.value ().prepared = true;
 
@@ -582,6 +623,10 @@ bool JtdxWebControl::prepare_dispatch (QString const& request_id, QString const&
   result.dx_time = it.value ().dx_time;
   result.dx_selection_source = it.value ().dx_selection_source;
   result.dx_source_decode_id = it.value ().dx_source_decode_id;
+  result.radio_action = it.value ().radio_action;
+  result.radio_value = it.value ().radio_value;
+  result.radio_index = it.value ().radio_index;
+  result.radio_text = it.value ().radio_text;
   *prepared = std::move (result);
   return true;
 }
@@ -628,7 +673,9 @@ bool JtdxWebControl::begin_dispatch (Dispatch const& dispatch)
       || !it.value ().prepared || it.value ().dispatched)
     return false;
   QString safety_reason;
-  if (!safe_to_dispatch (current.safety, it.value ().result.operation, &safety_reason))
+  if (!safe_to_dispatch (current.safety, it.value ().result.operation, &safety_reason)
+      && !(it.value ().result.operation == Operation::Radio
+           && it.value ().radio_action == QStringLiteral ("stop-tx")))
     {
       finish (it.value (), Status::Rejected, std::move (safety_reason));
       return false;
@@ -640,7 +687,8 @@ bool JtdxWebControl::begin_dispatch (Dispatch const& dispatch)
     }
   quint64 const current_generation = dispatch.operation == Operation::Frequency
       ? current.frequency_generation : dispatch.operation == Operation::SelectDx
-        ? current.dx_generation : current.business_generation;
+        ? current.dx_generation : dispatch.operation == Operation::Radio
+          ? current.state_revision : current.business_generation;
   if (current_generation != it.value ().baseline_generation)
     {
       it.value ().prepared = false;
@@ -651,7 +699,11 @@ bool JtdxWebControl::begin_dispatch (Dispatch const& dispatch)
       || dispatch.frequency_hz != it.value ().frequency_hz
       || dispatch.dx_call != it.value ().dx_call || dispatch.dx_grid != it.value ().dx_grid
       || dispatch.dx_selection_source != it.value ().dx_selection_source
-      || dispatch.dx_source_decode_id != it.value ().dx_source_decode_id)
+      || dispatch.dx_source_decode_id != it.value ().dx_source_decode_id
+      || dispatch.radio_action != it.value ().radio_action
+      || dispatch.radio_value != it.value ().radio_value
+      || dispatch.radio_index != it.value ().radio_index
+      || dispatch.radio_text != it.value ().radio_text)
     return false;
   it.value ().dispatched = true;
   return true;
@@ -809,6 +861,48 @@ bool JtdxWebControl::feedback_business (QString const& request_id, QString const
   else if (record.result.operation == Operation::StopAutoCall)
     reason = QStringLiteral ("automation_stopped");
   finish (record, Status::Completed, std::move (reason), generation);
+  return true;
+}
+
+bool JtdxWebControl::feedback_radio (QString const& request_id, QString const& server_epoch,
+                                     quint64 state_revision, ObservedState const& observed)
+{
+  if (!server_epoch_bound_ || pending_request_id_.isEmpty ()
+      || request_id != pending_request_id_ || server_epoch != epoch_)
+    return false;
+  auto it = records_.find (request_id);
+  if (it == records_.end () || !it.value ().dispatched
+      || it.value ().result.operation != Operation::Radio)
+    return false;
+  Record& record = it.value ();
+  if (now () >= record.deadline_ms)
+    {
+      finish (record, Status::Timeout, QStringLiteral ("feedback_timeout"));
+      record.timed_out = true;
+      unconfirmed_latch_ = true;
+      last_timed_out_request_id_ = request_id;
+      return false;
+    }
+  if (state_revision <= record.baseline_state_revision || !observed.radio_state_known)
+    return false;
+  bool matched = true;
+  if (record.radio_action == QStringLiteral ("enable-tx")) matched = observed.safety.tx_enabled;
+  else if (record.radio_action == QStringLiteral ("stop-tx")) matched = !observed.safety.tx_enabled;
+  else if (record.radio_action == QStringLiteral ("multi-decode")) matched = observed.radio_multi_decode == record.radio_value;
+  else if (record.radio_action == QStringLiteral ("agc-compensation")) matched = observed.radio_agc_compensation == record.radio_value;
+  else if (record.radio_action == QStringLiteral ("narrow")) matched = observed.radio_narrow == record.radio_value;
+  else if (record.radio_action == QStringLiteral ("sync")) matched = observed.radio_sync == record.radio_value;
+  else if (record.radio_action == QStringLiteral ("skip-tx1")) matched = observed.radio_skip_tx1 == record.radio_value;
+  else if (record.radio_action == QStringLiteral ("select-tx")) matched = observed.radio_current_tx_index == record.radio_index;
+  else if (record.radio_action == QStringLiteral ("set-tx-message"))
+    matched = record.radio_index >= 1 && record.radio_index <= observed.radio_tx_messages.size ()
+      && observed.radio_tx_messages.at (record.radio_index - 1) == record.radio_text;
+  else if (record.radio_action == QStringLiteral ("log-qso")) matched = observed.radio_log_dialog_open;
+  else if (record.radio_action == QStringLiteral ("cq")) matched = observed.cq_state == QStringLiteral ("armed");
+  if (!matched) return false;
+  record.result.snapshot = observed;
+  record.result.snapshot.state_revision = state_revision;
+  finish (record, Status::Completed, QStringLiteral ("readback_matched"), state_revision);
   return true;
 }
 

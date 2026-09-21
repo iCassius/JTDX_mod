@@ -102,7 +102,8 @@ void JtdxWebState::observe_decode (bool is_new, QTime time, qint32 snr,
                                    float delta_time, quint32 delta_frequency,
                                    QString const& mode, QString const& message,
                                    bool low_confidence, bool off_air,
-                                   QString const& callsign, QString const& grid)
+                                   QString const& callsign, QString const& grid,
+                                   QString const& country)
 {
   Q_ASSERT (QThread::currentThread () == thread ());
   // replayDecodes 明确使用 is_new=false；回放数据已在 UI 流中，不能挤占实时条目。
@@ -119,6 +120,7 @@ void JtdxWebState::observe_decode (bool is_new, QTime time, qint32 snr,
   decode.message = message;
   decode.callsign = callsign;
   decode.grid = grid;
+  decode.country = country;
   decode.low_confidence = low_confidence;
   decode.off_air = off_air;
   decode.is_new = is_new;
@@ -185,6 +187,34 @@ void JtdxWebState::observe_business_state (bool auto_sequence_enabled,
   qso_stage_ = qso_stage;
   cq_state_ = cq_state;
   current_tx_text_ = current_tx_text;
+}
+
+void JtdxWebState::observe_radio_controls (bool multi_decode, bool agc_compensation,
+                                           bool narrow, bool sync, bool skip_tx1,
+                                           int current_tx_index, QStringList const& tx_messages,
+                                           bool can_log_qso)
+{
+  Q_ASSERT (QThread::currentThread () == thread ());
+  QStringList bounded_messages;
+  for (int index = 0; index < 6; ++index)
+    bounded_messages.append (index < tx_messages.size () ? tx_messages.at (index).left (64)
+                                                           : QString {});
+  current_tx_index = qBound (0, current_tx_index, 6);
+  bool const changed = !has_radio_controls_
+      || multi_decode_ != multi_decode || agc_compensation_ != agc_compensation
+      || narrow_ != narrow || sync_ != sync || skip_tx1_ != skip_tx1
+      || current_tx_index_ != current_tx_index || tx_messages_ != bounded_messages
+      || can_log_qso_ != can_log_qso;
+  if (changed) ++revision_;
+  has_radio_controls_ = true;
+  multi_decode_ = multi_decode;
+  agc_compensation_ = agc_compensation;
+  narrow_ = narrow;
+  sync_ = sync;
+  skip_tx1_ = skip_tx1;
+  current_tx_index_ = current_tx_index;
+  tx_messages_ = std::move (bounded_messages);
+  can_log_qso_ = can_log_qso;
 }
 
 bool JtdxWebState::decode_selection (quint64 decode_id, DecodeSelection * selection) const
@@ -407,6 +437,20 @@ QJsonObject JtdxWebState::json_snapshot () const
                                                                      : QJsonValue {QJsonValue::Null});
   object.insert (QStringLiteral ("current_tx_text"), has_business_state_
                 ? nullable_string (current_tx_text_) : QJsonValue {QJsonValue::Null});
+  QJsonObject radio_controls;
+  radio_controls.insert (QStringLiteral ("known"), has_radio_controls_);
+  radio_controls.insert (QStringLiteral ("multi_decode"), has_radio_controls_ ? QJsonValue {multi_decode_} : QJsonValue {QJsonValue::Null});
+  radio_controls.insert (QStringLiteral ("agc_compensation"), has_radio_controls_ ? QJsonValue {agc_compensation_} : QJsonValue {QJsonValue::Null});
+  radio_controls.insert (QStringLiteral ("narrow"), has_radio_controls_ ? QJsonValue {narrow_} : QJsonValue {QJsonValue::Null});
+  radio_controls.insert (QStringLiteral ("sync"), has_radio_controls_ ? QJsonValue {sync_} : QJsonValue {QJsonValue::Null});
+  radio_controls.insert (QStringLiteral ("skip_tx1"), has_radio_controls_ ? QJsonValue {skip_tx1_} : QJsonValue {QJsonValue::Null});
+  radio_controls.insert (QStringLiteral ("current_tx_index"), has_radio_controls_ ? QJsonValue {current_tx_index_} : QJsonValue {QJsonValue::Null});
+  QJsonArray tx_messages;
+  if (has_radio_controls_)
+    for (auto const& message : tx_messages_) tx_messages.append (message);
+  radio_controls.insert (QStringLiteral ("tx_messages"), tx_messages);
+  radio_controls.insert (QStringLiteral ("can_log_qso"), has_radio_controls_ ? QJsonValue {can_log_qso_} : QJsonValue {QJsonValue::Null});
+  object.insert (QStringLiteral ("radio_controls"), radio_controls);
 
   QJsonArray frequency_candidates;
   for (auto const& candidate : frequency_candidates_)
@@ -435,6 +479,7 @@ QJsonObject JtdxWebState::json_snapshot () const
       item.insert (QStringLiteral ("message"), nullable_string (decode.message));
       item.insert (QStringLiteral ("callsign"), nullable_string (decode.callsign));
       item.insert (QStringLiteral ("grid"), nullable_string (decode.grid));
+      item.insert (QStringLiteral ("country"), nullable_string (decode.country));
       item.insert (QStringLiteral ("low_confidence"), decode.low_confidence);
       item.insert (QStringLiteral ("off_air"), decode.off_air);
       item.insert (QStringLiteral ("is_new"), decode.is_new);

@@ -91,6 +91,7 @@ namespace
     settings.setValue ("WebUiFrequencyControlEnabled", false);
     settings.setValue ("WebUiDxControlEnabled", false);
     settings.setValue ("WebUiAutomationControlEnabled", false);
+    settings.setValue ("WebUiRadioControlEnabled", false);
     settings.setValue ("WebUiPort", 49200);
     settings.remove ("WebUiToken");
     settings.remove ("WebUiTokenSha256");
@@ -113,6 +114,7 @@ namespace
       dialog->findChild<QCheckBox *> ("web_ui_frequency_control_check_box")->setChecked (true);
       dialog->findChild<QCheckBox *> ("web_ui_dx_control_check_box")->setChecked (true);
       dialog->findChild<QCheckBox *> ("web_ui_automation_control_check_box")->setChecked (true);
+      dialog->findChild<QCheckBox *> ("web_ui_radio_control_check_box")->setChecked (true);
       dialog->findChild<QCheckBox *> ("web_ui_automatic_port_check_box")->setChecked (false);
       dialog->findChild<QSpinBox *> ("web_ui_port_spin_box")->setValue (49201);
       dialog->findChild<QDialogButtonBox *> ("configuration_dialog_button_box")
@@ -123,6 +125,7 @@ namespace
     check (configuration.web_ui_frequency_control_enabled (), "accepted frequency control gate is live");
     check (configuration.web_ui_dx_control_enabled (), "accepted DX control gate is live");
     check (configuration.web_ui_automation_control_enabled (), "accepted automation control gate is live");
+    check (configuration.web_ui_radio_control_enabled (), "accepted radio control gate is live");
     check (!configuration.web_ui_automatic_port (), "accepted manual port mode is live");
     check (configuration.web_ui_port () == 49201, "accepted Web UI port is live");
     check (configuration.web_ui_bind_address () == QStringLiteral ("127.0.0.1"), "default bind stays loopback");
@@ -161,6 +164,7 @@ int main (int argc, char ** argv)
     check (!configuration.web_ui_frequency_control_enabled (), "frequency control is disabled by default");
     check (!configuration.web_ui_dx_control_enabled (), "DX control is disabled by default");
     check (!configuration.web_ui_automation_control_enabled (), "automation control is disabled by default");
+    check (!configuration.web_ui_radio_control_enabled (), "radio control is disabled by default");
     check (configuration.web_ui_automatic_port (), "automatic port is enabled by default");
     check (configuration.web_ui_bind_address () == QStringLiteral ("127.0.0.1"), "default bind is loopback");
     check (configuration.rig_name () == QStringLiteral ("None"), "isolated configuration uses Rig=None");
@@ -172,6 +176,7 @@ int main (int argc, char ** argv)
       dialog->findChild<QCheckBox *> ("web_ui_frequency_control_check_box")->setChecked (true);
       dialog->findChild<QCheckBox *> ("web_ui_dx_control_check_box")->setChecked (true);
       dialog->findChild<QCheckBox *> ("web_ui_automation_control_check_box")->setChecked (true);
+      dialog->findChild<QCheckBox *> ("web_ui_radio_control_check_box")->setChecked (true);
       dialog->findChild<QCheckBox *> ("web_ui_automatic_port_check_box")->setChecked (false);
       dialog->findChild<QSpinBox *> ("web_ui_port_spin_box")->setValue (49202);
       dialog->findChild<QDialogButtonBox *> ("configuration_dialog_button_box")
@@ -182,6 +187,7 @@ int main (int argc, char ** argv)
     check (!configuration.web_ui_frequency_control_enabled (), "Cancel does not publish frequency control gate");
     check (!configuration.web_ui_dx_control_enabled (), "Cancel does not publish DX control gate");
     check (!configuration.web_ui_automation_control_enabled (), "Cancel does not publish automation control gate");
+    check (!configuration.web_ui_radio_control_enabled (), "Cancel does not publish radio control gate");
     check (configuration.web_ui_automatic_port (), "Cancel does not publish manual port mode");
     settings.sync ();
     auto const settings_after_cancel = settings_snapshot (settings);
@@ -215,6 +221,7 @@ int main (int argc, char ** argv)
     check (reloaded.web_ui_frequency_control_enabled (), "accepted frequency control gate reloads");
   check (reloaded.web_ui_dx_control_enabled (), "accepted DX control gate reloads");
   check (reloaded.web_ui_automation_control_enabled (), "accepted automation control gate reloads");
+  check (reloaded.web_ui_radio_control_enabled (), "accepted radio control gate reloads");
   check (reloaded.rig_name () == QStringLiteral ("None") && !reloaded.is_transceiver_online (),
          "reloaded isolated configuration remains CAT offline");
 

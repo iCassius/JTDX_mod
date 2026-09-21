@@ -5006,7 +5006,6 @@ list. The list can be maintained in Settings (F2).</string>
     </property>
    <addaction name="actionWide_Waterfall"/>
    <addaction name="actionMessage_averaging"/>
-   <addaction name="actionOpenWebUi"/>
    </widget>
    <widget class="QMenu" name="menuDecode">
     <property name="title">
@@ -5144,6 +5143,12 @@ list. The list can be maintained in Settings (F2).</string>
     <addaction name="actionChinese_traditional"/>
     <addaction name="actionJapanese"/>
    </widget>
+   <widget class="QMenu" name="menuWebUI">
+    <property name="title"><string>WebUI</string></property>
+    <addaction name="actionWebUiEnabled"/>
+    <addaction name="actionOpenWebUi"/>
+    <addaction name="actionSettings"/>
+   </widget>
    <widget class="QMenu" name="menuHelp">
     <property name="title">
      <string>Help</string>
@@ -5263,12 +5268,18 @@ list. The list can be maintained in Settings (F2).</string>
    <addaction name="menuDXpedition"/>
    <addaction name="menuMisc"/>
    <addaction name="menuLang"/>
+   <addaction name="menuWebUI"/>
    <addaction name="menuHelp"/>
   </widget>
   <widget class="QStatusBar" name="statusBar"/>
   <action name="actionOpenWebUi">
-   <property name="text"><string>打开 Web UI（只读）</string></property>
-   <property name="toolTip"><string>打开已启用的只读 Web UI；不会执行电台控制。</string></property>
+   <property name="text"><string>打开 Web UI</string></property>
+   <property name="toolTip"><string>打开已运行的 Web UI；控制能力仍按设置单独受限。</string></property>
+  </action>
+  <action name="actionWebUiEnabled">
+   <property name="checkable"><bool>true</bool></property>
+   <property name="text"><string>启用 WebUI</string></property>
+   <property name="toolTip"><string>启动或停止内置 Web UI。启动失败时保持未勾选。</string></property>
   </action>
   <action name="actionExit">
    <property name="text">

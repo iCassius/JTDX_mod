@@ -483,8 +483,17 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
   m_messageClient->set_mirror (m_secondaryMessageClient);
   connect (m_messageClient, &MessageClient::status_observed,
            m_webState, &JtdxWebState::observe_status);
-  connect (m_messageClient, &MessageClient::decode_observed,
-           m_webState, &JtdxWebState::observe_decode);
+  connect (m_messageClient, &MessageClient::decode_observed, this,
+           [this] (bool is_new, QTime time, qint32 snr, float delta_time,
+                   quint32 delta_frequency, QString const& mode, QString const& message,
+                   bool low_confidence, bool off_air, QString const& callsign,
+                   QString const& grid) {
+             QString country;
+             if (!callsign.isEmpty ()) m_logBook.getDXCC (callsign, country);
+             m_webState->observe_decode (is_new, time, snr, delta_time, delta_frequency,
+                                         mode, message, low_confidence, off_air,
+                                         callsign, grid, country.split (',').value (0).trimmed ());
+           });
   connect (m_messageClient, &MessageClient::WSPR_decode_observed,
            m_webState, &JtdxWebState::observe_wspr_decode);
   connect (m_messageClient, &MessageClient::decodes_cleared,
@@ -514,6 +523,7 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
       applyWebUiConfiguration ();
     });
   applyWebUiConfiguration ();
+  updateWebRadioState ();
   updateSecondaryUdpTarget ();
   connect (m_secondaryMessageClient, &MessageClient::error, this, [] (QString const& error) {
       qWarning ().noquote () << "Secondary UDP server:" << error;
@@ -2228,6 +2238,7 @@ void MainWindow::applyWebUiConfiguration ()
   configuration.enable_frequency_control = m_config.web_ui_frequency_control_enabled ();
   configuration.enable_dx_control = m_config.web_ui_dx_control_enabled ();
   configuration.enable_automation_control = m_config.web_ui_automation_control_enabled ();
+  configuration.enable_radio_control = m_config.web_ui_radio_control_enabled ();
   configuration.udp_ports.insert (m_config.udp_server_port ());
   configuration.udp_ports.insert (m_config.udp2_server_port ());
   bool const applied = m_webService->apply (m_config.web_ui_enabled (), configuration);
@@ -2237,18 +2248,22 @@ void MainWindow::applyWebUiConfiguration ()
       m_config.set_web_ui_url (m_webService->url ());
       ui->actionOpenWebUi->setEnabled (true);
       ui->actionOpenWebUi->setToolTip (m_webService->url ());
+      ui->actionWebUiEnabled->setChecked (true);
     }
   else if (!m_config.web_ui_enabled ())
     {
       m_config.set_web_ui_status (QStringLiteral ("已停止"), {});
       m_config.set_web_ui_url ({});
-      ui->actionOpenWebUi->setEnabled (true);
+      ui->actionOpenWebUi->setEnabled (false);
+      ui->actionWebUiEnabled->setChecked (false);
     }
   else
     {
       m_config.set_web_ui_status (QStringLiteral ("错误"), m_webService->last_error ());
       m_config.set_web_ui_url ({});
-      ui->actionOpenWebUi->setEnabled (true);
+      ui->actionOpenWebUi->setEnabled (false);
+      ui->actionWebUiEnabled->setChecked (false);
+      ui->actionOpenWebUi->setToolTip (tr ("Web UI 启动失败：%1").arg (m_webService->last_error ()));
     }
 }
 
@@ -2320,7 +2335,34 @@ JtdxWebControl::ObservedState MainWindow::webControlObservation () const
   result.business_state_known = snapshot.value (QStringLiteral ("auto_sequence_state")).isString ();
   result.auto_sequence_enabled = snapshot.value (QStringLiteral ("auto_sequence_state")).toString () == QStringLiteral ("enabled");
   result.cq_state = snapshot.value (QStringLiteral ("cq_state")).toString ();
+  QJsonObject const radio = snapshot.value (QStringLiteral ("radio_controls")).toObject ();
+  result.radio_state_known = radio.value (QStringLiteral ("known")).toBool (false);
+  result.radio_multi_decode = radio.value (QStringLiteral ("multi_decode")).toBool (false);
+  result.radio_agc_compensation = radio.value (QStringLiteral ("agc_compensation")).toBool (false);
+  result.radio_narrow = radio.value (QStringLiteral ("narrow")).toBool (false);
+  result.radio_sync = radio.value (QStringLiteral ("sync")).toBool (false);
+  result.radio_skip_tx1 = radio.value (QStringLiteral ("skip_tx1")).toBool (false);
+  result.radio_current_tx_index = radio.value (QStringLiteral ("current_tx_index")).toInt (0);
+  for (auto const& value : radio.value (QStringLiteral ("tx_messages")).toArray ())
+    result.radio_tx_messages.append (value.toString ());
+  result.radio_log_dialog_open = m_logDlg && m_logDlg->isVisible ();
   return result;
+}
+
+void MainWindow::updateWebRadioState ()
+{
+  if (!m_webState || !ui) return;
+  QStringList messages {
+    ui->tx1->text (), ui->tx2->text (), ui->tx3->text (), ui->tx4->text (),
+    ui->tx5->currentText (), ui->tx6->text ()};
+  int current_tx_index = 0;
+  QList<QRadioButton *> buttons {ui->txrb1, ui->txrb2, ui->txrb3, ui->txrb4, ui->txrb5, ui->txrb6};
+  for (int index = 0; index < buttons.size (); ++index)
+    if (buttons.at (index)->isChecked ()) { current_tx_index = index + 1; break; }
+  m_webState->observe_radio_controls (ui->swlButton->isChecked (), ui->AGCcButton->isChecked (),
+                                      ui->filterButton->isChecked (), ui->syncButton->isChecked (),
+                                      ui->skipTx1->isChecked (), current_tx_index, messages,
+                                      !m_hisCall.trimmed ().isEmpty ());
 }
 
 void MainWindow::dispatchWebFrequency (JtdxWebControl::Dispatch dispatch)
@@ -2420,6 +2462,7 @@ void MainWindow::dispatchWebBusiness (JtdxWebControl::Dispatch dispatch)
     case JtdxWebControl::Operation::StartCq: applyWebStartCq (true); break;
     case JtdxWebControl::Operation::StartAutoCall: applyWebStartAutoCall (); break;
     case JtdxWebControl::Operation::StopAutoCall: applyWebStopAutoCall (); break;
+    case JtdxWebControl::Operation::Radio: dispatchWebRadio (dispatch); return;
     default: m_webControl->fail (dispatch.request_id, dispatch.server_epoch, QStringLiteral ("invalid_business_operation")); return;
     }
   statusUpdate ();
@@ -2427,6 +2470,57 @@ void MainWindow::dispatchWebBusiness (JtdxWebControl::Dispatch dispatch)
   m_webControl->feedback_business (dispatch.request_id, dispatch.server_epoch,
                                    observed.business_generation, observed.cq_state,
                                    observed.auto_sequence_enabled, observed.state_revision);
+}
+
+void MainWindow::dispatchWebRadio (JtdxWebControl::Dispatch dispatch)
+{
+  if (!m_webControl || m_webControl->is_shutdown ()) return;
+  JtdxWebControl::Dispatch prepared;
+  if (!m_webControl->prepare_dispatch (dispatch.request_id, dispatch.server_epoch, &prepared)) return;
+  if (!m_webControl->begin_dispatch (prepared)) return;
+  dispatch = std::move (prepared);
+  const auto action = dispatch.radio_action;
+  if (action == QStringLiteral ("enable-tx")) enableTx_mode (dispatch.radio_value);
+  else if (action == QStringLiteral ("stop-tx")) on_stopTxButton_clicked ();
+  else if (action == QStringLiteral ("log-qso")) on_logQSOButton_clicked ();
+  else if (action == QStringLiteral ("clear-windows")) on_EraseButton_clicked ();
+  else if (action == QStringLiteral ("sync")) ui->syncButton->setChecked (dispatch.radio_value);
+  else if (action == QStringLiteral ("multi-decode")) { ui->swlButton->setChecked (dispatch.radio_value); on_swlButton_clicked (dispatch.radio_value); }
+  else if (action == QStringLiteral ("agc-compensation")) { ui->AGCcButton->setChecked (dispatch.radio_value); on_AGCcButton_clicked (dispatch.radio_value); }
+  else if (action == QStringLiteral ("narrow")) { ui->filterButton->setChecked (dispatch.radio_value); on_filterButton_clicked (dispatch.radio_value); }
+  else if (action == QStringLiteral ("decode")) on_DecodeButton_clicked (true);
+  else if (action == QStringLiteral ("clear-dx")) on_ClearDxButton_clicked ();
+  else if (action == QStringLiteral ("generate-message")) on_genStdMsgsPushButton_clicked ();
+  else if (action == QStringLiteral ("cq")) applyWebStartCq (true);
+  else if (action == QStringLiteral ("skip-tx1")) { ui->skipTx1->setChecked (dispatch.radio_value); on_skipTx1_clicked (dispatch.radio_value); }
+  else if (action == QStringLiteral ("select-tx"))
+    {
+      switch (dispatch.radio_index)
+        {
+        case 1: on_txb1_clicked (); break; case 2: on_txb2_clicked (); break;
+        case 3: on_txb3_clicked (); break; case 4: on_txb4_clicked (); break;
+        case 5: on_txb5_clicked (); break; case 6: on_txb6_clicked (); break;
+        default: m_webControl->fail (dispatch.request_id, dispatch.server_epoch, QStringLiteral ("invalid_tx_index")); return;
+        }
+    }
+  else if (action == QStringLiteral ("set-tx-message"))
+    {
+      switch (dispatch.radio_index)
+        {
+        case 1: { QSignalBlocker blocker {ui->tx1}; ui->tx1->setText (dispatch.radio_text); on_tx1_editingFinished (); break; }
+        case 2: { QSignalBlocker blocker {ui->tx2}; ui->tx2->setText (dispatch.radio_text); on_tx2_editingFinished (); break; }
+        case 3: { QSignalBlocker blocker {ui->tx3}; ui->tx3->setText (dispatch.radio_text); on_tx3_editingFinished (); break; }
+        case 4: { QSignalBlocker blocker {ui->tx4}; ui->tx4->setText (dispatch.radio_text); on_tx4_editingFinished (); break; }
+        case 5: ui->tx5->setCurrentText (dispatch.radio_text); break;
+        case 6: { QSignalBlocker blocker {ui->tx6}; ui->tx6->setText (dispatch.radio_text); on_tx6_editingFinished (); break; }
+        default: m_webControl->fail (dispatch.request_id, dispatch.server_epoch, QStringLiteral ("invalid_tx_index")); return;
+        }
+    }
+  else { m_webControl->fail (dispatch.request_id, dispatch.server_epoch, QStringLiteral ("invalid_radio_action")); return; }
+  statusUpdate ();
+  auto const observed = webControlObservation ();
+  m_webControl->feedback_radio (dispatch.request_id, dispatch.server_epoch,
+                                observed.state_revision, observed);
 }
 
 void MainWindow::on_actionOpenWebUi_triggered ()
@@ -2444,6 +2538,15 @@ void MainWindow::on_actionOpenWebUi_triggered ()
     }
   if (!m_webService->open ())
     statusBar ()->showMessage (m_webService->last_error (), 8000);
+}
+
+void MainWindow::on_actionWebUiEnabled_toggled (bool checked)
+{
+  if (m_config.web_ui_enabled () == checked &&
+      ((checked && m_webService && m_webService->is_listening ()) || !checked)) return;
+  m_config.set_web_ui_enabled (checked);
+  applyWebUiConfiguration ();
+  if (!checked) statusBar ()->showMessage (tr ("Web UI 已停止"), 5000);
 }
 
 void MainWindow::on_actionSettings_triggered()               //Setup Dialog
@@ -8998,6 +9101,7 @@ void MainWindow::statusUpdate () const
     && m_curMsgTx.trimmed ().startsWith (QStringLiteral ("CQ "));
   QString const cq_state = JtdxWebState::project_cq_state (cq_selected, m_enableTx, m_transmitting);
   m_webState->observe_business_state (m_autoseq, qso_stage, cq_state, m_curMsgTx);
+  const_cast<MainWindow *> (this)->updateWebRadioState ();
   QChar submode {0};
   m_messageClient->status_update (m_freqNominal, m_mode, m_hisCall,
                                   QString::number (ui->rptSpinBox->value ()),

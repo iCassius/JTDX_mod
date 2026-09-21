@@ -8,6 +8,7 @@
 #include <QTimer>
 #include <QVector>
 #include <QString>
+#include <QStringList>
 
 #include <functional>
 
@@ -18,7 +19,7 @@ class JtdxWebControl : public QObject
   Q_OBJECT
 
 public:
-  enum class Operation { Frequency, SelectDx, StartCq, StartAutoCall, StopAutoCall };
+  enum class Operation { Frequency, SelectDx, StartCq, StartAutoCall, StopAutoCall, Radio };
   enum class Status { Received, Accepted, Pending, Completed, Failed, Rejected, Timeout };
 
   struct SafetySnapshot
@@ -59,6 +60,15 @@ public:
     bool business_state_known {false};
     QString cq_state;
     bool auto_sequence_enabled {false};
+    bool radio_state_known {false};
+    bool radio_multi_decode {false};
+    bool radio_agc_compensation {false};
+    bool radio_narrow {false};
+    bool radio_sync {false};
+    bool radio_skip_tx1 {false};
+    int radio_current_tx_index {0};
+    QStringList radio_tx_messages;
+    bool radio_log_dialog_open {false};
   };
 
   struct Request
@@ -75,6 +85,10 @@ public:
     QString dx_time;
     QString dx_selection_source;
     quint64 dx_source_decode_id {0};
+    QString radio_action;
+    bool radio_value {false};
+    int radio_index {0};
+    QString radio_text;
   };
 
   struct Dispatch
@@ -91,6 +105,10 @@ public:
     QString dx_time;
     QString dx_selection_source;
     quint64 dx_source_decode_id {0};
+    QString radio_action;
+    bool radio_value {false};
+    int radio_index {0};
+    QString radio_text;
   };
 
   struct Result
@@ -158,6 +176,8 @@ public:
   bool feedback_business (QString const& request_id, QString const& server_epoch,
                           quint64 generation, QString cq_state, bool auto_sequence_enabled,
                           quint64 state_revision);
+  bool feedback_radio (QString const& request_id, QString const& server_epoch,
+                       quint64 state_revision, ObservedState const& observed);
   bool fail (QString const& request_id, QString const& server_epoch, QString reason);
   bool expire ();
   bool rotate_epoch ();
@@ -189,6 +209,10 @@ private:
     QString dx_selection_source;
     quint64 dx_source_decode_id {0};
     quint64 baseline_business_generation {0};
+    QString radio_action;
+    bool radio_value {false};
+    int radio_index {0};
+    QString radio_text;
     QString target_cq_state;
     bool target_auto_sequence_enabled {false};
     bool timed_out {false};

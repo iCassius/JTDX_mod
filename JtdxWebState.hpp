@@ -11,6 +11,7 @@
 #include <QThread>
 #include <QTime>
 #include <QString>
+#include <QStringList>
 
 #include <utility>
 
@@ -86,13 +87,17 @@ public:
   void observe_decode (bool is_new, QTime time, qint32 snr, float delta_time,
                        quint32 delta_frequency, QString const& mode,
                        QString const& message, bool low_confidence, bool off_air,
-                       QString const& callsign = {}, QString const& grid = {});
+                       QString const& callsign = {}, QString const& grid = {},
+                       QString const& country = {});
   void observe_wspr_decode (bool is_new, QTime time, qint32 snr, float delta_time,
                             Frequency frequency, qint32 drift,
                             QString const& callsign, QString const& grid,
                             qint32 power, bool off_air);
   void observe_business_state (bool auto_sequence_enabled, QString const& qso_stage,
                                QString const& cq_state, QString const& current_tx_text);
+  void observe_radio_controls (bool multi_decode, bool agc_compensation, bool narrow,
+                               bool sync, bool skip_tx1, int current_tx_index,
+                               QStringList const& tx_messages, bool can_log_qso);
   bool decode_selection (quint64 decode_id, DecodeSelection * selection) const;
   void observe_web_dx_selection (QString const& call, QString const& grid,
                                  QString const& source, quint64 source_decode_id,
@@ -118,6 +123,7 @@ private:
     QString message;
     QString callsign;
     QString grid;
+    QString country;
     bool low_confidence {false};
     bool off_air {false};
     bool is_new {false};
@@ -168,6 +174,15 @@ private:
   QString qso_stage_;
   QString cq_state_;
   QString current_tx_text_;
+  bool has_radio_controls_ {false};
+  bool multi_decode_ {false};
+  bool agc_compensation_ {false};
+  bool narrow_ {false};
+  bool sync_ {false};
+  bool skip_tx1_ {false};
+  int current_tx_index_ {0};
+  QStringList tx_messages_;
+  bool can_log_qso_ {false};
   bool watchdog_timeout_ {false};
   QString sub_mode_;
   bool fast_mode_ {false};
