@@ -60,7 +60,9 @@ int main (int argc, char ** argv)
   application.setApplicationName (QStringLiteral ("JTDX-P19-LogQSO-Test"));
   QStandardPaths::setTestModeEnabled (true);
 
-  QDir const data_dir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)};
+  QDir data_dir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)};
+  if (data_dir.exists ()) data_dir.removeRecursively ();
+  data_dir = QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)};
   check (!data_dir.isEmpty () && data_dir.mkpath (QStringLiteral (".")),
          "isolated Qt test data directory is writable");
   QString const adif_path = data_dir.absoluteFilePath (QStringLiteral ("wsjtx_log.adi"));
@@ -96,29 +98,24 @@ int main (int argc, char ** argv)
   check (!QFile::exists (adif_path) && !QFile::exists (log_path),
          "cancel path performs no LogQSO write");
 
-  QDir const blocked_parent {data_dir.absoluteFilePath (QStringLiteral ("blocked"))};
-  check (blocked_parent.mkpath (QStringLiteral (".")), "blocked-path fixture directory exists");
-  QFile::setPermissions (blocked_parent.absolutePath (), QFileDevice::ReadOwner | QFileDevice::ExeOwner);
   log_qso.initWebLogQSO (QStringLiteral ("K1P19"), QStringLiteral ("FN31"), QStringLiteral ("FT8"),
                          QStringLiteral ("-10"), QStringLiteral ("-09"), QString {}, QStringLiteral ("P19"),
                          start, end, 14074000, QStringLiteral ("50W"), QStringLiteral ("blocked"), QString {});
   // The real path is DataLocation; replace the file with a directory to force
   // ADIF's QFile::open() failure without touching a user profile.
-  check (QFile::rename (adif_path, data_dir.absoluteFilePath (QStringLiteral ("p19-previous.adi")))
-             || !QFile::exists (adif_path),
-         "blocked-path fixture does not use a user ADIF file");
-  QDir {adif_path}.mkpath (QStringLiteral ("."));
+  check (QDir {adif_path}.mkpath (QStringLiteral (".")),
+         "blocked-path fixture replaces only the isolated ADIF path with a directory");
   reason.clear ();
   check (!log_qso.acceptWebQSO (&reason) && !reason.isEmpty (),
          "real LogQSO write failure is returned instead of reported as success");
   check (read_file (log_path).isEmpty (),
          "failed ADIF write emits no business-log success record");
   QDir {adif_path}.removeRecursively ();
-  QFile::remove (data_dir.absoluteFilePath (QStringLiteral ("p19-previous.adi")));
   QFile::remove (settings_path);
 
   std::fprintf (stdout, "P19_LOGQSO_DATA_DIR=%s\n", data_dir.absolutePath ().toUtf8 ().constData ());
   std::fprintf (stdout, "P19_LOGQSO_ADIF_RECORDS=%d\n", first_adif.count ("<eor>"));
   std::fprintf (stdout, "P19_LOGQSO_FAILURE_REASON=%s\n", reason.toUtf8 ().constData ());
+  data_dir.removeRecursively ();
   return failures == 0 ? 0 : 1;
 }
