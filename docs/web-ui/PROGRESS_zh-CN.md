@@ -8,6 +8,15 @@
 - 边界：使用无硬件 loopback fixture 和受支持浏览器观察页面；不处理既有浏览器残留页；未启动真实 `jtdx.exe`，未连接 CAT/PTT/TX，未做 HIL、部署或真实无线电验证。移动窄屏由静态契约覆盖，未声称真实 MainWindow 视觉验收。
 - 验证：最终目标构建退出码 `0`，日志 `C:\JTDX64\deps-webui\p7-final-build-20260921.log`；全量 CTest `22/22`、`100% tests passed`、57.37 秒，日志 `C:\JTDX64\deps-webui\p7-final-ctest-20260921.log`；浏览器观察到桌面左右布局、自动连接、无令牌输入、陈旧提示和操作结果状态分层。
 
+### 2026-09-21 P8 支持浏览器验收闭环（有界收尾）
+
+- 基线：`main/1dea8b9`，开始时工作树干净；本批不改生产代码、不扩展测试 fixture。
+- 实际宽屏：默认视口 `1280x720`；`workbench` 实测 `1064` 宽，左/右工作区各 `525`，`documentElement.scrollWidth=clientWidth=1265`，截图确认桌面双列。
+- 实际窄屏：显式视口 `390x844`；`innerWidth=390`，`clientWidth=scrollWidth=375`；左工作区 `351` 宽、右工作区在其后纵向排列，截图确认无横向溢出。
+- 页面业务：确认框为页面内 `role=dialog`，取消 CQ 后操作记录仍为空；确认 CQ、Stop、AutoSeq 均观察到登记中间态后由业务状态回读完成。模拟 CQ 状态显示活动 TX，Stop 可用；操作记录分别出现 `cq_armed`、`automation_stopped` 和 `auto_sequence_armed_waiting_for_decode`。
+- 断线重连：停止自有 fixture 后观察到“未连接”、状态陈旧提示及旧操作记录保留；重启同一 fixture 后自动恢复“已连接/新鲜”。
+- 收尾边界：检查时五小时窗口剩余约 `29%`，按规则停止新实现。既有 fixture 的 250ms 回读窗口不足以稳定完成“在途启动被 Stop 取代”专项时序；DX 有效/过期选择、浏览器级超时/身份不匹配和网络 POST 次数也未在本批补做。不能将本批隔离浏览器证据解释为完整 MainWindow、CAT/PTT/TX、HIL 或部署证据。
+
 ### 2026-09-21 P6 页面确认与浏览器业务回归收尾记录
 
 - 范围：基于 `main/c6f14fd`，只处理页面确认可控性、CQ/AutoSeq/Stop 的 loopback 浏览器链路和交付记录；不启动真实 `jtdx.exe`，不连接 CAT/电台，不执行 PTT/TX/HIL，不改 UDP、不新增生产 API/线程/进程。

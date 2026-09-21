@@ -10,6 +10,14 @@ Web UI 已移除 token 访问保护及前端令牌输入；旧 `WebUiTokenSha256
 
 本批使用无硬件 loopback fixture 和受支持浏览器观察页面；未处理既有浏览器残留页，不启动真实 `jtdx.exe`，不连接 CAT/PTT/TX，不做 HIL、部署或真实无线电验证。最终构建日志为 `C:\JTDX64\deps-webui\p7-final-build-20260921.log`，全量 CTest 为 `22/22`、`100% tests passed`，日志为 `C:\JTDX64\deps-webui\p7-final-ctest-20260921.log`。浏览器观察到桌面左右布局、自动连接、无令牌输入和陈旧/操作结果提示；移动窄屏以静态契约覆盖，未声称真实 MainWindow 视觉验收。
 
+### P8 支持浏览器验收闭环（2026-09-21，有界收尾）
+
+使用本批自有 `--serve-browser-automation-p6` loopback fixture 和受支持的 Codex In-app Browser 完成实际视口验收。默认视口 `1280x720` 的 `workbench` 实测宽度 `1064`，左/右工作区各 `525`，`documentElement.scrollWidth=clientWidth=1265`；显式 `390x844` 窄屏实测 `innerWidth=390`、`clientWidth=scrollWidth=375`，左工作区位于顶部、右工作区位于其后，均无横向溢出。页面截图已在本批浏览器会话中采集。
+
+浏览器业务证据：页面内确认框为 `role=dialog`，默认焦点为取消；取消 CQ 后操作记录保持为空。确认后 CQ 记录为“已完成（已确认）/cq_armed”，fixture 呈现模拟活动 TX，Stop 可用；Stop 经“命令已登记，等待业务状态回读”后成为“已完成（已确认）/automation_stopped”；AutoSeq 同样完成业务回读。窄屏操作记录保留 3 条，记录区宽度 `313` 且没有额外横向滚动；停止自有 fixture 后页面显示未连接并保留旧记录，重启同一 fixture 后自动恢复已连接。
+
+本批额度在收尾检查时五小时窗口剩余约 `29%`，按规则停止新实现。因此未扩展 fixture：尚未完成“启动在途时被 Stop 取代”的专项浏览器时序、DX 有效/过期选择、浏览器级超时/身份不匹配和 POST 次数网络计数；它们不被本批宣称为已验收。上述浏览器证据仍只代表隔离软件链路，不代表完整 MainWindow、CAT/PTT/TX、HIL 或生产部署。
+
 ### P6 页面确认与隔离浏览器业务回归（2026-09-21）
 
 本批将 CQ/AutoSeq/Stop 的浏览器二次确认从原生 `globalThis.confirm()` 改为页面内可访问对话框：`role=dialog`、`aria-modal=true`、标题/说明关联、默认焦点为“取消”、Escape 取消、Tab 在取消/确认之间循环。取消在生成 `request_id` 和发送 POST 之前结束，因此不产生操作记录；服务端仍强制要求 `confirm=true`，没有放宽控制门。操作卡补充 CQ、AutoSeq、Stop 的中文名称。
