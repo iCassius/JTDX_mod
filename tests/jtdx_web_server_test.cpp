@@ -16,6 +16,16 @@ namespace {
 int failures = 0;
 int status (QByteArray const& response);
 
+int test_fixture_duration_ms (QStringList const& arguments)
+{
+  int const option = arguments.indexOf (QStringLiteral ("--test-duration-ms"));
+  if (option < 0) return 300000;
+  if (option + 1 >= arguments.size ()) return -1;
+  bool ok = false;
+  qlonglong const value = arguments.at (option + 1).toLongLong (&ok);
+  return ok && value >= 1000 && value <= 1800000 ? static_cast<int> (value) : -1;
+}
+
 struct ParsedSseEvent
 {
   QByteArray name;
@@ -239,6 +249,12 @@ int status (QByteArray const& response)
 int main (int argc, char ** argv)
 {
   QCoreApplication app {argc, argv};
+  int const fixture_duration = test_fixture_duration_ms (app.arguments ());
+  if (fixture_duration < 0)
+    {
+      qCritical () << "--test-duration-ms must be between 1000 and 1800000";
+      return 2;
+    }
   JtdxWebState state {QStringLiteral ("JTDX"), QStringLiteral ("test"), QStringLiteral ("test-instance")};
   state.observe_status (14074000, QStringLiteral ("FT8"), QStringLiteral ("K1ABC"), QStringLiteral ("-10"),
                         QStringLiteral ("FT8"), true, false, true, -100, 150, QStringLiteral ("N0CALL"),
@@ -423,7 +439,7 @@ int main (int argc, char ** argv)
       std::fflush (stdout);
       if (browser_automation_p9_fixture)
         QTimer::singleShot (180000, &state, [&state] { state.advance_clock_for_test (6000); });
-      QTimer::singleShot (300000, &app, &QCoreApplication::quit);
+      QTimer::singleShot (fixture_duration, &app, &QCoreApplication::quit);
       return app.exec ();
     }
   bool const browser_frequency_fixture = app.arguments ().contains (
@@ -506,7 +522,7 @@ int main (int argc, char ** argv)
                  {14076000u, QStringLiteral ("20m"), QStringLiteral ("FT8"), QStringLiteral ("Region 2"), false}});
           });
         }
-      QTimer::singleShot (300000, &app, &QCoreApplication::quit);
+      QTimer::singleShot (fixture_duration, &app, &QCoreApplication::quit);
       return app.exec ();
     }
   if (app.arguments ().contains (QStringLiteral ("--serve-browser")))
@@ -570,7 +586,7 @@ int main (int argc, char ** argv)
       std::fprintf (stdout, "WEB_UI_FIXTURE_URL=%s\n", fixture_url.constData ());
       std::fflush (stdout);
       QTimer::singleShot (7000, &state, [&state] { state.advance_clock_for_test (7000); });
-      QTimer::singleShot (300000, &app, &QCoreApplication::quit);
+      QTimer::singleShot (fixture_duration, &app, &QCoreApplication::quit);
       return app.exec ();
     }
   check (!server.is_listening (), "server must be lazy and stopped by default");
