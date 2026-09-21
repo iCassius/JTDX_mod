@@ -5,7 +5,7 @@
 - 实现：复用 MainWindow 与 Hamlib 既有可写数据目录和 `jtdx_recovery.log`，所有同文件写入统一经过 `JtdxLocalLog`；不新增线程、服务、HTTP/远程日志或恢复状态源。主动文件上限 `256 KiB`，固定只保留一个 `.1` 轮转文件，沿用既有本地 ISO 毫秒时间格式和 UTF-8；超大既有文件先限长再轮转，超长单条也保持文件上限，轮转、打开或写入失败只丢弃诊断，不改变控制结果和安全门。
 - 字段与事件：`reject`、`accepted`、`transition`、`duplicate` 事件记录本地 ISO 毫秒时间、规范化 `request_id`、操作、状态、限长原因、generation/state revision 和有限 readback 摘要。Web 字段值会清除换行/制表符、转义反斜杠和等号；通用写入器保留既有 `key=value` 分隔符以兼容 CAT/恢复解析；不写 Web Authorization、token、密码、原始 HTTP、call/grid 或凭据。重复同 ID 同 payload 只记录 `duplicate`，dispatcher 执行次数不增加。
 - P11 核对：新 epoch 或多浏览器不会以重连、日志或日志文件内容解除 `unconfirmed_feedback`；服务级 latch 仍只允许当前安全 Stop，并要求当前 epoch/revision 及 `idle/disabled` 业务回读，完成 Stop 后仍保留旧操作未知锁。
-- 验证：`C:\JTDX64\deps-webui\p12-build-20260921-r3.log` 构建通过；`C:\JTDX64\deps-webui\p12-focused-20260921-r2.log` 为定向 `6/6`、`100% tests passed`；`C:\JTDX64\deps-webui\p12-final-ctest-20260921.log` 为全量 `23/23`、`100% tests passed`、57.29 秒。新增测试覆盖临时目录写入、Unicode/换行注入、大小/单文件轮转、重复生命周期和写失败不影响控制。
+- 验证：统一日志构建 `C:\JTDX64\deps-webui\p13-final-build-20260921.log`，页面资源构建 `C:\JTDX64\deps-webui\p13-ui-build-20260921.log`；`C:\JTDX64\deps-webui\p13-focused-20260921.log` 为定向 `6/6`、`100% tests passed`；最终全量 `C:\JTDX64\deps-webui\p13-final-ctest-dc62904-20260921.log` 为 `23/23`、`100% tests passed`、57.48 秒。新增测试覆盖临时目录写入、Unicode/换行注入、key=value 兼容、超长单条、超大既有文件、轮转失败、重复生命周期和写失败不影响控制。
 - 边界：仅完成软件/loopback/自动证据；未启动真实 JTDX，未连接 CAT，未执行 PTT/TX/HIL、部署、LAN 或真实设备回读。
 - 恢复口径：新 epoch、浏览器重连、停止/启动 Web 服务和日志操作都不清除服务级 `unconfirmed_feedback`；安全 Stop 只负责把业务回读到 `idle/disabled`。若普通控制仍锁定，需关闭并重启 JTDX 以重建 `JtdxWebControl`，不能自动重发或默认解锁。
 
