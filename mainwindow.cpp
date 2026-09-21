@@ -55,6 +55,7 @@
 #include "StationList.hpp"
 #include "LiveFrequencyValidator.hpp"
 #include "JtdxWebFrequencyCandidates.hpp"
+#include "JtdxLocalLog.hpp"
 #include "MessageClient.hpp"
 #include "wsprnet.h"
 #include "eqsl.h"
@@ -131,24 +132,8 @@ namespace
 {
   void appendRecoveryLog (QDir const& dataDirectory, QString area, QString message)
   {
-    auto const path = dataDirectory.absoluteFilePath ("jtdx_recovery.log");
-    QFileInfo const info {path};
-    if (info.exists () && info.size () >= 256 * 1024)
-      {
-        QFile::remove (path + ".1");
-        QFile::rename (path, path + ".1");
-      }
-
-    area.replace ('\r', ' ').replace ('\n', ' ');
-    message.replace ('\r', ' ').replace ('\n', ' ');
-    QFile log {path};
-    if (log.open (QIODevice::WriteOnly | QIODevice::Text | QIODevice::Append))
-      {
-        QTextStream stream {&log};
-        stream.setCodec ("UTF-8");
-        stream << QDateTime::currentDateTime ().toString (Qt::ISODateWithMs)
-               << " [" << area << "] " << message << '\n';
-      }
+    JtdxLocalLog::append (dataDirectory, QStringLiteral ("jtdx_recovery.log"),
+                         std::move (area), std::move (message));
   }
 
   Radio::Frequency constexpr default_frequency {14076000};
@@ -492,6 +477,9 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
   m_manual {network_manager}
 {
   ui->setupUi(this);
+  m_webControl->set_diagnostic_logger ([this] (QString const& line) {
+      appendRecoveryLog (m_dataDir, QStringLiteral ("web-control"), line);
+    });
   m_messageClient->set_mirror (m_secondaryMessageClient);
   connect (m_messageClient, &MessageClient::status_observed,
            m_webState, &JtdxWebState::observe_status);

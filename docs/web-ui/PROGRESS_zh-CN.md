@@ -1,5 +1,13 @@
 # JTDX 内置 Web UI：进度与中断恢复日志
 
+### 2026-09-21 P12 有界本地控制诊断日志（完成）
+
+- 实现：复用 MainWindow 既有可写数据目录和 `jtdx_recovery.log`，由 `JtdxWebControl` 通过窄回调写入本地诊断行；不新增线程、服务、HTTP/远程日志或恢复状态源。主动文件上限 `256 KiB`，固定只保留一个 `.1` 轮转文件，UTF-8 写入；轮转、打开或写入失败只丢弃诊断，不改变控制结果和安全门。
+- 字段与事件：`reject`、`accepted`、`transition`、`duplicate` 事件均记录 UTC 毫秒时间、规范化 `request_id`、操作、状态、限长原因、generation/state revision 和有限 readback 摘要。字符串会清除换行/制表符、转义反斜杠和等号并限长；不写 Authorization、token、密码、原始 HTTP、call/grid 或凭据。重复同 ID 同 payload 只记录 `duplicate`，dispatcher 执行次数不增加。
+- P11 核对：新 epoch 或多浏览器不会以重连、日志或日志文件内容解除 `unconfirmed_feedback`；服务级 latch 仍只允许当前安全 Stop，并要求当前 epoch/revision 及 `idle/disabled` 业务回读，完成 Stop 后仍保留旧操作未知锁。
+- 验证：`C:\JTDX64\deps-webui\p12-build-20260921-r3.log` 构建通过；`C:\JTDX64\deps-webui\p12-focused-20260921-r2.log` 为定向 `6/6`、`100% tests passed`；`C:\JTDX64\deps-webui\p12-final-ctest-20260921.log` 为全量 `23/23`、`100% tests passed`、57.29 秒。新增测试覆盖临时目录写入、Unicode/换行注入、大小/单文件轮转、重复生命周期和写失败不影响控制。
+- 边界：仅完成软件/loopback/自动证据；未启动真实 JTDX，未连接 CAT，未执行 PTT/TX/HIL、部署、LAN 或真实设备回读。
+
 ### 2026-09-21 P7 Web 访问与页面布局收口（完成）
 
 - 范围：移除 Web token 访问保护和前端令牌输入；保留默认 loopback、显式 LAN、Host/Origin/JSON/CSRF 边界、控制默认关闭、确认、幂等、超时、epoch/revision、业务 generation 与实际回读；同时精简页面开发文案并按 JTDX 结构重排桌面/移动布局。

@@ -1,8 +1,14 @@
 # JTDX 内置 Web UI：阶段入口与恢复说明
 
-本目录记录 JTDX 内置轻量 Web UI 的需求、边界、设计和阶段证据。P3 生产 service/QAction、P4 普通控制、P5 CQ/AutoSeq 软件控制链路、P7 页面收口、P8 视口/断线验收、P9 DX/异常闭环、P10 软件交付收尾和 P11 超时 Stop 恢复/资源核查已完成本批隔离验证；仍不代表已经完成完整 MainWindow、真实 CAT/DX/CQ 设备回读或 HIL/部署验证。频率、DX、CQ/AutoSeq 控制均可由用户在设置中分别显式开启，默认仍关闭；完成仍须实际业务/CAT 状态回读，不能把隔离夹具的 `accepted/pending` 当作硬件完成。较早 CAT `.10` 交付提交 `a89c9da` 仅作外部历史参考。
+本目录记录 JTDX 内置轻量 Web UI 的需求、边界、设计和阶段证据。P3 生产 service/QAction、P4 普通控制、P5 CQ/AutoSeq 软件控制链路、P7 页面收口、P8 视口/断线验收、P9 DX/异常闭环、P10 软件交付收尾、P11 超时 Stop 恢复/资源核查和 P12 有界本地控制诊断日志已完成本批隔离验证；仍不代表已经完成完整 MainWindow、真实 CAT/DX/CQ 设备回读或 HIL/部署验证。频率、DX、CQ/AutoSeq 控制均可由用户在设置中分别显式开启，默认仍关闭；完成仍须实际业务/CAT 状态回读，不能把隔离夹具的 `accepted/pending` 当作硬件完成。较早 CAT `.10` 交付提交 `a89c9da` 仅作外部历史参考。
 
 ## 最新恢复结果（2026-09-21）
+
+### P12 有界本地控制诊断日志（2026-09-21）
+
+控制生命周期写入现有数据目录下的 `jtdx_recovery.log`：主动文件最多 `256 KiB`，只轮转为一个 `.1` 文件，使用 UTF-8；目录、文件名和轮转均沿用现有实例隔离路径。记录只保留 UTC 时间、规范化 request ID、操作、事件/状态、限长原因、generation/state revision 和有限 readback 摘要；换行、制表符、反斜杠和等号会被安全处理，绝不记录 Authorization、token、密码、原始 HTTP 或凭据。日志写失败不改变控制和安全结果，日志也不参与未知状态恢复。
+
+P11 的未确认锁经核对仍是服务级安全状态：新 epoch、多浏览器、断线重连和日志文件都不能解锁；只有当前 Stop 经当前 epoch/revision 校验并得到 `idle/disabled` 回读后才完成停止，而且旧未知锁继续保留。构建与定向测试见 `C:\JTDX64\deps-webui\p12-build-20260921-r3.log`、`p12-focused-20260921-r2.log`；全量 CTest `23/23`、`100% tests passed` 见 `p12-final-ctest-20260921.log`。真实 MainWindow、CAT/PTT/TX/HIL 和部署仍按边界单独报告。
 
 ### P7 Web 访问与页面布局收口（2026-09-21）
 

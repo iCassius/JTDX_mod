@@ -113,6 +113,7 @@ public:
   using Clock = std::function<qint64 ()>;
   using ObservationProvider = std::function<ObservedState ()>;
   using DispatchHandler = std::function<void (Dispatch const&)>;
+  using DiagnosticLogger = std::function<void (QString const&)>;
 
   explicit JtdxWebControl (qint64 timeout_ms = 3000, Clock clock = {}, QObject * parent = nullptr);
 
@@ -131,6 +132,7 @@ public:
   void set_frequency_dispatcher (DispatchHandler handler);
   void set_select_dx_dispatcher (DispatchHandler handler);
   void set_business_dispatcher (DispatchHandler handler) { business_dispatcher_ = std::move (handler); }
+  void set_diagnostic_logger (DiagnosticLogger logger) { diagnostic_logger_ = std::move (logger); }
 
   // 将控制请求绑定到当前成功监听的 WebServer epoch。绑定不会重建协调器，
   // 因而不会丢失已 begin 操作的未确认锁；停止期间请求保持 fail-closed。
@@ -201,8 +203,9 @@ private:
 
   qint64 now () const;
   ObservedState observation () const;
-  Result reject (Request const& request, QString reason, int http_status = 400) const;
+  Result reject (Request const& request, QString reason, int http_status = 400);
   void finish (Record& record, Status status, QString reason, quint64 generation = 0);
+  void log_result (Result const& result, QString event) const;
   void arm_timer ();
   void on_timer ();
 
@@ -227,6 +230,7 @@ private:
   DispatchHandler frequency_dispatcher_;
   DispatchHandler select_dx_dispatcher_;
   DispatchHandler business_dispatcher_;
+  DiagnosticLogger diagnostic_logger_;
   QString last_timed_out_request_id_;
   QTimer expiry_timer_;
 };

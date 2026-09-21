@@ -207,8 +207,47 @@ void JtdxWebControl::invalidate_server_epoch (QString reason)
   server_epoch_bound_ = false;
 }
 
+void JtdxWebControl::log_result (Result const& result, QString event) const
+{
+  if (!diagnostic_logger_) return;
+  auto const escaped = [] (QString value) {
+    value.replace ('\\', QStringLiteral ("\\\\"));
+    value.replace ('\r', QLatin1Char (' '));
+    value.replace ('\n', QLatin1Char (' '));
+    value.replace ('\t', QLatin1Char (' '));
+    value.replace ('=', QStringLiteral ("%3D"));
+    return value.left (180);
+  };
+  QString const normalized_request_id = normalize_request_id (result.request_id);
+  QString const request_id = normalized_request_id.isEmpty () ? QStringLiteral ("-")
+                                                               : escaped (normalized_request_id);
+  QString const reason = result.reason.isEmpty () ? QStringLiteral ("-") : escaped (result.reason);
+  QString const cq_state = result.snapshot.cq_state.isEmpty ()
+      ? QStringLiteral ("-") : escaped (result.snapshot.cq_state);
+  QString line = QStringLiteral ("event=%1 request_id=%2 operation=%3 status=%4 reason=%5 "
+                                 "generation=%6 state_revision=%7 readback=%8 "
+                                 "frequency_known=%9 actual_frequency_hz=%10 dx_known=%11 "
+                                 "business_state_known=%12 cq_state=%13 auto_sequence_enabled=%14")
+      .arg (escaped (std::move (event)))
+      .arg (request_id)
+      .arg (operation_name (result.operation))
+      .arg (status_name (result.status))
+      .arg (reason)
+      .arg (QString::number (result.generation))
+      .arg (QString::number (result.snapshot.state_revision))
+      .arg (result.status == Status::Completed ? QStringLiteral ("confirmed")
+                                                : QStringLiteral ("unknown"))
+      .arg (result.snapshot.frequency_known ? QStringLiteral ("1") : QStringLiteral ("0"))
+      .arg (QString::number (result.snapshot.actual_frequency_hz))
+      .arg (result.snapshot.dx_known ? QStringLiteral ("1") : QStringLiteral ("0"))
+      .arg (result.snapshot.business_state_known ? QStringLiteral ("1") : QStringLiteral ("0"))
+      .arg (cq_state)
+      .arg (result.snapshot.auto_sequence_enabled ? QStringLiteral ("1") : QStringLiteral ("0"));
+  try { diagnostic_logger_ (line); } catch (...) {}
+}
+
 JtdxWebControl::Result JtdxWebControl::reject (Request const& request, QString reason,
-                                               int http_status) const
+                                               int http_status)
 {
   Result result;
   result.request_id = request.request_id;
@@ -220,6 +259,7 @@ JtdxWebControl::Result JtdxWebControl::reject (Request const& request, QString r
   result.received_ms = now ();
   result.snapshot = observed_;
   result.initial_state_revision = observed_.state_revision;
+  log_result (result, QStringLiteral ("reject"));
   return result;
 }
 
@@ -241,6 +281,7 @@ void JtdxWebControl::finish (Record& record, Status status, QString reason, quin
       expiry_timer_.stop ();
     }
   mark_operations_changed ();
+  log_result (record.result, QStringLiteral ("transition"));
 }
 
 JtdxWebControl::Result JtdxWebControl::submit (Request request)
@@ -277,7 +318,10 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
       prior.operation = existing.value ().result.operation;
       if (existing.value ().canonical_payload == canonical_payload (request)
           && prior.operation == request.operation)
-        return existing.value ().result;
+        {
+          log_result (existing.value ().result, QStringLiteral ("duplicate"));
+          return existing.value ().result;
+        }
       return reject (request, QStringLiteral ("request_id_conflict"), 409);
     }
   // An already-begun operation may still have taken effect after its feedback
@@ -398,6 +442,7 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
   stored.result.status = Status::Pending;
   stored.result.reason = QStringLiteral ("awaiting_feedback");
   stored.result.status_history.append (Status::Pending);
+  log_result (stored.result, QStringLiteral ("accepted"));
   pending_request_id_ = request.request_id;
   arm_timer ();
 

@@ -9,6 +9,14 @@
 
 P10 不改变生产功能边界。唯一代码变更是 `resources/web-ui/app.js` 对 `feedback_timeout`/`unconfirmed_feedback` 的前端未知锁保持；AutoSeq 仍表示“启用既有 decode-driven AutoSeq，等待下一批实时解码”，不表示立即呼叫当前 DX 或已经发射。
 
+## P12 追加：本地控制诊断日志
+
+P12 将控制生命周期接入现有 MainWindow recovery log：`jtdx_recovery.log` 位于实例已有可写数据目录，主动文件上限 `256 KiB`，只保留一个 `.1` 轮转文件。日志写入为 UTF-8，写失败、打开失败或轮转失败只影响诊断，不影响控制、安全门、回读或未知锁；日志不是恢复状态源，也不参与新 epoch 或多浏览器解锁。
+
+每条记录包含 UTC 毫秒时间、规范化 `request_id`、操作、事件（`reject`/`accepted`/`transition`/`duplicate`）、状态、限长原因、generation/state revision 和有限 readback 摘要。换行/制表符、反斜杠和等号会被清洗或转义并限长；不写 Authorization、token、密码、原始 HTTP、call/grid 或其他凭据。相同 request ID 与相同 payload 的重复请求只记录 `duplicate`，不会再次执行 dispatcher。
+
+P12 自动证据：构建 `C:\JTDX64\deps-webui\p12-build-20260921-r3.log`；定向配置、Control、MainWindow 合同、Server、Service 与本地日志测试为 `6/6`，日志 `C:\JTDX64\deps-webui\p12-focused-20260921-r2.log`；全量 CTest 为 `23/23`、`100% tests passed`、57.29 秒，日志 `C:\JTDX64\deps-webui\p12-final-ctest-20260921.log`。新增本地日志测试覆盖临时目录、Unicode/换行注入、主动/轮转大小、重复生命周期和不可写路径；真实 MainWindow、CAT/PTT/TX/HIL、部署和 LAN 仍未验证/未授权。
+
 ## 2. 原交付要求追踪
 
 下表把设计基线的 14 项交付要求归并呈现；原始编号与完整边界见 [`01_需求与边界_zh-CN.md`](01_需求与边界_zh-CN.md)。R15 作为授权、恢复和交付边界另列，不把它误写成设备验收。
