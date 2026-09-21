@@ -4,7 +4,7 @@
 
 ## P14 本地 Release Candidate（2026-09-21）
 
-已生成隔离 RC 目录和 ZIP，直接根目录为 `bin/plugins/share`，75 个文件，ZIP SHA256 为 `776df727a46242d65a1bdf1908fd86ac98019b39fb9935d7aadd1c28000e70cc`。候选包和全新解压目录均以 `--test-mode` 无硬件启动并持续观察 20 秒；P15 另用测试专用 fixture 完成 1802 秒 State/Control/Server 长时证据，但不等于 RC `jtdx.exe` 完整 MainWindow 长时或真实设备验收。完整 MainWindow 人工验收、真实 CAT/PTT/TX/HIL、发布批准仍未完成或未授权。详见 [`docs/web-ui/P14-Release候选审计_zh-CN.md`](docs/web-ui/P14-Release候选审计_zh-CN.md) 与 [`docs/web-ui/P15-无硬件持续运行与故障恢复_zh-CN.md`](docs/web-ui/P15-无硬件持续运行与故障恢复_zh-CN.md)。
+已生成隔离 RC 目录和 ZIP，直接根目录为 `bin/plugins/share`，75 个文件，ZIP SHA256 为 `776df727a46242d65a1bdf1908fd86ac98019b39fb9935d7aadd1c28000e70cc`。候选包和全新解压目录均以 `--test-mode` 无硬件启动；P15 完成 1802 秒 State/Control/Server fixture 长时证据，P16 又用解压 RC 的真实 `jtdx.exe` 完成 1814.2 秒主程序无硬件存活/资源证据，但结束为受控终止，不等于正常 MainWindow 关闭。完整原生设置/视觉/保存重载、真实 CAT/PTT/TX/HIL、发布批准仍未完成或未授权。详见 [`docs/web-ui/P14-Release候选审计_zh-CN.md`](docs/web-ui/P14-Release候选审计_zh-CN.md)、[`docs/web-ui/P15-无硬件持续运行与故障恢复_zh-CN.md`](docs/web-ui/P15-无硬件持续运行与故障恢复_zh-CN.md) 与 [`docs/web-ui/P16-RC主程序无硬件持续运行与最终交接_zh-CN.md`](docs/web-ui/P16-RC主程序无硬件持续运行与最终交接_zh-CN.md)。
 
 ## 最新恢复结果（2026-09-21）
 
