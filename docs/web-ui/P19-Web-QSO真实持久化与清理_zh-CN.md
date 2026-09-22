@@ -36,7 +36,7 @@ TEST_EXIT=0
 
 使用独立 `--test-mode --rig-name P19-Web-Persist-9677`、`Rig=None`、loopback `49233` 启动重新构建的 `jtdx.exe`。证据：
 
-`C:\JTDX64\deps-webui\p19-real-web-20260921-9677.log`
+`C:\JTDX64\deps-webui\evidence\P19\p19-real-web-20260921-9677.log`
 
 实际状态为 `HTTP=200`、`DX_CALL=`、`ADIF=False`、`LOG=False`。真实 HTTP 拒绝结果：
 
@@ -50,22 +50,22 @@ TEST_EXIT=0
 
 ## 构建与回归
 
-- 受影响目标 `jtdx`、`logqso_persistence_test`、`mainwindow_web_frequency_contract_test` 构建成功：`C:\JTDX64\deps-webui\p19-final-build-0033f9a-20260921.log`
-- 全量 CTest：`24/24`、`100% tests passed`、总计约 `36.36 sec`：`C:\JTDX64\deps-webui\p19-final-ctest-0033f9a-20260921.log`
+- 受影响目标 `jtdx`、`logqso_persistence_test`、`mainwindow_web_frequency_contract_test` 构建成功：`C:\JTDX64\deps-webui\evidence\P19\p19-final-build-0033f9a-20260921.log`
+- 全量 CTest：`24/24`、`100% tests passed`、总计约 `36.36 sec`：`C:\JTDX64\deps-webui\evidence\P19\p19-final-ctest-0033f9a-20260921.log`
 - 构建/运行使用本机 MinGW/Qt 路径；未修改系统 PATH。
 
 ## P19 RC 交付证据
 
-- 安装目录：`C:\JTDX64\deps-webui\p19-install-20260921-0033f9a`
-- 解压目录：`C:\JTDX64\deps-webui\p19-rc-extract-2.2.159.2.10-0033f9a`
-- ZIP：`C:\JTDX64\deps-webui\JTDX-2.2.159.2.10-rc-local-0033f9a-p19.zip`
+- 原安装目录：`p19-install-20260921-0033f9a`（P20 已删除该可再生暂存目录）
+- 原解压目录：`p19-rc-extract-2.2.159.2.10-0033f9a`（P20 已删除该可再生暂存目录）
+- 历史 ZIP：`C:\JTDX64\deps-webui\history\superseded\JTDX-2.2.159.2.10-rc-local-0033f9a-p19.zip`
 - SHA256：`d334cba188e68e60fadc57f2b1b05158bbb2b7f81740459a101d76759ecf9455`
-- 安装目录与解压目录均为 `75` 个文件，直接根目录为 `bin/plugins/share`，递归 SHA 比较 `HASH_DIFFERENCES=0`。
+- 当时安装目录与解压目录均为 `75` 个文件，直接根目录为 `bin/plugins/share`，递归 SHA 比较 `HASH_DIFFERENCES=0`。
 - 两个 RC 目录中的 `bin\\jtdx.exe` 均以 `--test-mode` 启动并保持运行至少 5 秒，随后由本轮拥有的进程 PID 受控停止；这只是无硬件启动烟测，不是正常窗口关闭或 HIL。
 
 ## 清理与保留
 
-保留最终 P19 RC 的安装/解压目录、ZIP/SHA256、P19 构建/CTest/真实 Web 证据和 P17/P18 可回退 RC；删除本批明确生成且可再生的临时运行脚本 `C:\JTDX64\deps-webui\p19-real-web.ps1`、编译器临时目录 `C:\JTDX64\deps-webui\p19-compiler-temp`，以及两个独立测试目录 `C:\Users\cassi\AppData\Local\qttest\JTDX - P19-Web-Persist-9677 - test` 和 `C:\Users\cassi\AppData\Local\qttest\JTDX-P19-LogQSO-Test`。保留对应真实 Web 日志，不删除源代码、活动构建目录、依赖目录、用户安装目录或唯一截图证据。
+P20 后续整理保留 P19 ZIP 与 SHA256 于 `C:\JTDX64\deps-webui\history\superseded`，将 P19 构建/CTest/真实 Web 日志放入 `C:\JTDX64\deps-webui\evidence\P19`；P17/P18 回退 ZIP 位于 `C:\JTDX64\deps-webui\history\rollback`。P14/P17/P18/P19 安装与解压暂存目录均为已验证的本任务生成物，已在 P20 重新打包后删除。原有 P19 临时脚本、编译器临时目录和两个 P19 test-mode 数据目录已清理；P19 RC 启动产生的两个专属 qttest 目录也已清理。用户 `C:\JTDX64\159` 安装、活动构建目录、依赖源、用户配置和唯一截图均未删除。
 
 ## 未完成边界
 

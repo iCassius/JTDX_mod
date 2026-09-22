@@ -2,9 +2,9 @@
 
 日期：2026-09-21；实现提交：`fa7712f`。范围为 `main` 工作树的 Web State/Control/Server、MainWindow Web 适配、LogQSO 复用、内置资源和隔离 fixture。没有启动真实 CAT、PTT、UDP、音频或发射路径；浏览器 fixture 只在内存中模拟状态，不写 ADIF。
 
-最终构建日志：`C:\JTDX64\deps-webui\p18-final-build-fa7712f-20260921.log`；全量 CTest 日志：`C:\JTDX64\deps-webui\p18-final-ctest-fa7712f-20260921.log`，23/23、100%、59.43 秒。
+最终构建日志：`C:\JTDX64\deps-webui\evidence\history\P18\p18-final-build-fa7712f-20260921.log`；全量 CTest 日志：`C:\JTDX64\deps-webui\evidence\history\P18\p18-final-ctest-fa7712f-20260921.log`，23/23、100%、59.43 秒。对应历史安装/解压暂存目录已在 P20 删除，回退 ZIP 保留在 `C:\JTDX64\deps-webui\history\rollback`。
 
-本地 RC：安装目录 `C:\JTDX64\deps-webui\p18-install-20260921-fa7712f`，解压目录 `C:\JTDX64\deps-webui\p18-rc-extract-2.2.159.2.10-fa7712f`，ZIP `C:\JTDX64\deps-webui\JTDX-2.2.159.2.10-rc-local-fa7712f-p18.zip`。ZIP 直根目录为 `bin/plugins/share`，75 个文件，解压逐文件 SHA256 比对 0 差异；ZIP SHA256：`d3874c04656d68e0312db2c5d7479bb941ae359b844f767901fde5c0d1b08c00`。安装目录和全新解压目录均以 `--test-mode` 启动 5 秒后受控停止；这证明可启动，不证明正常 MainWindow 关闭或设备行为。
+历史 P18 RC 的安装目录 `p18-install-20260921-fa7712f` 与解压目录 `p18-rc-extract-2.2.159.2.10-fa7712f` 已由 P20 清理。回退 ZIP 位于 `C:\JTDX64\deps-webui\history\rollback\JTDX-2.2.159.2.10-rc-local-fa7712f-p18.zip`。ZIP 直根目录为 `bin/plugins/share`，75 个文件，解压逐文件 SHA256 比对 0 差异；ZIP SHA256：`d3874c04656d68e0312db2c5d7479bb941ae359b844f767901fde5c0d1b08c00`。此前两个 P18 目录均以 `--test-mode` 启动 5 秒后受控停止；这是旧二进制的历史证据，不证明 P20 启动、正常 MainWindow 关闭或设备行为。
 
 ## 截图到实现的差异表
 

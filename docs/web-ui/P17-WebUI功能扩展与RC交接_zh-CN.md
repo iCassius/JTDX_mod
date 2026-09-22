@@ -38,10 +38,10 @@
 3. 本地浏览器夹具宽屏检查：紧凑解码行、国家字段、选择 DX、受限电台面板、Tx6 当前选择和有界滚动均可见。
 4. `node --check resources/web-ui/app.js` 通过。
 5. 最终 Release 安装、ZIP 和干净解压复核通过：
-   - RC 目录：`C:\JTDX64\deps-webui\p17-install-20260921-ee505fb`
-   - ZIP：`C:\JTDX64\deps-webui\JTDX-2.2.159.2.10-rc-local-ee505fb.zip`
+   - 历史 RC 安装目录：`p17-install-20260921-ee505fb`（P20 已删除可再生暂存目录）
+   - 回退 ZIP：`C:\JTDX64\deps-webui\history\rollback\JTDX-2.2.159.2.10-rc-local-ee505fb.zip`
    - SHA256：`aabb4191b2c9322a1b4dc052cdf7c7c6fd11ff2dc86f9c56f8f26f7aee20daa6`
-   - 解压目录：`C:\JTDX64\deps-webui\p17-rc-extract-2.2.159.2.10-ee505fb-r1`
+   - 原解压目录：`p17-rc-extract-2.2.159.2.10-ee505fb-r1`（P20 已删除可再生暂存目录）
    - ZIP 直接根目录为 `bin/plugins/share`，75 个文件，解压后逐文件 SHA256 差异为 0。
 
 未完成且不应虚构：

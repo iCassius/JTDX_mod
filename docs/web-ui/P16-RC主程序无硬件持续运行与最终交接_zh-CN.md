@@ -8,11 +8,11 @@
 
 ## RC 和运行边界
 
-- ZIP：`C:\JTDX64\deps-webui\JTDX-2.2.159.2.10-rc-local-aef3434.zip`
+- 历史 ZIP：`C:\JTDX64\deps-webui\history\superseded\JTDX-2.2.159.2.10-rc-local-aef3434.zip`
 - ZIP 大小：`56,242,139` bytes
 - ZIP SHA256：`776df727a46242d65a1bdf1908fd86ac98019b39fb9935d7aadd1c28000e70cc`
-- 本次实际运行目录：`C:\JTDX64\deps-webui\p14-rc-extract-2.2.159.2.10-aef3434-r1`
-- 实际可执行文件：`C:\JTDX64\deps-webui\p14-rc-extract-2.2.159.2.10-aef3434-r1\bin\jtdx.exe`
+- 本次实际运行目录：`p14-rc-extract-2.2.159.2.10-aef3434-r1`（历史运行目录已由 P20 清理）
+- 实际可执行文件：上述历史运行目录中的 `bin\jtdx.exe`
 - 权威日志：`C:\JTDX64\deps-webui\p16-rc-mainwindow-longrun-20260921-r2.log`
 - 可复现 runner：`C:\JTDX64\deps-webui\p16_rc_mainwindow_longrun.ps1`
 

@@ -4,12 +4,12 @@
 
 本批生成了一个隔离的本地 Release Candidate（RC）运行包，未修改用户安装目录 `C:\JTDX64\159`，未打 tag、未上传、未部署、未连接真实电台，也未执行 CAT/PTT/TX/HIL。该包可作为后续人工 MainWindow、长时运行和 HIL 的独立候选，不可称为稳定公开 Release。
 
-RC 源码基线为 `main/aef3434`（P13 最终资源构建证据提交）；候选包不引入新的源码修改。候选目录和 ZIP 均位于 `C:\JTDX64\deps-webui`：
+RC 源码基线为 `main/aef3434`（P13 最终资源构建证据提交）；候选包不引入新的源码修改。P20 后它是历史候选，不是当前包。历史 ZIP/SHA 清单位于 `C:\JTDX64\deps-webui\history\superseded`；原目录和解压目录已删除：
 
-- 目录：`C:\JTDX64\deps-webui\p14-rc-2.2.159.2.10-aef3434`
-- ZIP：`C:\JTDX64\deps-webui\JTDX-2.2.159.2.10-rc-local-aef3434.zip`
-- SHA256 清单：`C:\JTDX64\deps-webui\JTDX-2.2.159.2.10-rc-local-aef3434-SHA256.txt`
-- 解压复核目录：`C:\JTDX64\deps-webui\p14-rc-extract-2.2.159.2.10-aef3434-r1`
+- 原目录：`p14-rc-2.2.159.2.10-aef3434`（已由 P20 删除可再生暂存目录）
+- ZIP：`C:\JTDX64\deps-webui\history\superseded\JTDX-2.2.159.2.10-rc-local-aef3434.zip`
+- SHA256 清单：`C:\JTDX64\deps-webui\history\superseded\JTDX-2.2.159.2.10-rc-local-aef3434-SHA256.txt`
+- 原解压目录：`p14-rc-extract-2.2.159.2.10-aef3434-r1`（P20 已删除）
 
 ## 构建和依赖证据
 
