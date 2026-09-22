@@ -23,6 +23,7 @@
 | P17 | 截图对应的 WebUI 菜单、紧凑解码表、受限电台面板、Tx1–Tx6 编辑、能力开关、操作回读和新 RC | 软件实现与定向测试已完成；夹具宽屏已观察到解码一行布局、国家字段、面板、Tx6 选择和有界滚动；真实 MainWindow、CAT/PTT/TX/HIL、部署和最终发布批准仍未完成 |
 | P18 | 截图差异全表、固定 radio API/QSO 参数、Web Log QSO 草稿/确认/取消/重复保护、1280/390 实际视口、菜单/服务回归和最终构建 | 已通过隔离软件验收；QSO fixture 不写 ADIF；真实 MainWindow、CAT/PTT/TX/HIL、部署和最终发布批准仍未完成 |
 | P19 | 真实 LogQSO 文件追加、失败不报成功、隔离主程序拒绝、RC 与临时物清理 | 已完成隔离真实 LogQSO 与 `24/24` 全量 CTest；真实 DX 成功确认、request_id 重试和 HIL 仍未验证 |
+| P20 | 修正启动安全拒绝原因、验证真实 Web QSO dispatch/LogQSO 集成、整理当前本地候选与回退目录 | 启动门原因已修正并有单测；MainWindow 到 ADIF 的同链隔离集成未建立，按独立 Control、LogQSO 测试及实际 MainWindow 构造副作用记录边界；本地候选包与回退目录按交接文档核对 |
 | HIL | CAT/PTT/TX、设备回读、长时运行和无线电行为；需独立授权 | 未授权 |
 
 ## 必测条目追踪

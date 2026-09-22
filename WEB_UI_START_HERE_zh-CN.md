@@ -1,10 +1,14 @@
 # JTDX 内置 Web UI：阶段入口与恢复说明
 
-本目录记录 JTDX 内置轻量 Web UI 的需求、边界、设计和阶段证据。P3 生产 service/QAction、P4 普通控制、P5 CQ/AutoSeq 软件控制链路、P7 页面收口、P8 视口/断线验收、P9 DX/异常闭环、P10 软件交付收尾、P11 超时 Stop 恢复/资源核查、P12/P13 有界本地控制诊断日志、P14 本地 Release Candidate 审计和 P19 Web QSO 真实持久化边界已完成本批隔离验证；仍不代表已经完成完整 MainWindow、真实 CAT/DX/CQ 设备回读或 HIL/部署验证。频率、DX、CQ/AutoSeq 控制均可由用户在设置中分别显式开启，默认仍关闭；完成仍须实际业务/CAT 状态回读，不能把隔离夹具的 `accepted/pending` 当作硬件完成。较早 CAT `.10` 交付提交 `a89c9da` 仅作外部历史参考。
+本目录记录 JTDX 内置轻量 Web UI 的需求、边界、设计和阶段证据。P3 生产 service/QAction、P4 普通控制、P5 CQ/AutoSeq 软件控制链路、P7 页面收口、P8 视口/断线验收、P9 DX/异常闭环、P10 软件交付收尾、P11 超时 Stop 恢复/资源核查、P12/P13 有界本地控制诊断日志、P14 本地 RC、P17/P18 Web 电台面板与 QSO 草稿及 P19 持久化修复已完成对应的软件验证；P20 进一步区分启动安全门拒绝原因并准备本地候选包。完整 MainWindow Web QSO 成功链仍未做隔离集成验收，真实 CAT/PTT/TX、HIL 和部署也未验证。频率、DX、CQ/AutoSeq 控制可由用户在设置中分别显式开启，默认仍关闭；完成仍须实际业务/CAT 状态回读，不能把隔离夹具的 `accepted/pending` 当作硬件完成。较早 CAT `.10` 交付提交 `a89c9da` 仅作外部历史参考。
 
 ## P19 Web QSO 真实持久化（2026-09-21）
 
 P19 修复 Web QSO 初始化误写两条 ADIF 和写入失败仍报成功的问题：初始化只填充草稿，显式确认实际写入成功后才清空草稿并推进 generation。真实 `LogQSO` 隔离测试确认一次确认一条 ADIF、取消零写入、不可写路径返回失败且不写业务日志；真实 `jtdx.exe --test-mode --rig-name P19-Web-Persist-9677` 仅验证本地 HTTP 拒绝与无文件副作用，未伪造无 DX 条件下的成功通联。详见 [`docs/web-ui/P19-Web-QSO真实持久化与清理_zh-CN.md`](docs/web-ui/P19-Web-QSO真实持久化与清理_zh-CN.md)。
+
+## P20 启动拒绝原因与本地候选交接（2026-09-23）
+
+`m_start2` 是首个电台状态回读前的启动门，不代表 TX/PTT 已活动；相应拒绝现在返回 `startup_pending`，既有启动/发射安全门不变。P20 的 `jtdx_web_control_test`、`logqso_persistence_test` 与 `jtdx_web_server_test` 均为独立组件测试，不覆盖真实 MainWindow dispatch 到 ADIF 的同一集成调用链。当前本地 Release 候选、哈希、回归证据、回退包和人工/HIL边界见 [`docs/web-ui/P20-真实LogQSO集成边界与候选发布_zh-CN.md`](docs/web-ui/P20-真实LogQSO集成边界与候选发布_zh-CN.md)。
 
 ## P14 本地 Release Candidate（2026-09-21）
 

@@ -63,7 +63,7 @@ int main (int argc, char ** argv)
   QDir data_dir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)};
   if (data_dir.exists ()) data_dir.removeRecursively ();
   data_dir = QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)};
-  check (!data_dir.isEmpty () && data_dir.mkpath (QStringLiteral (".")),
+  check (!data_dir.path ().isEmpty () && data_dir.mkpath (QStringLiteral (".")),
          "isolated Qt test data directory is writable");
   QString const adif_path = data_dir.absoluteFilePath (QStringLiteral ("wsjtx_log.adi"));
   QString const log_path = data_dir.absoluteFilePath (QStringLiteral ("wsjtx.log"));

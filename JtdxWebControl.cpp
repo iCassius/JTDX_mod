@@ -116,7 +116,8 @@ bool JtdxWebControl::safe_to_dispatch (SafetySnapshot const& safety, Operation o
   else if (safety.ptt) *reason = QStringLiteral ("ptt_active");
   else if (safety.tx_enabled) *reason = QStringLiteral ("tx_enabled");
   else if (safety.watchdog_timeout) *reason = QStringLiteral ("watchdog_timeout");
-  else if (safety.start2 || safety.tune || safety.auto_tx || safety.iptt)
+  else if (safety.start2) *reason = QStringLiteral ("startup_pending");
+  else if (safety.tune || safety.auto_tx || safety.iptt)
     *reason = QStringLiteral ("tx_path_active");
   else if (!safety.business_state_known) *reason = QStringLiteral ("business_state_unknown");
   else return true;

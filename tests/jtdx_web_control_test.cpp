@@ -71,6 +71,30 @@ int main ()
          "rejected result preserves bounded timestamp and cached observation");
   control.set_observed_state (safe_state (1));
 
+  Control startup_gate {100};
+  bind_fixture_epoch (startup_gate);
+  startup_gate.set_clock_for_test (1000);
+  auto startup_state = safe_state (1);
+  startup_state.safety.start2 = true;
+  startup_gate.set_observed_state (startup_state);
+  auto startup_rejected = startup_gate.submit (
+      frequency_request (startup_gate, QStringLiteral ("startup"), 14074000));
+  check (startup_rejected.status == Control::Status::Rejected
+         && startup_rejected.reason == QStringLiteral ("startup_pending"),
+         "first rig observation startup gate is reported separately from active TX");
+
+  Control tx_path_gate {100};
+  bind_fixture_epoch (tx_path_gate);
+  tx_path_gate.set_clock_for_test (1000);
+  auto tx_path_state = safe_state (1);
+  tx_path_state.safety.auto_tx = true;
+  tx_path_gate.set_observed_state (tx_path_state);
+  auto tx_path_rejected = tx_path_gate.submit (
+      frequency_request (tx_path_gate, QStringLiteral ("tx-path"), 14074000));
+  check (tx_path_rejected.status == Control::Status::Rejected
+         && tx_path_rejected.reason == QStringLiteral ("tx_path_active"),
+         "active AutoTx path remains rejected with its existing reason");
+
   int dispatch_count = 0;
   control.set_frequency_dispatcher ([&] (Control::Dispatch const& dispatch) {
     ++dispatch_count;
