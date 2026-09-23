@@ -28,6 +28,10 @@
   let cycleAnchorPerformance = null;
   let cyclePeriodMs = 15000;
   let cycleMode = "";
+  let cycleCalibrationSequence = 0;
+  let cycleCalibrationRttMinMs = null;
+  let cycleCalibrationRttMaxMs = null;
+  let cycleCalibrationHistory = [];
 
   const el = (id) => document.getElementById(id);
   const text = (id, value) => {
@@ -95,7 +99,6 @@
   function updateFrequencyChoices(snapshot) {
     const bandSelect = el("frequency_band");
     const presetSelect = el("frequency_preset");
-    const meta = el("frequency_candidates_meta");
     if (!bandSelect || !presetSelect) return;
 
     const previousBand = bandSelect.value;
@@ -142,17 +145,6 @@
     const validPreset = filtered.some((row) => row.hz === previousPreset);
     presetSelect.value = validPreset ? previousPreset : "";
 
-    if (meta) {
-      if (!snapshot) meta.textContent = "等待当前模式与地区的候选";
-      else if (frequencyCandidates.length === 0) meta.textContent = "当前模式与地区暂无候选，仍可手动输入";
-      else {
-        const mode = typeof snapshot.frequency_candidate_mode === "string"
-          && snapshot.frequency_candidate_mode.length > 0 ? snapshot.frequency_candidate_mode : "未知模式";
-        const region = typeof snapshot.frequency_candidate_region === "string"
-          && snapshot.frequency_candidate_region.length > 0 ? snapshot.frequency_candidate_region : "未知地区";
-        meta.textContent = mode + " / " + region + " · " + frequencyCandidates.length + " 条候选";
-      }
-    }
   }
 
   function secureRequestId() {
@@ -176,6 +168,8 @@
     if (!node) return;
     node.textContent = message;
     node.className = "frequency-result " + (kind || "");
+    node.hidden = !message;
+    node.dataset.kind = kind || "";
   }
 
   function dxStatus(message, kind) {
@@ -183,6 +177,8 @@
     if (!node) return;
     node.textContent = message;
     node.className = "frequency-result " + (kind || "");
+    node.hidden = !message;
+    node.dataset.kind = kind || "";
   }
 
   function businessStatus(message, kind) {
@@ -190,6 +186,8 @@
     if (!node) return;
     node.textContent = message;
     node.className = "frequency-result " + (kind || "");
+    node.hidden = !message;
+    node.dataset.kind = kind || "";
   }
 
   function radioStatus(message, kind) {
@@ -197,6 +195,8 @@
     if (!node) return;
     node.textContent = message;
     node.className = "frequency-result " + (kind || "");
+    node.hidden = !message;
+    node.dataset.kind = kind || "";
   }
 
   function operationForRequest(snapshot) {
@@ -422,18 +422,21 @@
   function updateFrequencyForm() {
     const button = el("frequency_send");
     const input = el("frequency_input");
-    const reason = el("frequency_control_status");
+    const reason = el("frequency_result");
     if (!button || !input || !reason) return;
     if (currentSnapshot && document.activeElement !== input && input.dataset.dirty !== "1"
         && Number.isSafeInteger(currentSnapshot.frequency) && currentSnapshot.frequency > 0)
       input.value = String(currentSnapshot.frequency);
     const targetHz = frequencyInputToHz(input.value);
     const gate = frequencyGateReason(currentSnapshot);
-    const inputReason = targetHz ? "" : "请输入 100000 至 60000000 之间的整数 Hz";
+    const inputReason = input.value.trim() && !targetHz ? "频率须为 100000 至 60000000 Hz 的整数" : "";
     const disabledReason = gate || inputReason;
-    button.disabled = !!disabledReason;
-    reason.textContent = disabledReason || "可以发送；服务端仍会进行最终校验";
-    reason.className = "frequency-control-status " + (disabledReason ? "blocked" : "ready");
+    button.disabled = !!gate || !targetHz;
+    if (currentSnapshot && connected && disabledReason && !frequencyRequest && !frequencyUnknown) {
+      frequencyStatus(disabledReason, "blocked");
+    } else if ((!disabledReason || !connected || !currentSnapshot) && reason.dataset.kind === "blocked") {
+      frequencyStatus("", "");
+    }
   }
 
   function dxGateReason(snapshot) {
@@ -449,11 +452,11 @@
 
   function updateDxControls() {
     const reason = dxGateReason(currentSnapshot);
-    const status = el("dx_selection_status");
-    if (status) {
-      status.textContent = reason || "可选择解码或填写 DX";
-      status.className = "frequency-control-status " + (reason ? "blocked" : "ready");
-    }
+    const feedback = el("dx_selection_result");
+    if (feedback && currentSnapshot && connected && reason && !dxRequest && !dxUnknown)
+      dxStatus(reason, "blocked");
+    else if (feedback && feedback.dataset.kind === "blocked" && (!reason || !connected || !currentSnapshot))
+      dxStatus("", "");
     const apply = el("dx_apply");
     if (apply) apply.disabled = !connected || !currentSnapshot || !!reason || !!dxRequest
       || !(el("dx_call_input").value.trim() || el("dx_grid_input").value.trim());
@@ -482,13 +485,11 @@
     });
     const stop = el("business_stop");
     if (stop) stop.disabled = !!stopReason;
-    const status = el("business_control_status");
-    if (status) {
-      status.textContent = startReason
-        ? "启动受限：" + startReason + (stopReason ? "" : "；停止可用")
-        : "操作将直接提交，并显示实际结果";
-      status.className = "frequency-control-status " + (startReason ? "blocked" : "ready");
-    }
+    const feedback = el("business_result");
+    if (feedback && currentSnapshot && connected && startReason && !businessRequest && !businessUnknown)
+      businessStatus("启动受限：" + startReason, "blocked");
+    else if (feedback && feedback.dataset.kind === "blocked" && (!startReason || !connected || !currentSnapshot))
+      businessStatus("", "");
   }
 
   function radioGateReason(snapshot, action) {
@@ -553,11 +554,12 @@
     const qsoConfirm = el("radio_qso_confirm");
     if (qsoCancel) qsoCancel.disabled = !qsoOpen || !!radioGateReason(snapshot, "log-qso-cancel");
     if (qsoConfirm) qsoConfirm.disabled = !qsoOpen || !!radioGateReason(snapshot, "log-qso-confirm");
-    const qsoStatus = el("radio_qso_status");
-    if (qsoStatus) qsoStatus.textContent = qsoOpen ? "已打开草稿；修改字段后确认提交，取消不会写入 ADIF。" : "提交前不会写入 ADIF。";
-    const status = el("radio_control_status");
+    const feedback = el("radio_result");
     const reason = radioGateReason(snapshot, "clear-windows");
-    if (status) { status.textContent = reason || "操作需等待主程序实际状态回读"; status.className = "frequency-control-status " + (reason ? "blocked" : "ready"); }
+    if (feedback && connected && snapshot && reason && !radioRequest && !radioUnknown)
+      radioStatus(reason, "blocked");
+    else if (feedback && feedback.dataset.kind === "blocked" && (!reason || !connected || !snapshot))
+      radioStatus("", "");
     text("radio_state_badge", known ? "已同步" : "未知");
     for (let index = 1; index <= 6; index++) {
       const input = el("radio_tx_" + index);
@@ -577,12 +579,15 @@
     currentSnapshot = null;
     frequencyCandidates = [];
     lastId = "";
-    ["application_name", "mode_band", "instance_id", "online", "frequency", "tx_summary",
+    ["application_name", "mode_band", "instance_id", "online", "tx_summary",
       "report", "df", "tx_mode", "tx_enabled", "transmitting", "decoding",
       "tx_first", "watchdog_timeout", "cq_qso", "auto_sequence_state", "current_tx_text", "decode_count",
-      "dx_selection_status", "dx_selection_result", "business_control_status", "business_result",
-      "radio_control_status", "radio_result", "radio_state_badge"]
+      "dx_selection_result", "business_result", "radio_result", "radio_state_badge"]
       .forEach((id) => text(id, null));
+    frequencyStatus("", "");
+    dxStatus("", "");
+    businessStatus("", "");
+    radioStatus("", "");
     const box = el("decodes");
     if (box) box.replaceChildren();
     updateFrequencyChoices(null);
@@ -604,16 +609,13 @@
         && (snapshot.cycle_period_ms !== cyclePeriodMs || nextCycleMode !== cycleMode)) {
       cyclePeriodMs = snapshot.cycle_period_ms;
       cycleMode = nextCycleMode;
-      cycleAnchorJtdx = null;
-      calibrateCycle();
+      calibrateCycle("mode");
     }
     setConnected(true);
     text("application_name", snapshot.application_name);
     text("mode_band", [snapshot.mode, snapshot.band].filter(Boolean).join(" / ") || "未知");
     text("instance_id", snapshot.instance_id);
     text("online", snapshot.online == null ? null : snapshot.online ? "在线" : "离线");
-    text("frequency", snapshot.frequency == null ? "未取得实际频率"
-      : String(integerValue(snapshot.frequency)) + " Hz");
     const dxCallInput = el("dx_call_input");
     const dxGridInput = el("dx_grid_input");
     if (dxCallInput && document.activeElement !== dxCallInput && !dxCallInput.dataset.dirty)
@@ -1050,7 +1052,9 @@
         });
         if (run !== runId) throw new Error("superseded");
         if (!response.ok || !response.body) throw new Error("HTTP " + response.status);
+        const wasConnected = connected;
         setConnected(true);
+        if (!wasConnected) calibrateCycle("reconnect");
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
@@ -1123,22 +1127,43 @@
     clearRenderedSnapshot("等待当前会话的状态快照");
     setConnected(false);
     running = true;
-    calibrateCycle();
+    calibrateCycle("initial");
     stream(runId);
   }
 
-  async function calibrateCycle() {
+  async function calibrateCycle(trigger) {
+    const sequence = ++cycleCalibrationSequence;
+    const session = connectionSession;
     const started = performance.now();
     try {
       const response = await fetch("/api/v1/state", {cache: "no-store", headers: {Accept: "application/json"}});
       const snapshot = await response.json();
       const ended = performance.now();
-      if (!response.ok || !Number.isFinite(snapshot.jtdx_time_ms)
+      if (sequence !== cycleCalibrationSequence || session !== connectionSession
+          || !response.ok || !Number.isFinite(snapshot.jtdx_time_ms)
           || !Number.isFinite(snapshot.server_monotonic_ms)
           || !Number.isSafeInteger(snapshot.cycle_period_ms) || snapshot.cycle_period_ms <= 0) return;
+      const rtt = ended - started;
+      cycleCalibrationRttMinMs = cycleCalibrationRttMinMs == null ? rtt : Math.min(cycleCalibrationRttMinMs, rtt);
+      cycleCalibrationRttMaxMs = cycleCalibrationRttMaxMs == null ? rtt : Math.max(cycleCalibrationRttMaxMs, rtt);
+      cycleCalibrationHistory.push((trigger || "unspecified") + ":" + rtt.toFixed(2));
+      cycleCalibrationHistory = cycleCalibrationHistory.slice(-8);
       cycleAnchorJtdx = snapshot.jtdx_time_ms;
       cycleAnchorPerformance = (started + ended) / 2;
       cyclePeriodMs = snapshot.cycle_period_ms;
+      cycleMode = typeof snapshot.mode === "string" ? snapshot.mode : cycleMode;
+      const strip = el("cycle_strip");
+      if (strip) {
+        strip.dataset.calibrationTrigger = trigger || "unspecified";
+        strip.dataset.calibrationRttMs = rtt.toFixed(2);
+        strip.dataset.calibrationRttMinMs = cycleCalibrationRttMinMs.toFixed(2);
+        strip.dataset.calibrationRttMaxMs = cycleCalibrationRttMaxMs.toFixed(2);
+        strip.dataset.calibrationHistory = cycleCalibrationHistory.join(",");
+        strip.dataset.midpointUncertaintyMs = (rtt / 2).toFixed(2);
+        strip.dataset.calibrationSequence = String(sequence);
+        strip.dataset.anchorJtdxMs = String(cycleAnchorJtdx);
+        strip.dataset.cyclePeriodMs = String(cyclePeriodMs);
+      }
       if (currentSnapshot) renderCycle();
     } catch (_) { /* SSE reconnect retries the same local clock calibration. */ }
   }
@@ -1147,6 +1172,8 @@
     if (!currentSnapshot || cycleAnchorJtdx == null || cycleAnchorPerformance == null) return;
     const estimatedJtdx = cycleAnchorJtdx + (performance.now() - cycleAnchorPerformance);
     const phase = ((estimatedJtdx % cyclePeriodMs) + cyclePeriodMs) % cyclePeriodMs;
+    const strip = el("cycle_strip");
+    if (strip) strip.dataset.cyclePhaseMs = phase.toFixed(1);
     const progress = el("cycle_progress");
     if (progress) progress.style.width = (100 * phase / cyclePeriodMs).toFixed(2) + "%";
     text("cycle_label", (currentSnapshot.mode || "周期") + " · " + (cyclePeriodMs / 1000).toFixed(cyclePeriodMs % 1000 ? 1 : 0) + " 秒");
@@ -1210,18 +1237,19 @@
   el("frequency_input").addEventListener("input", () => {
     el("frequency_input").dataset.dirty = "1";
     el("frequency_preset").value = "";
+    if (el("frequency_result").dataset.kind !== "processing") frequencyStatus("", "");
     updateFrequencyForm();
   });
   el("frequency_input").addEventListener("focus", () => { el("frequency_input").dataset.editing = "1"; });
   el("frequency_input").addEventListener("blur", () => { el("frequency_input").dataset.editing = ""; });
-  el("dx_call_input").addEventListener("input", () => { el("dx_call_input").dataset.dirty = "1"; updateDxControls(); });
-  el("dx_grid_input").addEventListener("input", () => { el("dx_grid_input").dataset.dirty = "1"; updateDxControls(); });
+  el("dx_call_input").addEventListener("input", () => { el("dx_call_input").dataset.dirty = "1"; if (!dxRequest) dxStatus("", ""); updateDxControls(); });
+  el("dx_grid_input").addEventListener("input", () => { el("dx_grid_input").dataset.dirty = "1"; if (!dxRequest) dxStatus("", ""); updateDxControls(); });
   el("dx_apply").addEventListener("click", () => sendSelectDx(null));
 
   setInterval(renderCycle, 100);
-  setInterval(calibrateCycle, 60000);
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) calibrateCycle(); });
-  window.addEventListener("pageshow", calibrateCycle);
+  setInterval(() => calibrateCycle("periodic"), 60000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) calibrateCycle("visibility"); });
+  window.addEventListener("pageshow", () => calibrateCycle("pageshow"));
   updateFrequencyChoices(null);
   updateFrequencyForm();
   updateBusinessControls();
