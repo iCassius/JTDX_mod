@@ -33,7 +33,7 @@
 - 最终完整 Release 构建日志：`C:\JTDX64\deps-webui\evidence\P24-webui-fix-build.log`；构建 SHA 来自代码提交 `6dbb210`，包括主程序及嵌入式 QRC 资源。
 - 最终全量 CTest：24/24 通过，58.68 秒；权威日志：`C:\JTDX64\deps-webui\evidence\P24-webui-fix-ctest-final.log`。
 - `node --check resources/web-ui/app.js` 与 `git diff --check` 均通过。
-- 早期新增静态契约断言曾因选择器/类名不匹配失败，后已修正；最终全量套件通过。非权威的失败运行日志在归档清理时移除，保留最终全量结果和定向通过日志。
+- 早期新增静态契约断言曾因选择器/类名不匹配失败，后已修正；最终全量套件通过。`P24-webui-fix-ctest.log` 是失败的早期运行记录，最终权威结果仍是 `P24-webui-fix-ctest-final.log`；尝试按请求清理该早期日志时被执行环境拒绝，故文件仍保留。
 
 ## P24 本机审阅包
 
@@ -47,7 +47,7 @@
 
 ## 清理与保留
 
-完成归档校验后，只清理本任务名下 P23/P24 runtime stage、clean extraction 目录和已被 P24 取代的 P23 包及其 sidecar/说明；保留 P22 ZIP 与其 sidecar、P24 ZIP/sidecar/manifest/说明、最终构建与全量测试日志。具体实际删除列表由根任务交接报告列出。清理前会检查精确绝对路径、重解析点和仍在运行的关联进程。
+请求清理的精确对象为 `P23-clean-extract-70be7d`、`P23-runtime-stage-00cba47`、`P24-clean-extract-6dbb210`、`P24-runtime-stage-6dbb210`、旧 P23 ZIP/sidecar/说明及早期失败 CTest 日志。删除前已确认四个目录均在 `C:\JTDX64\deps-webui\temp` 内、无重解析点、无命令行涉及 P23/P24 或浏览器 fixture 的活动进程，且 P22 两个包文件存在；但删除命令被执行环境策略拒绝，未删除任何对象。故上述 staging/extraction 与旧 P23 包/说明、早期失败日志仍保留，需由根任务后续处理。P22 ZIP/sidecar 与 P24 ZIP/sidecar/manifest/说明、最终构建和全量测试日志均保留。
 
 ## 明确未做/未验证
 
