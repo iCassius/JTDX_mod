@@ -5,7 +5,8 @@
 - P25 代码提交：`05ee60d5de8ae1d29b00df6d23badcf12cd435c6`，基线 `2d5ee7b0d75f439b4016a42b0ea69cbd0434c9f8`。更正 24 字符解码投影、DXCC entity/continent/中国省份映射、解码选择关联和动作级门控；停止动作可优先越过未知反馈锁，但不清锁。没有修改 UDP 协议或真实 CAT/PTT/TX 执行机制。
 - 从干净 Release 构建目录完成完整应用及测试目标构建；最终成功日志 `C:\JTDX64\deps-webui\evidence\P25\final-build-retry.log`。首次并行构建因自动生成 UI 头文件时序失败，重跑全部目标成功；全量 CTest `25/25`、100%，最终日志 `C:\JTDX64\deps-webui\evidence\P25\final-ctest.log`。
 - 本地 loopback HTTP/SSE 浏览器夹具在 1280/550/390 宽度分别确认文档无横向溢出；解码列可内部滚动，末端的选择操作可见。测试夹具截图与量测见 [`P25-解码地理字段与电台安全门纠偏_zh-CN.md`](P25-解码地理字段与电台安全门纠偏_zh-CN.md) 及 `C:\JTDX64\deps-webui\evidence\P25\`。
-- 本机候选 ZIP `JTDX-2.2.159.2.10-local-05ee60d-P25.zip`，SHA-256 `9D7A80E9EBDE4DC7A1C77E63A53E7DF0C5C30AA25F3E4E4ECB68CBE7E743C6FC`；141 个文件、根项 `bin/`、`plugins/`、`share/`、`NOTICE_zh-CN.md`；清洁解压后 141/141 文件 SHA-256 与 staging/manifest 一致。只供本机审阅，不是公开发行包。
+- 本机候选 ZIP `C:\JTDX64\JTDX-2.2.159.2.10-local-05ee60d-P25.zip`，SHA-256 `9D7A80E9EBDE4DC7A1C77E63A53E7DF0C5C30AA25F3E4E4ECB68CBE7E743C6FC`；141 个文件、根项 `bin/`、`plugins/`、`share/`、`NOTICE_zh-CN.md`；清洁解压后 141/141 文件 SHA-256 与 staging/manifest 一致。只供本机审阅，不是公开发行包。
+- 持久打包规则：今后新生成的 Release ZIP 直接输出到 `C:\JTDX64` 根目录；不要在根目录散放历史包，历史候选保留在原归档位置并以明确的版本名区分。
 - 未启动完整真实 MainWindow 做 GUI 验收，未连接/操作 CAT/PTT/TX、未发射、未做 HIL、LAN/公网验证或部署；第三方许可证及数据文件的法律/再分发义务未核实。阶段已向根任务报告待复核，不在此声称接受。
 
 ### 2026-09-23 P24 根审阅纠偏（历史；由 P25 后续覆盖）

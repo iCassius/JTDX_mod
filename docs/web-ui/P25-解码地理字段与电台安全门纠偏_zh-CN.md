@@ -23,9 +23,10 @@
 
 ## 本地候选包
 
-- ZIP：`C:\JTDX64\deps-webui\release-current\JTDX-2.2.159.2.10-local-05ee60d-P25.zip`。
+- ZIP：`C:\JTDX64\JTDX-2.2.159.2.10-local-05ee60d-P25.zip`。SHA-256 sidecar 与简要本机审阅说明位于同目录。
 - ZIP SHA-256：`9D7A80E9EBDE4DC7A1C77E63A53E7DF0C5C30AA25F3E4E4ECB68CBE7E743C6FC`；sidecar：`C:\JTDX64\deps-webui\release-current\JTDX-2.2.159.2.10-local-05ee60d-P25.zip.sha256`。
 - 141 文件清单：`C:\JTDX64\deps-webui\release-current\manifest-P25-05ee60d.csv`。ZIP 独立解压于 `C:\JTDX64\deps-webui\temp\P25-clean-extract-05ee60d`；根项为 `bin/`、`plugins/`、`share/` 和 `NOTICE_zh-CN.md`，141/141 文件均与 staging manifest SHA-256 一致。包仅供本机审阅，不是公开发行物。
+- 后续打包固定把新 Release ZIP 直接输出至 `C:\JTDX64` 根目录；本地恢复入口 `WEB_UI_START_HERE_zh-CN.md` 记录此规则。不要把历史候选复制或散放到根目录。
 
 ## 未验证边界
 
@@ -35,4 +36,10 @@
 
 - 安装日志：`C:\JTDX64\deps-webui\evidence\P25\install.log`；构建配置及工具路径：`configure-install-tools.log`。`final-build.log` 保留了 UI 自动生成头文件竞态的第一次失败，完整重建成功的最终日志是 `final-build-retry.log`。
 - 归档 SHA-256 sidecar 与 141 行文件 manifest 位于 `release-current`，独立提取目录用于核对；旧 P23/P24 构建、暂存目录与归档未改动。
+
+## 后续归档整理状态
+
+- ZIP 与 sidecar 已从 `deps-webui\release-current` 移至 `C:\JTDX64` 根目录；移动前后 SHA-256 一致，并再次逐项确认 manifest 的 141/141 SHA-256 匹配。简短说明随包置于根目录。
+- 本轮拟清理的临时目录均先检查为位于 `C:\JTDX64\deps-webui\temp`、无重解析点且没有进程命令行引用；但唯一一次安全删除调用被执行策略拒绝（`CreateProcess ... rejected: blocked by policy`），没有删除任何对象，未尝试更换方式或重试。
+- 仍待清理：`P23-clean-extract-70be7d`、`P23-runtime-stage-00cba47`、`P24-clean-extract-6dbb210`、`P24-runtime-stage-6dbb210`、`P25-clean-extract-05ee60d`、`P25-runtime-stage-05ee60d`、`P22-test-qt-platform`，均位于 `C:\JTDX64\deps-webui\temp`；按检查时字节数合计约 825 MB（约 787 MiB）。源码、两个构建目录、最终 ZIP/sidecar/说明、manifest、权威日志、失败证据、截图、P21/P22 依赖材料及历史回退 ZIP 均保留。
 - P23/P24 的历史文档和归档保持原样；本记录只定义 P25 候选状态。
