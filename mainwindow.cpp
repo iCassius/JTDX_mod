@@ -56,7 +56,9 @@
 #include "LiveFrequencyValidator.hpp"
 #include "JtdxWebFrequencyCandidates.hpp"
 #include "JtdxLocalLog.hpp"
+#include "JtdxWebDecodeProjection.hpp"
 #include "MessageClient.hpp"
+#include "logbook/callsignlocation.h"
 #include "wsprnet.h"
 #include "eqsl.h"
 #include "signalmeter.h"
@@ -490,11 +492,18 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
                    quint32 delta_frequency, QString const& mode, QString const& message,
                    bool low_confidence, bool off_air, QString const& callsign,
                    QString const& grid) {
-             QString country;
-             if (!callsign.isEmpty ()) m_logBook.getDXCC (callsign, country);
+             QString dxcc;
+             if (!callsign.isEmpty ()) m_logBook.getDXCC (callsign, dxcc);
+             QStringList const entity_data = dxcc.split (',');
+             QString entity = entity_data.value (2).trimmed ();
+             if (entity == QLatin1String ("?") || entity == QLatin1String ("where?")) entity.clear ();
+             QString continent = entity_data.value (0).trimmed ();
+             if (continent == QLatin1String ("?")) continent.clear ();
+             QString const province = entity.isEmpty () ? QString {}
+                 : CallsignLocation::chinaProvince (callsign, entity_data.value (1).trimmed ());
              m_webState->observe_decode (is_new, time, snr, delta_time, delta_frequency,
                                          mode, message, low_confidence, off_air,
-                                         callsign, grid, country.split (',').value (0).trimmed ());
+                                         callsign, grid, entity, province, continent);
            });
   connect (m_messageClient, &MessageClient::WSPR_decode_observed,
            m_webState, &JtdxWebState::observe_wspr_decode);
@@ -8858,21 +8867,7 @@ void MainWindow::replayDecodes ()
 void MainWindow::postDecode (bool is_new, QString const& message,
                              QString const& callsign, QString const& grid)
 {
-  auto const& decode = message.trimmed ();
-  QStringList parts = decode.left (22).split (' ', SkipEmptyParts);
-  if (parts.size () >= 5) {
-      auto has_seconds = parts[0].size () > 4;
-      bool low_confidence=(QChar {'*'} == decode.mid (has_seconds ? 23 + 24 : 21 + 24, 1)) || (QChar {'^'} == decode.mid (has_seconds ? 23 + 24 : 21 + 24, 1));
-      m_messageClient->decode (is_new
-                               , QTime::fromString (parts[0], has_seconds ? "hhmmss" : "hhmm")
-                               , parts[1].toInt ()
-                               , parts[2].toFloat (), parts[3].toUInt (), parts[4]
-                               , decode.mid (has_seconds ? 23 : 21, 23)
-                               , low_confidence
-                               , m_diskData
-                               , callsign
-                               , grid);
-  }
+  JtdxWebDecodeProjection::publish (m_messageClient, is_new, message, callsign, grid, m_diskData);
 }
 
 void MainWindow::postWSPRDecode (bool is_new, QStringList parts)

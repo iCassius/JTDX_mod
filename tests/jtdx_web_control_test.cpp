@@ -51,6 +51,55 @@ namespace
     QString const epoch = control.server_epoch ();
     control.bind_server_epoch (epoch);
   }
+
+  Control::Result submit_radio_action (QString action, bool value,
+                                       Control::SafetySnapshot safety, QString request_id)
+  {
+    Control control {100};
+    bind_fixture_epoch (control);
+    control.set_clock_for_test (1000);
+    auto observed = safe_state (1);
+    observed.safety = safety;
+    observed.radio_state_known = true;
+    control.set_observed_state (observed);
+    control.set_business_dispatcher ([] (Control::Dispatch const&) {});
+    Control::Request request;
+    request.request_id = std::move (request_id);
+    request.operation = Control::Operation::Radio;
+    request.server_epoch = control.server_epoch ();
+    request.state_revision = 1;
+    request.radio_action = std::move (action);
+    request.radio_value = value;
+    request.radio_index = 1;
+    request.radio_text = QStringLiteral ("CQ W1ABC FN31");
+    if (request.radio_action == QStringLiteral ("log-qso-confirm"))
+      request.radio_qso = QJsonObject {{QStringLiteral ("call"), QStringLiteral ("W1ABC")}};
+    return control.submit (request);
+  }
+
+  Control::Result submit_operation (Control::Operation operation, Control::SafetySnapshot safety,
+                                    QString request_id)
+  {
+    Control control {100};
+    bind_fixture_epoch (control);
+    control.set_clock_for_test (1000);
+    auto observed = safe_state (1);
+    observed.safety = safety;
+    observed.radio_state_known = true;
+    control.set_observed_state (observed);
+    control.set_frequency_dispatcher ([] (Control::Dispatch const&) {});
+    control.set_select_dx_dispatcher ([] (Control::Dispatch const&) {});
+    control.set_business_dispatcher ([] (Control::Dispatch const&) {});
+    Control::Request request;
+    request.request_id = std::move (request_id);
+    request.operation = operation;
+    request.server_epoch = control.server_epoch ();
+    request.state_revision = 1;
+    request.frequency_hz = 14074000;
+    request.dx_call = QStringLiteral ("W1ABC");
+    request.dx_grid = QStringLiteral ("FN31");
+    return control.submit (request);
+  }
 }
 
 int main ()
@@ -103,6 +152,162 @@ int main ()
   check (tx_path_rejected.status == Control::Status::Rejected
          && tx_path_rejected.reason == QStringLiteral ("tx_path_active"),
          "active AutoTx path remains rejected with its existing reason");
+
+  QStringList const local_radio_actions {
+    QStringLiteral ("log-qso"), QStringLiteral ("log-qso-confirm"),
+    QStringLiteral ("log-qso-cancel"), QStringLiteral ("clear-windows"),
+    QStringLiteral ("sync"), QStringLiteral ("multi-decode"),
+    QStringLiteral ("agc-compensation"), QStringLiteral ("narrow"),
+    QStringLiteral ("decode"), QStringLiteral ("clear-dx"),
+    QStringLiteral ("generate-message"), QStringLiteral ("skip-tx1"),
+    QStringLiteral ("select-tx"), QStringLiteral ("set-tx-message")};
+  QStringList const safety_conditions {
+    QStringLiteral ("unknown"), QStringLiteral ("rig_offline"),
+    QStringLiteral ("monitor_off"), QStringLiteral ("transmitting"),
+    QStringLiteral ("ptt"), QStringLiteral ("tx_enabled"),
+    QStringLiteral ("watchdog"), QStringLiteral ("start2"),
+    QStringLiteral ("tune"), QStringLiteral ("auto_tx"),
+    QStringLiteral ("iptt"), QStringLiteral ("business_unknown")};
+  for (auto const& condition : safety_conditions)
+    {
+      auto safety = safe_state (1).safety;
+      if (condition == QStringLiteral ("unknown")) safety.known = false;
+      else if (condition == QStringLiteral ("rig_offline")) safety.rig_online = false;
+      else if (condition == QStringLiteral ("monitor_off")) safety.monitoring = false;
+      else if (condition == QStringLiteral ("transmitting")) safety.transmitting = true;
+      else if (condition == QStringLiteral ("ptt")) safety.ptt = true;
+      else if (condition == QStringLiteral ("tx_enabled")) safety.tx_enabled = true;
+      else if (condition == QStringLiteral ("watchdog")) safety.watchdog_timeout = true;
+      else if (condition == QStringLiteral ("start2")) safety.start2 = true;
+      else if (condition == QStringLiteral ("tune")) safety.tune = true;
+      else if (condition == QStringLiteral ("auto_tx")) safety.auto_tx = true;
+      else if (condition == QStringLiteral ("iptt")) safety.iptt = true;
+      else if (condition == QStringLiteral ("business_unknown")) safety.business_state_known = false;
+
+      for (auto const& action : local_radio_actions)
+        check (submit_radio_action (action, false, safety, condition + QLatin1Char ('-') + action).status
+                   == Control::Status::Pending,
+               "non-transmit radio action is not blocked by unrelated TX/startup conditions");
+      check (submit_operation (Control::Operation::SelectDx, safety,
+                               condition + QStringLiteral ("-select-dx")).status == Control::Status::Pending,
+             "selecting a decoded DX only updates the input projection and is not TX-gated");
+      check (submit_radio_action (QStringLiteral ("enable-tx"), false, safety,
+                                  condition + QStringLiteral ("-disable-tx")).status == Control::Status::Pending,
+             "disabling TX remains available in every observed safety condition");
+      check (submit_radio_action (QStringLiteral ("stop-tx"), false, safety,
+                                  condition + QStringLiteral ("-stop-tx")).status == Control::Status::Pending,
+             "Stop Tx remains available in every observed safety condition");
+      auto enable_tx = submit_radio_action (QStringLiteral ("enable-tx"), true, safety,
+                                            condition + QStringLiteral ("-enable-tx"));
+      auto cq = submit_radio_action (QStringLiteral ("cq"), true, safety,
+                                     condition + QStringLiteral ("-cq"));
+      QString expected_reason = QStringLiteral ("tx_path_active");
+      if (condition == QStringLiteral ("unknown")) expected_reason = QStringLiteral ("safety_unknown");
+      else if (condition == QStringLiteral ("rig_offline")) expected_reason = QStringLiteral ("rig_offline");
+      else if (condition == QStringLiteral ("monitor_off")) expected_reason = QStringLiteral ("monitor_not_active");
+      else if (condition == QStringLiteral ("transmitting")) expected_reason = QStringLiteral ("transmitting");
+      else if (condition == QStringLiteral ("ptt")) expected_reason = QStringLiteral ("ptt_active");
+      else if (condition == QStringLiteral ("tx_enabled")) expected_reason = QStringLiteral ("tx_enabled");
+      else if (condition == QStringLiteral ("watchdog")) expected_reason = QStringLiteral ("watchdog_timeout");
+      else if (condition == QStringLiteral ("start2")) expected_reason = QStringLiteral ("startup_pending");
+      else if (condition == QStringLiteral ("business_unknown")) expected_reason = QStringLiteral ("business_state_unknown");
+      auto frequency = submit_operation (Control::Operation::Frequency, safety,
+                                         condition + QStringLiteral ("-frequency"));
+      auto start_cq = submit_operation (Control::Operation::StartCq, safety,
+                                        condition + QStringLiteral ("-start-cq"));
+      auto start_auto = submit_operation (Control::Operation::StartAutoCall, safety,
+                                          condition + QStringLiteral ("-start-auto"));
+      auto stop_business = submit_operation (Control::Operation::StopAutoCall, safety,
+                                            condition + QStringLiteral ("-stop-auto"));
+      check (enable_tx.status == Control::Status::Rejected && cq.status == Control::Status::Rejected,
+             "TX arming and CQ remain behind the native safety-state matrix");
+      check (enable_tx.reason == expected_reason && cq.reason == expected_reason,
+             "TX-enabling actions report the precise first failing safety condition");
+      check (frequency.status == Control::Status::Rejected && start_cq.status == Control::Status::Rejected
+                 && start_auto.status == Control::Status::Rejected
+                 && frequency.reason == expected_reason && start_cq.reason == expected_reason
+                 && start_auto.reason == expected_reason,
+             "frequency changes and CQ/AutoSeq starts retain the precise native safety gate");
+      check (stop_business.status == Control::Status::Pending,
+             "Stop AutoSeq remains available in every observed safety condition");
+    }
+
+  Control stop_priority {100};
+  bind_fixture_epoch (stop_priority);
+  stop_priority.set_clock_for_test (1000);
+  stop_priority.set_observed_state (safe_state (1));
+  int stop_priority_dispatches = 0;
+  stop_priority.set_business_dispatcher ([&] (Control::Dispatch const&) { ++stop_priority_dispatches; });
+  Control::Request queued_radio;
+  queued_radio.request_id = QStringLiteral ("queued-radio-change");
+  queued_radio.operation = Control::Operation::Radio;
+  queued_radio.server_epoch = stop_priority.server_epoch ();
+  queued_radio.state_revision = 1;
+  queued_radio.radio_action = QStringLiteral ("set-tx-message");
+  queued_radio.radio_index = 1;
+  queued_radio.radio_text = QStringLiteral ("CQ W1ABC FN31");
+  check (stop_priority.submit (queued_radio).status == Control::Status::Pending,
+         "TX message editing request can enter the existing MainWindow route");
+  auto priority_stop_request = queued_radio;
+  priority_stop_request.request_id = QStringLiteral ("priority-stop");
+  priority_stop_request.radio_action = QStringLiteral ("stop-tx");
+  auto const stop_result = stop_priority.submit (priority_stop_request);
+  check (stop_result.status == Control::Status::Pending
+             && stop_priority.result (QStringLiteral ("queued-radio-change")).reason
+                    == QStringLiteral ("superseded_by_stop")
+             && stop_priority_dispatches == 2,
+         "Stop Tx supersedes queued radio work and is dispatched first");
+
+  Control unknown_stop {10};
+  bind_fixture_epoch (unknown_stop);
+  unknown_stop.set_clock_for_test (1000);
+  auto unknown_stop_baseline = safe_state (1);
+  unknown_stop_baseline.radio_state_known = true;
+  unknown_stop.set_observed_state (unknown_stop_baseline);
+  Control::Dispatch dispatched_unknown_radio;
+  unknown_stop.set_business_dispatcher ([&] (Control::Dispatch const& dispatch) {
+      dispatched_unknown_radio = dispatch;
+    });
+  auto unknown_radio = queued_radio;
+  unknown_radio.request_id = QStringLiteral ("unknown-radio-before-stop");
+  unknown_radio.server_epoch = unknown_stop.server_epoch ();
+  check (unknown_stop.submit (unknown_radio).status == Control::Status::Pending,
+         "radio operation can be pending before its bounded timeout");
+  Control::Dispatch prepared_unknown_radio;
+  check (unknown_stop.prepare_dispatch (dispatched_unknown_radio.request_id,
+                                        dispatched_unknown_radio.server_epoch,
+                                        &prepared_unknown_radio)
+             && unknown_stop.begin_dispatch (prepared_unknown_radio),
+         "radio operation begins before the unconfirmed-result timeout");
+  unknown_stop.advance_clock_for_test (11);
+  unknown_stop.expire ();
+  Control::Dispatch stop_after_unknown_dispatch;
+  unknown_stop.set_business_dispatcher ([&] (Control::Dispatch const& dispatch) {
+      stop_after_unknown_dispatch = dispatch;
+    });
+  auto unknown_stop_request = unknown_radio;
+  unknown_stop_request.request_id = QStringLiteral ("stop-after-unknown-radio");
+  unknown_stop_request.radio_action = QStringLiteral ("stop-tx");
+  auto const stop_under_latch = unknown_stop.submit (unknown_stop_request);
+  Control::Dispatch prepared_stop_after_unknown;
+  check (unknown_stop.prepare_dispatch (stop_after_unknown_dispatch.request_id,
+                                        stop_after_unknown_dispatch.server_epoch,
+                                        &prepared_stop_after_unknown)
+             && unknown_stop.begin_dispatch (prepared_stop_after_unknown),
+         "Stop Tx prepares and begins while preserving the old-result latch");
+  auto stop_feedback = safe_state (2);
+  stop_feedback.radio_state_known = true;
+  check (unknown_stop.feedback_radio (prepared_stop_after_unknown.request_id,
+                                      prepared_stop_after_unknown.server_epoch, 2, stop_feedback),
+         "Stop Tx can be confirmed by radio-state readback without touching the prior latch");
+  auto blocked_local_under_latch = unknown_stop_request;
+  blocked_local_under_latch.request_id = QStringLiteral ("blocked-after-stop");
+  blocked_local_under_latch.radio_action = QStringLiteral ("clear-windows");
+  auto const ordinary_under_latch = unknown_stop.submit (blocked_local_under_latch);
+  check (stop_under_latch.status == Control::Status::Pending
+             && ordinary_under_latch.status == Control::Status::Rejected
+             && ordinary_under_latch.reason == QStringLiteral ("unconfirmed_feedback"),
+         "Stop Tx remains available under the unknown-result latch without unlocking ordinary work");
 
   int dispatch_count = 0;
   control.set_frequency_dispatcher ([&] (Control::Dispatch const& dispatch) {

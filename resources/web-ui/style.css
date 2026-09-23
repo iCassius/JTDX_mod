@@ -29,6 +29,7 @@ h2 { font-size: 1rem; color: #a9bfdd; margin-bottom: 16px; }
 .card { background: #171d29dd; border: 1px solid #27354a; border-radius: 15px; padding: 18px; box-shadow: 0 12px 30px #0004; }
 .section-heading, .tx-editor-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
 .section-heading > span, .tx-editor-heading > span { color: #8290a5; font-size: .82rem; }
+.decode-card { min-width: 0; }
 .notice { color: #8290a5; text-align: center; margin-top: 18px; font-size: .9rem; }
 .frequency-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)) auto; align-items: end; gap: 10px; }
 .frequency-form label { color: #a9bfdd; white-space: nowrap; }
@@ -36,9 +37,6 @@ h2 { font-size: 1rem; color: #a9bfdd; margin-bottom: 16px; }
 .frequency-form input, .frequency-form select { width: 100%; min-width: 0; background: #0e1118; border: 1px solid #40536e; border-radius: 7px; color: #e7edf7; padding: 9px; font: inherit; font-variant-numeric: tabular-nums; }
 .frequency-form button { background: #477fbf; color: white; border: 0; border-radius: 7px; padding: 9px 16px; white-space: nowrap; }
 .frequency-form button:disabled { background: #354256; color: #8d99aa; cursor: not-allowed; }
-.dx-form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; gap: 8px; margin-bottom: 16px; }
-.dx-form label { display: grid; gap: 6px; min-width: 0; color: #a9bfdd; }
-.dx-form input { width: 100%; min-width: 0; background: #0e1118; border: 1px solid #40536e; border-radius: 7px; color: #e7edf7; padding: 9px; font: inherit; }
 .frequency-result { margin: 12px 0 0; font-size: .88rem; }
 .frequency-result.blocked, .frequency-result.warning { color: #f0c674; }
 .frequency-result.success { color: #73e0b5; }
@@ -47,13 +45,15 @@ h2 { font-size: 1rem; color: #a9bfdd; margin-bottom: 16px; }
 dl { display: grid; grid-template-columns: 1fr auto; gap: 10px 14px; margin: 0; }
 dt { color: #8694a8; }
 dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
-.decodes { display: grid; gap: 0; max-height: 430px; overflow-y: auto; overflow-x: hidden; padding-right: 4px; }
-.decode { display: grid; grid-template-columns: 4.7rem 3rem 4.2rem 4.2rem 3rem 3.5rem minmax(0, 1fr) auto; gap: 8px; align-items: baseline; padding: 6px 0; border-bottom: 1px solid #283346; min-width: 0; }
+.decodes { display: block; width: 100%; min-width: 0; max-width: 100%; max-height: 430px; overflow: auto; scrollbar-gutter: stable; padding: 0 10px 10px 0; }
+.decode { display: grid; width: max-content; min-width: 100%; grid-template-columns: 2.7rem 3.2rem 3.7rem 2.4rem minmax(16rem, 1fr) minmax(9rem, max-content) auto; gap: 8px; align-items: baseline; padding: 6px 2px; border-bottom: 1px solid #283346; white-space: nowrap; }
 .decode span, .decode b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .decode span { color: #a4b3c8; font-variant-numeric: tabular-nums; }
 .decode b { color: #f0c674; font-weight: 600; }
-.decode .country { color: #7fc6ff; }
-.decode .message { color: #e7edf7; }
+.decode .snr, .decode .delta-time, .decode .delta-frequency { text-align: right; }
+.decode .mode { text-align: center; }
+.decode .location { color: #7fc6ff; }
+.decode .message { color: #e7edf7; overflow: visible; text-overflow: clip; }
 .decode.highlight .message { color: #ffe38c; }
 .decode button { border: 1px solid #40536e; border-radius: 6px; background: #202d41; color: #c5d2e6; padding: 3px 7px; white-space: nowrap; }
 .radio-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
@@ -79,18 +79,13 @@ dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
 
 @media (max-width: 650px) {
   main { padding: 0 12px 20px; }
-  .decode { grid-template-columns: 3.8rem 2.5rem 3.4rem 3.7rem 2.5rem 3rem minmax(0, 1fr); gap: 5px; font-size: .78rem; }
-  .decode button { display: none; }
+  .decode { grid-template-columns: 2.4rem 2.9rem 3.3rem 2.2rem minmax(15rem, 1fr) minmax(8rem, max-content) auto; gap: 6px; font-size: .78rem; }
   .radio-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .qso-grid { grid-template-columns: minmax(0, 1fr); }
   .qso-grid .qso-wide { grid-column: auto; }
   .frequency-form { grid-template-columns: minmax(0, 1fr); }
   .frequency-form label { grid-column: 1 / -1; }
   .frequency-form input, .frequency-form select, .frequency-form button { grid-column: 1 / -1; width: 100%; box-sizing: border-box; }
-  .dx-form { grid-template-columns: minmax(0, 1fr); }
-  .decode { grid-template-columns: 3.4rem 2.2rem 3rem 3.2rem minmax(0, 1fr); }
-  .decode .country { grid-column: 1; }
-  .decode .message { grid-column: 2 / -1; }
 }
 
 @media (max-width: 850px) {

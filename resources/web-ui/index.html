@@ -32,16 +32,6 @@
           </div>
           <p id="frequency_result" class="frequency-result" aria-live="polite" hidden></p>
         </article>
-        <article class="card">
-          <h2>DX</h2>
-          <div class="dx-form">
-            <label>呼号<input id="dx_call_input" type="text" maxlength="12" autocomplete="off"></label>
-            <label>网格<input id="dx_grid_input" type="text" maxlength="10" autocomplete="off"></label>
-            <button id="dx_apply" type="button" disabled>应用 DX</button>
-          </div>
-          <dl><dt>报告</dt><dd id="report">—</dd><dt>RX / TX DF</dt><dd id="df">—</dd><dt>TX 模式</dt><dd id="tx_mode">—</dd></dl>
-          <p id="dx_selection_result" class="frequency-result" aria-live="polite" hidden></p>
-        </article>
         <article class="card radio-panel">
           <div class="section-heading"><h2>电台控制</h2><span id="radio_state_badge">—</span></div>
           <div class="radio-actions">
@@ -104,10 +94,16 @@
             <dt>实例</dt><dd id="instance_id">—</dd>
             <dt>接收状态</dt><dd id="online">—</dd>
             <dt>解码中</dt><dd id="decoding">—</dd>
+            <dt>DX 呼号</dt><dd id="dx_call"></dd>
+            <dt>DX 网格</dt><dd id="dx_grid"></dd>
+            <dt>报告</dt><dd id="report">—</dd>
+            <dt>RX / TX DF</dt><dd id="df">—</dd>
+            <dt>TX 模式</dt><dd id="tx_mode">—</dd>
             <dt>发射许可 / 状态</dt><dd id="tx_summary">—</dd>
             <dt>CQ / QSO</dt><dd id="cq_qso">—</dd>
             <dt>AutoSeq</dt><dd id="auto_sequence_state">—</dd>
           </dl>
+          <p id="dx_selection_result" class="frequency-result" aria-live="polite" hidden></p>
         </article>
       </div>
     </section>

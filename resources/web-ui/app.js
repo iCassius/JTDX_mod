@@ -238,10 +238,8 @@
 
   function readbackMatchesDx(row, request) {
     const readback = row && row.readback && typeof row.readback === "object" ? row.readback : null;
-    const sourceMatches = request.decodeId == null
-      ? readback && readback.dx_selection_source === "manual"
-      : readback && readback.dx_selection_source === "decode"
-        && integerValue(readback.dx_source_decode_id) === request.decodeId;
+    const sourceMatches = readback && readback.dx_selection_source === "decode"
+      && integerValue(readback.dx_source_decode_id) === request.decodeId;
     return !!(readback && readback.confirmed === true
       && readback.dx_call === request.call && (readback.dx_grid || "") === (request.grid || "")
       && sourceMatches);
@@ -389,8 +387,9 @@
     const row = operationForRadio(snapshot);
     if (row && terminalOperation(row)) {
       if (row.status === "completed" && readbackMatchesRadio(row, radioRequest)) {
-        radioUnknown = false;
-        radioStatus("电台操作已由实际状态回读确认。", "success");
+        radioUnknown = radioRequest.preserveUnknown === true;
+        radioStatus(radioUnknown ? "停止已回读；先前操作结果仍未知。" : "电台操作已由实际状态回读确认。",
+          radioUnknown ? "warning" : "success");
         radioRequest = null;
       } else if (row.status === "completed") {
         radioUnknown = true;
@@ -442,9 +441,7 @@
   function dxGateReason(snapshot) {
     if (!snapshot) return "等待状态";
     if (!connected) return "等待连接和最新状态快照";
-    if (snapshot.online !== true || snapshot.rig_online !== true) return "主程序或电台未在线";
-    if (snapshot.tx_enabled !== false || snapshot.transmitting !== false || snapshot.ptt !== false
-        || snapshot.watchdog_timeout !== false) return "当前 TX/PTT 状态不是明确安全值";
+    if (snapshot.online !== true) return "主程序未在线";
     if (dxUnknown) return "上一次 DX 选择结果未知，等待明确回读或新状态";
     if (dxRequest) return "已有 DX 选择处理中";
     return "";
@@ -457,9 +454,6 @@
       dxStatus(reason, "blocked");
     else if (feedback && feedback.dataset.kind === "blocked" && (!reason || !connected || !currentSnapshot))
       dxStatus("", "");
-    const apply = el("dx_apply");
-    if (apply) apply.disabled = !connected || !currentSnapshot || !!reason || !!dxRequest
-      || !(el("dx_call_input").value.trim() || el("dx_grid_input").value.trim());
   }
 
   function businessGateReason(snapshot, operation) {
@@ -495,6 +489,7 @@
   function radioGateReason(snapshot, action) {
     if (!snapshot) return "等待状态";
     if (!connected || snapshot.online !== true) return "等待主程序在线";
+    if (action === "stop-tx") return "";
     if (radioUnknown) return "上一次电台操作结果未知；先确认桌面状态或重启 JTDX";
     if (radioRequest) return "已有电台操作处理中";
     if (["enable-tx", "cq"].includes(action)
@@ -524,7 +519,7 @@
         : id === "multi_decode" ? "multi-decode" : id === "agc" ? "agc-compensation"
         : id === "clear_dx" ? "clear-dx" : id === "generate" ? "generate-message"
         : id === "skip_tx1" ? "skip-tx1" : id;
-      node.disabled = !!radioGateReason(snapshot, action) || !known;
+      node.disabled = !!radioGateReason(snapshot, action) || (action !== "stop-tx" && !known);
       node.classList.toggle("active", (action === "multi-decode" && state.multi_decode === true)
         || (action === "agc-compensation" && state.agc_compensation === true)
         || (action === "narrow" && state.narrow === true)
@@ -579,7 +574,7 @@
     currentSnapshot = null;
     frequencyCandidates = [];
     lastId = "";
-    ["application_name", "mode_band", "instance_id", "online", "tx_summary",
+    ["application_name", "mode_band", "instance_id", "online", "dx_call", "dx_grid", "tx_summary",
       "report", "df", "tx_mode", "tx_enabled", "transmitting", "decoding",
       "tx_first", "watchdog_timeout", "cq_qso", "auto_sequence_state", "current_tx_text", "decode_count",
       "dx_selection_result", "business_result", "radio_result", "radio_state_badge"]
@@ -616,12 +611,8 @@
     text("mode_band", [snapshot.mode, snapshot.band].filter(Boolean).join(" / ") || "未知");
     text("instance_id", snapshot.instance_id);
     text("online", snapshot.online == null ? null : snapshot.online ? "在线" : "离线");
-    const dxCallInput = el("dx_call_input");
-    const dxGridInput = el("dx_grid_input");
-    if (dxCallInput && document.activeElement !== dxCallInput && !dxCallInput.dataset.dirty)
-      dxCallInput.value = typeof snapshot.dx_call === "string" ? snapshot.dx_call : "";
-    if (dxGridInput && document.activeElement !== dxGridInput && !dxGridInput.dataset.dirty)
-      dxGridInput.value = typeof snapshot.dx_grid === "string" ? snapshot.dx_grid : "";
+    text("dx_call", snapshot.dx_call);
+    text("dx_grid", snapshot.dx_grid);
     text("report", snapshot.report);
     text("df", (snapshot.rx_df == null ? "未知" : snapshot.rx_df) + " / "
       + (snapshot.tx_df == null ? "未知" : snapshot.tx_df));
@@ -643,12 +634,13 @@
       rows.slice().reverse().forEach((decode) => {
       const row = document.createElement("div");
       row.className = "decode" + (decode.is_new === true ? " highlight" : "");
-      const time = typeof decode.time === "string" ? decode.time.slice(0, 8) : "未知";
-      [[time, ""], [decode.snr == null ? "未知" : decode.snr, ""],
-        [decode.delta_time == null ? "未知" : Number(decode.delta_time).toFixed(2), ""],
-        [decode.delta_frequency == null ? "未知" : decode.delta_frequency, ""],
-        [decode.mode || "—", ""], [decode.country || "—", "country"],
-        [decode.message || "未知", "message"]].forEach(([value, className]) => {
+      [[decode.snr == null ? "未知" : decode.snr, "snr"],
+        [decode.delta_time == null ? "未知" : Number(decode.delta_time).toFixed(2), "delta-time"],
+        [decode.delta_frequency == null ? "未知" : decode.delta_frequency, "delta-frequency"],
+        [decode.mode || "—", "mode"],
+        [decode.message || "", "message"],
+        [[decode.entity || decode.country || "", decode.province || ""].filter(Boolean).join(" · "), "location"]]
+        .forEach(([value, className]) => {
         const node = document.createElement(className === "message" ? "b" : "span");
         node.className = className;
         node.textContent = String(value);
@@ -679,8 +671,22 @@
   }
 
   function responseReason(payload, fallback) {
-    return payload && typeof payload.reason === "string" && payload.reason.length > 0
-      ? payload.reason : fallback;
+    if (!payload || typeof payload.reason !== "string" || payload.reason.length === 0) return fallback;
+    const labels = {
+      safety_unknown: "电台安全状态尚未回读",
+      rig_offline: "电台未连接",
+      monitor_not_active: "接收监控未启动",
+      transmitting: "电台正在发射",
+      ptt_active: "PTT 正在按下",
+      tx_enabled: "发射许可仍开启",
+      watchdog_timeout: "看门狗状态不安全",
+      startup_pending: "JTDX 启动状态尚未回读",
+      tx_path_active: "正在调谐，或 AutoTx/IPTT 路径仍活动",
+      business_state_unknown: "CQ/AutoSeq 状态尚未回读",
+      unconfirmed_feedback: "上一项控制结果未知，需先处理停止/回读状态",
+      superseded_by_stop: "操作被停止命令取代"
+    };
+    return labels[payload.reason] || payload.reason;
   }
 
   function settleFrequencyResponse(payload, request, httpOk) {
@@ -827,9 +833,9 @@
   async function sendSelectDx(decode) {
     const gate = dxGateReason(currentSnapshot);
     const decodeId = integerValue(decode && decode.decode_id);
-    const call = String(decode ? decode.callsign || "" : el("dx_call_input").value || "").trim().toUpperCase();
-    const grid = String(decode ? decode.grid || "" : el("dx_grid_input").value || "").trim().toUpperCase();
-    if (gate || !currentSnapshot || (!call && !grid)) {
+    const call = String(decode && decode.callsign || "").trim().toUpperCase();
+    const grid = String(decode && decode.grid || "").trim().toUpperCase();
+    if (gate || !currentSnapshot || decodeId == null || !call) {
       updateDxControls();
       return;
     }
@@ -859,7 +865,7 @@
         method: "POST",
         headers: { "Content-Type": "application/json", "Accept": "application/json" },
         body: JSON.stringify(Object.assign({request_id: request.requestId, server_epoch: request.epoch},
-          request.decodeId == null ? {call: request.call, grid: request.grid} : {decode_id: request.decodeId})),
+          {decode_id: request.decodeId})),
         cache: "no-store",
         signal: local.signal
       });
@@ -978,7 +984,11 @@
       "agc-compensation": "AGC 补偿", "narrow": "窄频", "decode": "解码",
       "clear-dx": "清除 DX", "generate-message": "生成消息", "cq": "CQ",
       "skip-tx1": "跳过 Tx1", "select-tx": "选择 Tx", "set-tx-message": "编辑消息"};
-    const dangerous = ["enable-tx", "stop-tx", "log-qso-confirm", "cq"].includes(action);
+    const preserveUnknown = action === "stop-tx" && radioUnknown;
+    if (action === "stop-tx") {
+      if (radioAbort) radioAbort.abort();
+      radioRequest = null;
+    }
     if (action === "log-qso-confirm" && !qso) qso = qsoDraftFromDom();
     if (action === "log-qso-confirm" && !qso) { radioStatus("记录草稿缺少必填字段。", "error"); return; }
     let requestId;
@@ -986,9 +996,9 @@
     const request = {requestId, epoch: currentSnapshot.server_epoch, action, value: value === true,
       index: integerValue(index) || 0, message: typeof message === "string" ? message : "",
       qso: qso || {}, qsoGeneration: integerValue(currentSnapshot.radio_controls?.qso_generation) || 0,
-      session: connectionSession};
+      session: connectionSession, preserveUnknown};
     radioRequest = request;
-    radioUnknown = false;
+    radioUnknown = preserveUnknown;
     radioStatus("正在发送" + labels[action] + "…", "processing");
     updateRadioControls();
     const local = new AbortController();
@@ -1009,9 +1019,12 @@
       } else if (["received", "accepted", "pending"].includes(payload.status)) {
         radioStatus("操作已登记，等待主程序状态回读。", "processing");
       } else if (payload.status === "completed" && response.ok && readbackMatchesRadio(payload, request)) {
-        radioRequest = null; radioUnknown = false; radioStatus("电台操作已由实际状态回读确认。", "success");
+        radioRequest = null;
+        radioUnknown = request.preserveUnknown === true;
+        radioStatus(radioUnknown ? "停止已回读；先前操作结果仍未知。" : "电台操作已由实际状态回读确认。",
+          radioUnknown ? "warning" : "success");
       } else if (["failed", "rejected", "timeout"].includes(payload.status)) {
-        radioUnknown = payload.status === "timeout";
+        radioUnknown = payload.status === "timeout" || request.preserveUnknown === true;
         radioStatus("电台操作" + (radioUnknown ? "结果未知" : "未完成") + "："
           + responseReason(payload, "服务未提供原因"), radioUnknown ? "warning" : "error");
         radioRequest = null;
@@ -1242,10 +1255,6 @@
   });
   el("frequency_input").addEventListener("focus", () => { el("frequency_input").dataset.editing = "1"; });
   el("frequency_input").addEventListener("blur", () => { el("frequency_input").dataset.editing = ""; });
-  el("dx_call_input").addEventListener("input", () => { el("dx_call_input").dataset.dirty = "1"; if (!dxRequest) dxStatus("", ""); updateDxControls(); });
-  el("dx_grid_input").addEventListener("input", () => { el("dx_grid_input").dataset.dirty = "1"; if (!dxRequest) dxStatus("", ""); updateDxControls(); });
-  el("dx_apply").addEventListener("click", () => sendSelectDx(null));
-
   setInterval(renderCycle, 100);
   setInterval(() => calibrateCycle("periodic"), 60000);
   document.addEventListener("visibilitychange", () => { if (!document.hidden) calibrateCycle("visibility"); });

@@ -1,5 +1,7 @@
 #include "JtdxWebServer.hpp"
+#include "JtdxWebDecodeProjection.hpp"
 #include "Bands.hpp"
+#include "logbook/callsignlocation.h"
 
 #include <QCoreApplication>
 #include <QElapsedTimer>
@@ -607,10 +609,40 @@ int main (int argc, char ** argv)
     {
       state.set_clock_for_test (0);
       state.observe_business_state (true, QStringLiteral ("calling"), QStringLiteral ("armed"), QStringLiteral ("CQ N0CALL FN31"));
-      for (int i = 0; i < 6; ++i)
-        state.observe_decode (true, QTime {12, 34, i}, -10 + i, 0.1F, static_cast<quint32> (100 + i),
-                              QStringLiteral ("FT8"), QStringLiteral ("K1ABC FN31 <script>"), false, false,
-                              QStringLiteral ("K1ABC"), QStringLiteral ("FN31"));
+      state.clear_decodes ();
+      MessageClient browser_decode_client {QStringLiteral ("web-browser-fixture"), QStringLiteral ("test"),
+                                            QString {}, 0, nullptr, false};
+      QObject::connect (&browser_decode_client, &MessageClient::decode_observed, &state,
+                        [&state] (bool is_new, QTime time, qint32 snr, float delta_time,
+                                  quint32 delta_frequency, QString const& mode, QString const& message,
+                                  bool low_confidence, bool off_air, QString const& callsign,
+                                  QString const& grid) {
+                          bool const china = callsign.startsWith (QLatin1String ("B"));
+                          QString const entity = china ? QStringLiteral ("China") : QStringLiteral ("United States");
+                          QString const continent = china ? QStringLiteral ("AS") : QStringLiteral ("NA");
+                          QString const province = china
+                              ? CallsignLocation::chinaProvince (callsign, QStringLiteral ("BY")) : QString {};
+                          state.observe_decode (is_new, time, snr, delta_time, delta_frequency,
+                                                mode, message, low_confidence, off_air,
+                                                callsign, grid, entity, province, continent);
+                        });
+      for (int i = 0; i < 12; ++i)
+        {
+          bool const china = i % 2 != 0;
+          QString const callsign = china ? QStringLiteral ("BA3MAB") : QStringLiteral ("W1ABC");
+          QString const grid = china ? QStringLiteral ("OM89") : QStringLiteral ("FN31");
+          QString const six_digit_time = QStringLiteral ("12%1%2")
+              .arg (i / 60, 2, 10, QLatin1Char ('0')).arg (i % 60, 2, 10, QLatin1Char ('0'));
+          QString const message = QStringLiteral ("CQ %1 %2 -10").arg (callsign, grid)
+              .leftJustified (24, QLatin1Char (' '));
+          QString const header = i % 3 == 0
+              ? QStringLiteral ("%1 -10 0.1 1500 FT8").arg (six_digit_time)
+              : QStringLiteral ("%1 -10 0.1 1500 FT8").arg (six_digit_time.left (4));
+          bool const projected = JtdxWebDecodeProjection::publish (
+              &browser_decode_client, true, header + message + (i == 11 ? QStringLiteral ("^") : QString {}),
+              callsign, grid, false);
+          check (projected, "browser fixture uses the production MessageClient decode projection");
+        }
       observed.state_revision = state.revision ();
       control.set_observed_state (observed);
       control.set_frequency_dispatcher ([&] (JtdxWebControl::Dispatch const& dispatch) {

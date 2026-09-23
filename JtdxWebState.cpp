@@ -99,7 +99,8 @@ void JtdxWebState::observe_decode (bool is_new, QTime time, qint32 snr,
                                    QString const& mode, QString const& message,
                                    bool low_confidence, bool off_air,
                                    QString const& callsign, QString const& grid,
-                                   QString const& country)
+                                   QString const& country, QString const& province,
+                                   QString const& continent)
 {
   Q_ASSERT (QThread::currentThread () == thread ());
   // replayDecodes 明确使用 is_new=false；回放数据已在 UI 流中，不能挤占实时条目。
@@ -117,6 +118,8 @@ void JtdxWebState::observe_decode (bool is_new, QTime time, qint32 snr,
   decode.callsign = callsign;
   decode.grid = grid;
   decode.country = country;
+  decode.province = province;
+  decode.continent = continent;
   decode.low_confidence = low_confidence;
   decode.off_air = off_air;
   decode.is_new = is_new;
@@ -472,6 +475,9 @@ QJsonObject JtdxWebState::json_snapshot () const
       item.insert (QStringLiteral ("callsign"), nullable_string (decode.callsign));
       item.insert (QStringLiteral ("grid"), nullable_string (decode.grid));
       item.insert (QStringLiteral ("country"), nullable_string (decode.country));
+      item.insert (QStringLiteral ("entity"), nullable_string (decode.country));
+      item.insert (QStringLiteral ("province"), nullable_string (decode.province));
+      item.insert (QStringLiteral ("continent"), nullable_string (decode.continent));
       item.insert (QStringLiteral ("low_confidence"), decode.low_confidence);
       item.insert (QStringLiteral ("off_air"), decode.off_air);
       item.insert (QStringLiteral ("is_new"), decode.is_new);

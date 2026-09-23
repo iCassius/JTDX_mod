@@ -103,12 +103,23 @@ QString JtdxWebControl::canonical_payload (Request const& request)
       + QStringLiteral (":") + QString::number (request.dx_source_decode_id);
 }
 
-bool JtdxWebControl::safe_to_dispatch (SafetySnapshot const& safety, Operation operation, QString * reason)
+bool JtdxWebControl::safe_to_dispatch (SafetySnapshot const& safety, Operation operation,
+                                      QString const& radio_action, bool radio_value, QString * reason)
 {
   // Stop is a fail-safe action: it must remain admissible while TX/PTT or a
   // watchdog path is active so the existing Halt/stop entry can quiesce it.
   // It does not unlock or start any unsafe path.
   if (operation == Operation::StopAutoCall) return true;
+  if (operation == Operation::Radio && radio_action == QStringLiteral ("stop-tx")) return true;
+  // Gate actual RF-affecting operations and TX arming. Selecting a DX only
+  // updates the input projection; local/RX radio controls likewise do not
+  // require a globally idle TX path.
+  bool const arms_tx = operation == Operation::Frequency
+      || operation == Operation::StartCq || operation == Operation::StartAutoCall
+      || (operation == Operation::Radio
+          && ((radio_action == QStringLiteral ("enable-tx") && radio_value)
+              || radio_action == QStringLiteral ("cq")));
+  if (!arms_tx) return true;
   if (!safety.known) *reason = QStringLiteral ("safety_unknown");
   else if (!safety.rig_online) *reason = QStringLiteral ("rig_offline");
   else if (!safety.monitoring) *reason = QStringLiteral ("monitor_not_active");
@@ -375,7 +386,9 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
   // An already-begun operation may still have taken effect after its feedback
   // deadline.  Keep the latch for every new start/change, but preserve the
   // existing fail-safe Stop path so the caller can quiesce that unknown work.
-  if (unconfirmed_latch_ && request.operation != Operation::StopAutoCall)
+  bool const radio_stop = request.operation == Operation::Radio
+      && request.radio_action == QStringLiteral ("stop-tx");
+  if (unconfirmed_latch_ && request.operation != Operation::StopAutoCall && !radio_stop)
     return reject (request, QStringLiteral ("unconfirmed_feedback"), 409);
   if (records_.size () >= hard_record_limit_)
     return reject (request, QStringLiteral ("record_limit"), 429);
@@ -385,11 +398,15 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
       bool const business_start = pending != records_.end ()
           && (pending.value ().result.operation == Operation::StartCq
               || pending.value ().result.operation == Operation::StartAutoCall);
-      if (request.operation != Operation::StopAutoCall || !business_start)
+      bool const pending_is_stop = pending != records_.end ()
+          && pending.value ().result.operation == Operation::Radio
+          && pending.value ().radio_action == QStringLiteral ("stop-tx");
+      bool const stop_supersedes = (request.operation == Operation::StopAutoCall && business_start)
+          || (radio_stop && !pending_is_stop);
+      if (!stop_supersedes)
         return reject (request, QStringLiteral ("busy"), 409);
-      // A stop is the recovery path for a queued or already-started business
-      // command.  The old callback will fail its pending/epoch checks, while
-      // the existing stop entry is allowed to quiesce any side effect.
+      // A fail-safe stop supersedes queued work; stale callbacks fail the
+      // pending/epoch checks before they can apply a later start/change.
       finish (pending.value (), Status::Rejected, QStringLiteral ("superseded_by_stop"));
     }
 
@@ -417,8 +434,8 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
   if (shutdown_ || !server_epoch_bound_ || epoch_ != request_epoch)
     return reject (request, QStringLiteral ("epoch_changed"), 409);
   QString safety_reason;
-  if (!safe_to_dispatch (current.safety, request.operation, &safety_reason)
-      && !(request.operation == Operation::Radio && request.radio_action == QStringLiteral ("stop-tx")))
+  if (!safe_to_dispatch (current.safety, request.operation, request.radio_action,
+                         request.radio_value, &safety_reason))
     return reject (request, safety_reason, 409);
 
   Record record;
@@ -599,9 +616,8 @@ bool JtdxWebControl::prepare_dispatch (QString const& request_id, QString const&
       return false;
     }
   QString safety_reason;
-  if (!safe_to_dispatch (current.safety, it.value ().result.operation, &safety_reason)
-      && !(it.value ().result.operation == Operation::Radio
-           && it.value ().radio_action == QStringLiteral ("stop-tx")))
+  if (!safe_to_dispatch (current.safety, it.value ().result.operation, it.value ().radio_action,
+                         it.value ().radio_value, &safety_reason))
     {
       finish (it.value (), Status::Rejected, std::move (safety_reason));
       return false;
@@ -695,9 +711,8 @@ bool JtdxWebControl::begin_dispatch (Dispatch const& dispatch)
       || !it.value ().prepared || it.value ().dispatched)
     return false;
   QString safety_reason;
-  if (!safe_to_dispatch (current.safety, it.value ().result.operation, &safety_reason)
-      && !(it.value ().result.operation == Operation::Radio
-           && it.value ().radio_action == QStringLiteral ("stop-tx")))
+  if (!safe_to_dispatch (current.safety, it.value ().result.operation, it.value ().radio_action,
+                         it.value ().radio_value, &safety_reason))
     {
       finish (it.value (), Status::Rejected, std::move (safety_reason));
       return false;

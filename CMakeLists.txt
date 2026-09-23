@@ -1631,6 +1631,13 @@ if (JTDX_BUILD_LOCAL_TESTS)
   target_include_directories (jtdx_web_state_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   target_link_libraries (jtdx_web_state_test Qt5::Core)
   add_test (NAME jtdx_web_state_test COMMAND jtdx_web_state_test)
+  add_executable (jtdx_web_decode_projection_test
+    tests/jtdx_web_decode_projection_test.cpp
+    MessageClient.cpp
+    JtdxWebState.cpp)
+  target_include_directories (jtdx_web_decode_projection_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_link_libraries (jtdx_web_decode_projection_test wsjt_qt Qt5::Core Qt5::Network)
+  add_test (NAME jtdx_web_decode_projection_test COMMAND jtdx_web_decode_projection_test)
   add_executable (jtdx_web_dx_test
     tests/jtdx_web_dx_test.cpp
     JtdxWebDx.cpp
@@ -1735,6 +1742,9 @@ if (JTDX_BUILD_LOCAL_TESTS)
   qt5_add_resources (jtdx_web_server_test_resources tests/web_ui_test.qrc)
   add_executable (jtdx_web_server_test
     tests/jtdx_web_server_test.cpp
+    MessageClient.cpp
+    NetworkMessage.cpp
+    logbook/callsignlocation.cpp
     JtdxWebServer.cpp
     JtdxWebControl.cpp
     JtdxWebDx.cpp
@@ -1744,7 +1754,7 @@ if (JTDX_BUILD_LOCAL_TESTS)
     JtdxWebState.cpp
     ${jtdx_web_server_test_resources})
   target_include_directories (jtdx_web_server_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-  target_link_libraries (jtdx_web_server_test Qt5::Core Qt5::Network)
+  target_link_libraries (jtdx_web_server_test Qt5::Core Qt5::Gui Qt5::Network)
   add_test (NAME jtdx_web_server_test COMMAND jtdx_web_server_test)
   add_executable (jtdx_web_service_test
     tests/jtdx_web_service_test.cpp

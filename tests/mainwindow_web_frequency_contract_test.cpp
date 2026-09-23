@@ -37,6 +37,9 @@ int main ()
   QFile main_window {QStringLiteral (JTDX_SOURCE_DIR "/mainwindow.cpp")};
   check (main_window.open (QIODevice::ReadOnly), "open MainWindow source");
   QByteArray const source = main_window.readAll ();
+  QFile display_text {QStringLiteral (JTDX_SOURCE_DIR "/displaytext.cpp")};
+  check (display_text.open (QIODevice::ReadOnly), "open desktop decode geography projection");
+  QByteArray const display_text_source = display_text.readAll ();
   QFile main_window_ui {QStringLiteral (JTDX_SOURCE_DIR "/mainwindow.ui")};
   check (main_window_ui.open (QIODevice::ReadOnly), "open MainWindow UI definition");
   QByteArray const main_window_ui_source = main_window_ui.readAll ();
@@ -60,8 +63,23 @@ int main ()
              && !web_index_source.contains ("freshness")
              && !web_index_source.contains ("operations_card")
              && web_index_source.contains ("目标频率（Hz）")
-             && web_index_source.contains ("dx_call_input")
-             && web_index_source.contains ("dx_grid_input")
+             && web_index_source.contains ("id=\"dx_call\"")
+             && web_index_source.contains ("id=\"dx_grid\"")
+             && !web_index_source.contains ("dx_call_input")
+             && !web_index_source.contains ("dx_grid_input")
+             && !web_index_source.contains ("dx_apply")
+             && web_app_source.contains ("decode.message || \"\"")
+             && web_app_source.contains ("decode.entity || decode.country || \"\"")
+             && web_app_source.contains ("decode.province || \"\"")
+             && web_app_source.contains ("sendSelectDx(decode)")
+             && web_app_source.contains ("if (snapshot.online !== true) return \"主程序未在线\";")
+             && web_app_source.contains ("if (action === \"stop-tx\") return \"\";")
+             && web_app_source.contains ("radioUnknown = radioRequest.preserveUnknown === true;")
+             && web_app_source.contains ("radioAbort) radioAbort.abort();")
+             && web_style_source.contains ("grid-template-columns: 2.7rem 3.2rem 3.7rem 2.4rem minmax(16rem, 1fr) minmax(9rem, max-content) auto")
+             && web_style_source.contains (".decodes { display: block; width: 100%; min-width: 0; max-width: 100%;")
+             && web_style_source.contains (".decode-card { min-width: 0; }")
+             && !web_style_source.contains (".decode button { display: none")
              && !web_index_source.contains ("MHz")
              && !web_app_source.contains ("Date.now")
              && web_app_source.contains ("/api/v1/state")
@@ -174,6 +192,12 @@ int main ()
   check (source.contains ("m_webState->observe_web_dx_selection")
              && source.contains ("m_webControl->feedback_select_dx"),
          "MainWindow completes DX only from the independent selection observation");
+  check (source.contains ("QString entity = entity_data.value (2).trimmed ()")
+             && source.contains ("QString continent = entity_data.value (0).trimmed ()")
+             && source.contains ("CallsignLocation::chinaProvince (callsign, entity_data.value (1).trimmed ())")
+             && display_text_source.contains ("cntry = items[2]")
+             && display_text_source.contains ("CallsignLocation::chinaProvince(checkCall, mpx)"),
+         "Web geography matches desktop entity naming and uses only the existing China province helper");
   auto const dx_dispatch = source.indexOf ("void MainWindow::dispatchWebDx");
   auto const dx_next_function = source.indexOf ("void MainWindow::applyWebStartCq", dx_dispatch);
   QByteArray const dx_dispatch_body = source.mid (dx_dispatch, dx_next_function - dx_dispatch);

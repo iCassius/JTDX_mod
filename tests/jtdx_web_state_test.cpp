@@ -62,7 +62,15 @@ int main (int argc, char ** argv)
   check (json.value (QStringLiteral ("tx_enabled")).isBool (), "boolean JSON type");
   state.observe_decode (true, QTime {12, 34, 56}, -10, 0.1F, 1500,
                         QStringLiteral ("FT8"), QStringLiteral ("K1ABC FN31"), false, false,
-                        QStringLiteral ("K1ABC"), QStringLiteral ("FN31"));
+                        QStringLiteral ("K1ABC"), QStringLiteral ("FN31"),
+                        QStringLiteral ("United States"), QStringLiteral ("California"),
+                        QStringLiteral ("NA"));
+  auto decode_json = state.json_snapshot ().value (QStringLiteral ("recent_decodes")).toArray ().first ().toObject ();
+  check (decode_json.value (QStringLiteral ("country")).toString () == QStringLiteral ("United States")
+             && decode_json.value (QStringLiteral ("entity")).toString () == QStringLiteral ("United States")
+             && decode_json.value (QStringLiteral ("province")).toString () == QStringLiteral ("California")
+             && decode_json.value (QStringLiteral ("continent")).toString () == QStringLiteral ("NA"),
+         "decode geography publishes entity, supported province, and continent separately");
   JtdxWebState::DecodeSelection selection;
   check (state.decode_selection (1, &selection) && selection.call == QStringLiteral ("K1ABC")
              && selection.grid == QStringLiteral ("FN31") && selection.delta_frequency == 1500,

@@ -89,7 +89,8 @@ public:
                        quint32 delta_frequency, QString const& mode,
                        QString const& message, bool low_confidence, bool off_air,
                        QString const& callsign = {}, QString const& grid = {},
-                       QString const& country = {});
+                       QString const& country = {}, QString const& province = {},
+                       QString const& continent = {});
   void observe_wspr_decode (bool is_new, QTime time, qint32 snr, float delta_time,
                             Frequency frequency, qint32 drift,
                             QString const& callsign, QString const& grid,
@@ -128,6 +129,8 @@ private:
     QString callsign;
     QString grid;
     QString country;
+    QString province;
+    QString continent;
     bool low_confidence {false};
     bool off_air {false};
     bool is_new {false};
