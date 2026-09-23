@@ -23,7 +23,7 @@
 
 ## 本机审阅包
 
-- 最新实现审阅 ZIP：`C:\JTDX64\JTDX-2.2.159.2.10-local-b0732b9-P26.zip`，直接放在 `C:\JTDX64` 根目录；SHA-256 sidecar 与简短说明同处根目录。详细大小、哈希、清洁解压核对结果在本轮打包后补录于此。
+- 最新实现审阅 ZIP：`C:\JTDX64\JTDX-2.2.159.2.10-local-b0732b9-P26.zip`（49,376,987 bytes），SHA-256 `9F29D8F2C60BE6C05A136ADE976998BBA0D6BBAF8C607C969953DEA9BD814EE3`；sidecar 和简短说明同处 `C:\JTDX64` 根目录。141 文件 manifest：`C:\JTDX64\deps-webui\evidence\P26\manifest-P26-b0732b9.csv`。独立清洁解压后 141/141 个文件与 manifest 大小及 SHA-256 全部一致，0 差异；直接根项为 `bin/`、`plugins/`、`share/`、`NOTICE_zh-CN.md`。本机审阅候选，不是公开发行物。
 - 回退代码时可在仓库执行 `git revert <P26提交>`；本轮不执行回退、不推送、不打标签。
 
 ## 边界
