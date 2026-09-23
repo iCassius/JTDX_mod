@@ -5,6 +5,7 @@
 
 #include "qsohistory.h"
 #include "directed_call_policy.hpp"
+#include "auto_call_policy.hpp"
 void QsoHistory::init()
 {
     _data.clear();
@@ -139,10 +140,7 @@ QsoHistory::Status QsoHistory::autoseq(QString &callsign, QString &grid, QString
             if (hound == -1) {
               if(t.stx_c == SCALL && ret == RREPORT) count = 1;
               else count = t.count + 1;
-            } else if(((t.tyyp.size () == 2 && t.tyyp != mycontinent_ && t.tyyp != _CQ.call.left(2) && t.tyyp != myprefix_ && (t.tyyp != "DX" || t.continent == mycontinent_)) || 
-                    (t.tyyp.size () == 1 && t.tyyp != _CQ.call.left(1) && t.tyyp != myprefix_)) && (!_strictdirCQ || (t.priority < 20 && t.status != RCQ))) {
-              count = 1;    
-            } else count = t.count;
+            } else count = AutoCallPolicy::activeTargetRetryCount (t.count);
             if (t.grid.length() >3) grid = t.grid;
             if (!t.s_rep.isEmpty ()) rep = t.s_rep;
             if (t.rx >0) rx = t.rx;
@@ -224,6 +222,8 @@ QsoHistory::Status QsoHistory::autoseq(QString &callsign, QString &grid, QString
               return NONE;
             }
           }
+          unsigned const rare_auto_call = algo & (AutoCallNewDXCC | AutoCallNewDXCCBandMode | AutoCallNewGrid | AutoCallNewGridBandMode
+                                                   | AutoCallNewCall | AutoCallNewCallBand);
           if (myas_active && _data.size() > 0) { //my CQ answers && _CQ.count > 0 
             QSO tt,t;
             int priority = a_init;
@@ -235,7 +235,13 @@ QsoHistory::Status QsoHistory::autoseq(QString &callsign, QString &grid, QString
             foreach(QString key,_data.keys()) {
               on_black=_blackdata.value(key,0);
               tt=_data[key];
-              if (on_black == 0 && tt.time == max_r_time && !tt.continent.isEmpty() && (!lastcalled || tt.time == tt.b_time) &&
+              CALLED is_called;
+              is_called.rep=-35;
+              is_called.time=0;
+              is_called=_calldata.value(key,is_called);
+              if ((!rare_auto_call || !AutoCallPolicy::suppressAutoCQCandidate (
+                       is_called.rep, tt.s_rep.toInt (), is_called.time, tt.b_time))
+                  && on_black == 0 && tt.time == max_r_time && !tt.continent.isEmpty() && (!lastcalled || tt.time == tt.b_time) &&
                   (tt.status == RCALL || tt.status == RREPORT || tt.status == RRREPORT || tt.status == RRR || tt.status == RRR73 || 
                     ((tt.status == RCQ || tt.status == RFIN) && !mycall && autoCallPriorityAllowed (tt.priority, algo)))) {
                 if (!lastcalled && tt.time == tt.b_time) priority = a_init;
@@ -286,7 +292,13 @@ QsoHistory::Status QsoHistory::autoseq(QString &callsign, QString &grid, QString
             foreach(QString key,_data.keys()) {
               on_black=_blackdata.value(key,0);
               tt=_data[key];
-              if (on_black == 0 && ((tt.time - _CQ.time < 300 && tt.time >= 300) || (tt.time < 300 && tt.time - (_CQ.time - 86100) < 300))  && !tt.continent.isEmpty() && (!lastcalled || tt.time == tt.b_time) &&
+              CALLED is_called;
+              is_called.rep=-35;
+              is_called.time=0;
+              is_called=_calldata.value(key,is_called);
+              if ((!rare_auto_call || !AutoCallPolicy::suppressAutoCQCandidate (
+                       is_called.rep, tt.s_rep.toInt (), is_called.time, tt.b_time))
+                  && on_black == 0 && ((tt.time - _CQ.time < 300 && tt.time >= 300) || (tt.time < 300 && tt.time - (_CQ.time - 86100) < 300))  && !tt.continent.isEmpty() && (!lastcalled || tt.time == tt.b_time) &&
                   (tt.status == RCALL || tt.status == RREPORT || tt.status == RRREPORT || tt.status == RRR || tt.status == RRR73 || 
                     ((tt.status == RCQ || tt.status == RFIN) && !mycall && autoCallPriorityAllowed (tt.priority, algo)))) {
                 if (!lastcalled && tt.time == tt.b_time) priority = a_init;
@@ -327,8 +339,6 @@ QsoHistory::Status QsoHistory::autoseq(QString &callsign, QString &grid, QString
             }
           }
 
-          unsigned const rare_auto_call = algo & (AutoCallNewDXCC | AutoCallNewDXCCBandMode | AutoCallNewGrid | AutoCallNewGridBandMode
-                                                   | AutoCallNewCall | AutoCallNewCallBand);
           if ((algo & 1 || rare_auto_call) && myas_active && _data.size() > 0){ // their CQ answers
             QSO tt,t;
             int priority = b_init;
@@ -341,7 +351,12 @@ QsoHistory::Status QsoHistory::autoseq(QString &callsign, QString &grid, QString
               is_called.time=0;
               is_called=_calldata.value(key,is_called);
               tt=_data[key];
-              if ((is_called.rep == -35 || is_called.rep < tt.s_rep.toInt() || (tt.b_time > 300 && tt.b_time - is_called.time > 300) || (tt.b_time <= 300 && is_called.time - tt.b_time < 86100)) && on_black == 0 && tt.time == max_r_time && (tt.status == RCQ || (tt.status == RFIN && tt.priority > 0)) && (!rare_auto_call || autoCallPriorityAllowed (tt.priority, algo)) && !tt.continent.isEmpty()) {
+              if (!AutoCallPolicy::suppressAutoCQCandidate (
+                      is_called.rep, tt.s_rep.toInt (), is_called.time, tt.b_time)
+                  && on_black == 0 && tt.time == max_r_time
+                  && (tt.status == RCQ || (tt.status == RFIN && tt.priority > 0))
+                  && (!rare_auto_call || autoCallPriorityAllowed (tt.priority, algo))
+                  && !tt.continent.isEmpty()) {
 //                printf("autosel:%s %d %d (%d,%d,%s,%d)\n",tt.call.toStdString().c_str(),ret,algo,tt.status,tt.priority,tt.s_rep.toStdString().c_str(),tt.distance);
                 if (tt.priority > priority || 
                     (priority > b_init && tt.priority == priority && 

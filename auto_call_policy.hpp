@@ -57,6 +57,27 @@ namespace AutoCallPolicy
         && ((counterEnabled && counterLimit <= count) || replyOtherTerminates);
   }
 
+  // Directional CQ eligibility is decided while selecting a candidate. Once
+  // a target is active, its stored attempt count belongs to that target and
+  // must not be restarted by the direction of a later CQ.
+  inline int activeTargetRetryCount (int storedCount)
+  {
+    return storedCount;
+  }
+
+  // calllist() records the last failed automatic CQ attempt. Keep the legacy
+  // five-minute/report-improvement rule in one testable predicate.
+  inline bool suppressAutoCQCandidate (int calledReport, int candidateReport,
+                                       unsigned calledTime,
+                                       unsigned candidateTime)
+  {
+    unsigned const elapsed = candidateTime >= calledTime
+        ? candidateTime - calledTime
+        : candidateTime + 86400u - calledTime;
+    return calledReport != -35 && calledReport >= candidateReport
+        && elapsed <= 300u;
+  }
+
   // 与 readFromStdout 的停发条件保持一致；原始转呼标记不单独触发收尾。
   inline bool replyOtherTerminates (bool replyOther, bool frequencyOverlapsTx,
                                     bool haltTxReplyOther)
@@ -98,9 +119,12 @@ namespace AutoCallPolicy
                                     counterLimit, count, replyOtherTerminates))
       return AnswerCQRetryAction::none;
     if (automaticTarget) return AnswerCQRetryAction::standbyCleanup;
-    if ((priority > 4 && priority < 17) || priority < 2 || strictDirectionalCQ)
-      return AnswerCQRetryAction::legacyCleanup;
-    return AnswerCQRetryAction::none;
+    // Every answer-CQ retry limit is a terminal boundary. High-priority
+    // targets can otherwise remain selected forever when strict direction is
+    // off and their priority falls outside the legacy cleanup ranges.
+    (void) priority;
+    (void) strictDirectionalCQ;
+    return AnswerCQRetryAction::legacyCleanup;
   }
 
   // A retained DX entry may be replaced by a forced new-grid candidate only

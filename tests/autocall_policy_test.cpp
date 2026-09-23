@@ -1,5 +1,6 @@
 #include "qsohistory.h"
 #include "auto_call_policy.hpp"
+#include "directed_call_policy.hpp"
 
 #include <cstdlib>
 #include <iostream>
@@ -17,6 +18,27 @@ void expect(bool actual, char const * description)
 
 int main()
 {
+  expect(AutoCallPolicy::activeTargetRetryCount (3) == 3,
+         "directional CQ does not restart an active target retry count");
+  expect(AutoCallPolicy::suppressAutoCQCandidate (-10, -10, 1000, 1100),
+         "same report remains in bounded cooldown after cleanup");
+  expect(AutoCallPolicy::suppressAutoCQCandidate (-10, -10, 1000, 1300),
+         "cooldown includes its exact five-minute boundary");
+  expect(!AutoCallPolicy::suppressAutoCQCandidate (-10, -10, 1000, 1301),
+         "same report may re-enter after the five-minute cooldown");
+  expect(!AutoCallPolicy::suppressAutoCQCandidate (-10, -8, 1000, 1100),
+         "stronger report may re-enter before cooldown expires");
+  expect(AutoCallPolicy::suppressAutoCQCandidate (-10, -10, 86300, 100),
+         "cooldown elapsed time crosses midnight correctly");
+  expect(!AutoCallPolicy::suppressAutoCQCandidate (-10, -10, 86300, 201),
+         "midnight cooldown expires after 300 seconds");
+  expect(!AutoCallPolicy::suppressAutoCQCandidate (-35, -10, 0, 1100),
+         "another candidate without a failed-attempt record remains eligible");
+  expect(DirectedCallPolicy::shouldArm (true, true, true, false, false,
+                                        false, false, false,
+                                        DirectedCallPolicy::rcallStatus),
+         "a real directed reply remains selectable through its independent path");
+
   // The legacy AutoSeq selector must be unchanged when no rare-target
   // option is active.
   expect(QsoHistory::autoCallPriorityAllowed(17, 0), "legacy priority 17");
@@ -238,12 +260,23 @@ int main()
          "ordinary reply-other uses legacy cleanup");
   expect(actionFor (AutoCallPolicy::rcqStatus, 22, false, false, false,
                     true, 2, 2, false, false)
-             == AutoCallPolicy::AnswerCQRetryAction::none,
-         "unconfigured high priority has no answer-CQ cleanup");
+             == AutoCallPolicy::AnswerCQRetryAction::legacyCleanup,
+         "unconfigured high priority still terminates at the answer-CQ retry limit");
   expect(actionFor (AutoCallPolicy::rcqStatus, 22, false, false, false,
                     true, 2, 2, false, true)
              == AutoCallPolicy::AnswerCQRetryAction::legacyCleanup,
          "strict directional CQ keeps ordinary high-priority cleanup");
+  const int answerCQStatuses[] = {AutoCallPolicy::rfinStatus,
+                                  AutoCallPolicy::rcqStatus,
+                                  AutoCallPolicy::scallStatus,
+                                  AutoCallPolicy::sreportStatus};
+  for (int status : answerCQStatuses) {
+    bool const skipTx1 = status == AutoCallPolicy::sreportStatus;
+    expect(actionFor (status, 22, false, skipTx1, false,
+                      true, 2, 2, false, false)
+               == AutoCallPolicy::AnswerCQRetryAction::legacyCleanup,
+           "every answer-CQ status has a terminal action at its configured limit");
+  }
 
   expect(AutoCallPolicy::canForceCandidate (false, false, false, false, false),
          "cleared DX permits a fresh candidate to be selected and armed");

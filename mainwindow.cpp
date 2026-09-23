@@ -4336,6 +4336,19 @@ void MainWindow::process_Auto(bool forceCandidate)
             : QStringLiteral ("automatic target answer-CQ retry threshold reached; standby cleanup");
         if (!m_haltTrans && (m_enableTx || m_transmitting || m_btxok || g_iptt == 1))
           haltTx (reason);
+        // Reuse QsoHistory's bounded report/time suppression so the same
+        // continuously calling rare target cannot immediately reclaim DX.
+        // Directed-call selection runs through its separate path and remains
+        // eligible to restore a real reply from this station.
+        bool reportValid = false;
+        int const receivedReport = rpt.toInt (&reportValid);
+        m_qsoHistory.calllist (hisCall, reportValid ? receivedReport : -60, time);
+        if (m_config.write_decoded_debug ())
+          writeToALLTXT (QStringLiteral (
+              "AutoSeq cooldown call=%1 priority=%2 retry=%3 limit=%4 report=%5 time=%6")
+              .arg (hisCall).arg (prio).arg (count)
+              .arg (m_config.answerCQCount () ? m_config.nAnswerCQCounter () : 0)
+              .arg (reportValid ? receivedReport : -60).arg (time));
         clearDX (QStringLiteral (" cleared, ") + reason);
         count = m_qsoHistory.reset_count (hisCall);
         hisCall = m_hisCall;
