@@ -240,6 +240,7 @@ int main ()
          "the six Web radio controls reuse the native desktop entry points");
   check (web_app_source.contains ("readback.tx_enabled === request.value")
              && web_app_source.contains ("applyRadioReadback(payload, request)")
+             && web_app_source.contains ("text(\"tx_summary\", bool(readback.tx_enabled)")
              && web_app_source.contains ("currentSnapshot?.tx_enabled === false")
              && web_app_source.contains ("snapshot?.tx_enabled === true")
              && web_app_source.contains ("radio_enable_tx: [\"enable-tx\", false]"),

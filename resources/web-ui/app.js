@@ -276,6 +276,10 @@
     if (request.action === "enable-tx" && currentSnapshot && readback
         && typeof readback.tx_enabled === "boolean") {
       currentSnapshot = {...currentSnapshot, tx_enabled: readback.tx_enabled};
+      text("tx_summary", bool(readback.tx_enabled) + " / " + bool(currentSnapshot.transmitting));
+      text("tx_enabled", bool(readback.tx_enabled));
+      updateFrequencyForm();
+      updateBusinessControls();
     }
   }
 
