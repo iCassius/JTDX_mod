@@ -349,6 +349,12 @@ int main (int argc, char ** argv)
           {{7074000u, QStringLiteral ("40m"), QStringLiteral ("FT8"), QStringLiteral ("All"), true},
            {14074000u, QStringLiteral ("20m"), QStringLiteral ("FT8"), QStringLiteral ("All"), true}});
       bool fixture_tx_enabled = false;
+      auto publish_fixture_tx_state = [&state, &fixture_tx_enabled] (bool enabled) {
+        fixture_tx_enabled = enabled;
+        state.observe_status (14074000, QStringLiteral ("FT8"), {}, QStringLiteral ("-10"),
+                              QStringLiteral ("FT8"), enabled, false, true, -100, 150,
+                              QStringLiteral ("N0CALL"), QStringLiteral ("AA00"), {}, false, {}, false, false);
+      };
       control.set_observation_provider ([&state, &fixture_tx_enabled] {
           QJsonObject const snapshot = state.json_snapshot ();
           JtdxWebControl::ObservedState current;
@@ -407,7 +413,7 @@ int main (int argc, char ** argv)
                                             prepared.dx_source_decode_id);
               });
           });
-      control.set_business_dispatcher ([&state, &control, &fixture_tx_enabled, browser_automation_p9_fixture,
+      control.set_business_dispatcher ([&state, &control, &fixture_tx_enabled, &publish_fixture_tx_state, browser_automation_p9_fixture,
                                         browser_automation_p9_timeout_fixture]
                                        (JtdxWebControl::Dispatch const& dispatch) {
           if (dispatch.operation == JtdxWebControl::Operation::Radio)
@@ -431,9 +437,9 @@ int main (int argc, char ** argv)
                   QJsonObject draft = radio.value (QStringLiteral ("qso_draft")).toObject ();
                   quint64 generation = radio.value (QStringLiteral ("qso_generation")).toVariant ().toULongLong ();
                   if (action.radio_action == QStringLiteral ("enable-tx"))
-                    fixture_tx_enabled = action.radio_value;
+                    publish_fixture_tx_state (action.radio_value);
                   else if (action.radio_action == QStringLiteral ("stop-tx"))
-                    fixture_tx_enabled = false;
+                    publish_fixture_tx_state (false);
                   else if (action.radio_action == QStringLiteral ("log-qso"))
                     {
                       draft = action.radio_qso;

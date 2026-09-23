@@ -271,6 +271,14 @@
     return Object.prototype.hasOwnProperty.call(values, request.action) && values[request.action] === true;
   }
 
+  function applyRadioReadback(row, request) {
+    const readback = row && row.readback && typeof row.readback === "object" ? row.readback : null;
+    if (request.action === "enable-tx" && currentSnapshot && readback
+        && typeof readback.tx_enabled === "boolean") {
+      currentSnapshot = {...currentSnapshot, tx_enabled: readback.tx_enabled};
+    }
+  }
+
   function terminalOperation(row) {
     return !!(row && ["completed", "failed", "rejected", "timeout"].includes(row.status));
   }
@@ -383,6 +391,7 @@
     const row = operationForRadio(snapshot);
     if (row && terminalOperation(row)) {
       if (row.status === "completed" && readbackMatchesRadio(row, radioRequest)) {
+        applyRadioReadback(row, radioRequest);
         radioUnknown = radioRequest.preserveUnknown === true;
         radioStatus(radioUnknown ? "停止已回读；先前操作结果仍未知。" : "电台操作已由实际状态回读确认。",
           radioUnknown ? "warning" : "success");
@@ -1005,6 +1014,7 @@
       } else if (["received", "accepted", "pending"].includes(payload.status)) {
         radioStatus("操作已登记，等待主程序状态回读。", "processing");
       } else if (payload.status === "completed" && response.ok && readbackMatchesRadio(payload, request)) {
+        applyRadioReadback(payload, request);
         radioRequest = null;
         radioUnknown = request.preserveUnknown === true;
         radioStatus(radioUnknown ? "停止已回读；先前操作结果仍未知。" : "电台操作已由实际状态回读确认。",
