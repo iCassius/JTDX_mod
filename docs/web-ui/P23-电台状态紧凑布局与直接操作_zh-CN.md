@@ -18,7 +18,7 @@
 - `Configuration`/`Configuration.ui`：删除 LAN/能力 gate 项，保留 Web 启用、绑定地址与端口。初次缺少偏好时启用，显式禁用保存；端口校正不会反向改写启用偏好。
 - `JtdxWebServer`/`JtdxWebControl`/`JtdxWebService`：移除 Web 专属 capability、Host/Origin/CSRF、confirm 和状态快照版本拒绝；频率、DX、业务和电台操作仍走现有 dispatcher、在途/幂等状态与业务/CAT 回读。通配监听继续拒绝。
 - `JtdxWebState`/`MainWindow`：不再对 UI 输出 freshness/age/生成时间等状态字段；删去依赖这些字段的频率结果完成条件，维持线上 CAT observation 与真实频率回读。周期钟通过窄回调接入 JTDX 校正时间和 `m_TRperiod`。
-- `resources/web-ui`：简化页面结构和状态呈现、实现编辑保护和手动/解码 DX 双路径、整数 Hz 与周期同步。窄屏解码行将主要字段与消息分行呈现。
+- `resources/web-ui`：简化页面结构和状态呈现、实现编辑保护和手动/解码 DX 双路径、整数 Hz 与周期同步。每次状态事件都会协调频率、DX、CQ/AutoSeq、电台操作的内部在途项与真实回读，但不展示操作快照卡。周期长度或模式变化（包括相同长度的模式切换）都会重校准；窄屏解码行将主要字段与消息分行呈现。
 - 测试更新覆盖默认启用/显式禁用设置、状态字段删减、校正时钟/周期毫秒、无需 Web 快照年龄的普通控制、手动 DX、路由与 UI 合同。
 
 ## 验证结果
@@ -26,7 +26,7 @@
 - 配置：CMake `MinGW Makefiles`、MSYS2 MinGW-w64 Qt5，Release；完整 `jtdx` 与全部本地测试目标构建退出码为 0。构建目录为 `C:\JTDX64\build-webui-dev-msys2`。最终源码提交、完整 CTest 次数/耗时及安装记录将在末尾补齐。
 - 全量测试：最终提交后重新运行 CTest；覆盖 24 项。以运行记录的最终结果为准。
 - 前端：`node --check resources/web-ui/app.js` 与 `git diff --check`。
-- 浏览器：使用 `jtdx_web_server_test.exe --serve-browser-automation-p9` 本机 loopback 隔离夹具（只构造 State/Control/Server 内存状态；不创建 MainWindow、CAT、PTT、音频或 UDP）。桌面 1280×720 实测 workbench 1064 px、两栏各 525 px、根横向滚动宽度与 client 宽度均 1265 px；窄屏 390×844 实测可视宽度 390、根宽/scrollWidth 均 375 px，左/右工作区纵向排列。夹具还提供测试周期时钟以检查周期条显示；不是实机校时或实际主窗口视觉证明。隔离控制仅用于验证页面请求/回读，不是电台操作。
+- 浏览器：使用 `jtdx_web_server_test.exe --serve-browser-automation-p9` 本机 loopback 隔离夹具（只构造 State/Control/Server 内存状态；不创建 MainWindow、CAT、PTT、音频或 UDP）。桌面 1280×720 实测 workbench 1064 px、两栏各 525 px、根横向滚动宽度与 client 宽度均 1265 px；窄屏 390×844 实测可视宽度 390、根宽/scrollWidth 均 375 px，左/右工作区纵向排列，周期条显示 `FT8 · 15 秒` 并更新剩余时间；解码呼号与网格可读。手动 DX `K2XYZ/FN20` 在隔离状态中经匹配 manual 回读完成。夹具时钟只验证周期 API/呈现，不是实机校时或实际主窗口视觉证明；隔离控制不是电台操作。
 - 本地安装树/ZIP 的文件数、SHA-256、根目录和清洁解压校验会在候选包完成后补记。P22 既有 staging、ZIP、来源材料和回退文件均保留，不覆盖。
 
 ## 交付与未验事项

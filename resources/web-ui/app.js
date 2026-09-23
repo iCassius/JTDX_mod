@@ -27,6 +27,7 @@
   let cycleAnchorJtdx = null;
   let cycleAnchorPerformance = null;
   let cyclePeriodMs = 15000;
+  let cycleMode = "";
 
   const el = (id) => document.getElementById(id);
   const text = (id, value) => {
@@ -594,9 +595,15 @@
   function render(snapshot) {
     if (!snapshot || typeof snapshot !== "object") return;
     currentSnapshot = snapshot;
+    reconcileFrequency(snapshot);
+    reconcileDx(snapshot);
+    reconcileBusiness(snapshot);
+    reconcileRadio(snapshot);
+    const nextCycleMode = typeof snapshot.mode === "string" ? snapshot.mode : "";
     if (Number.isSafeInteger(snapshot.cycle_period_ms) && snapshot.cycle_period_ms > 0
-        && snapshot.cycle_period_ms !== cyclePeriodMs) {
+        && (snapshot.cycle_period_ms !== cyclePeriodMs || nextCycleMode !== cycleMode)) {
       cyclePeriodMs = snapshot.cycle_period_ms;
+      cycleMode = nextCycleMode;
       cycleAnchorJtdx = null;
       calibrateCycle();
     }
