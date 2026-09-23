@@ -2,10 +2,10 @@
 
 # 2026-09-24 P26 Web 电台控制超时与六按钮收口（待根任务复核）
 
-- P26 基线 `26cf365`，实现双重 prepare/begin 导致 Radio 原生处理器不运行的问题，并补齐嵌套安全读回字段；范围、映射、超时锁策略及验证边界见 [`P26-Web电台控制超时与六按钮收口_zh-CN.md`](P26-Web电台控制超时与六按钮收口_zh-CN.md)。
-- 页面电台区收口为六项，保留 QSO 草稿取消/确认；解码卡全宽、内容可换行，DX 选择跨两行，窄屏不横向溢出。浏览器为本机 loopback 内存夹具，不是真实 MainWindow/ADIF/设备验证。
-- 代码提交 `a1eaf35931233f849fb34bbefb5bb4274a15aa0d`；完整 Release 构建成功，全量 CTest 26/26、100%。最终日志及 141 文件安装 manifest 位于 `C:\JTDX64\deps-webui\evidence\P26\`。
-- 本机审阅 ZIP `C:\JTDX64\JTDX-2.2.159.2.10-local-a1eaf35-P26.zip`、SHA-256 sidecar 已生成；141/141 清洁解压文件与 manifest 完全一致。仅本机审阅，不表示根任务接受或公开发行；未做 CAT/PTT/TX/HIL、UDP 服务线程或部署验证。
+- P26 基线 `26cf3655a450c3cf42b30ca57ea556d22bb6f16c`，实现 Radio dispatch 超时修复、嵌套安全回读、启用/停止一致回读和窄屏宽度约束；范围、映射、锁策略及边界见 [`P26-Web电台控制超时与六按钮收口_zh-CN.md`](P26-Web电台控制超时与六按钮收口_zh-CN.md)。最终实现提交 `b0732b9`。
+- 页面电台区收口为六项，保留 QSO 草稿取消/确认；430px CSS 视口实测文档宽 430px、卡片宽 406px、解码行宽 358px、无元素越界。桌面与窄屏截图保存在 `C:\JTDX64\deps-webui\evidence\P26\`。浏览器使用 loopback 内存夹具，不是真实 MainWindow/ADIF/设备验证。
+- 在最终实现提交上完整 Release 构建成功，全量 CTest 26/26、100%、58.04 秒。最终日志为 `final-build.log`、`final-ctest.log`；141 文件安装 manifest 和清洁解压逐项 SHA-256 结果见本批归档记录。
+- 最新本机审阅 ZIP：`C:\JTDX64\JTDX-2.2.159.2.10-local-b0732b9-P26.zip`，sidecar、manifest、哈希及清洁解压核验完成后补录。仅本机审阅，不表示根任务接受或公开发行；未做 CAT/PTT/TX/HIL、UDP 服务线程或部署验证。
 
 # 2026-09-23 P25 解码地理字段与电台安全门纠偏（待根任务复核）
 
