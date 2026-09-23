@@ -1,5 +1,12 @@
 # JTDX 内置 Web UI：进度与中断恢复日志
 
+# 2026-09-23 P24 根审阅纠偏（待根任务复核）
+
+- P23 尚未被根任务接受；本节只记录按根审阅意见完成的纠偏，不构成验收、发布或硬件验证结论。P23 的历史说明保留为历史记录，当前候选源码为 `6dbb210f4ef20ff2cc5ffbe1c2788bb9ea2f79c7`。
+- 本批限定于 `resources/web-ui/{index.html,style.css,app.js}` 和 `tests/mainwindow_web_frequency_contract_test.cpp` 的布局、文案、输入保留/校验与周期校准，以及对应文档；没有修改 native 电台业务逻辑、CAT/PTT/TX、UDP 或服务安全门。
+- 最终完整构建日志：`C:\JTDX64\deps-webui\evidence\P24-webui-fix-build.log`；最终全量 CTest：24/24，日志 `C:\JTDX64\deps-webui\evidence\P24-webui-fix-ctest-final.log`。浏览器 loopback 夹具的桌面/窄屏、固定顶部周期条、表单输入保留和错误反馈证据及限制见 [`P24-根审阅纠偏_zh-CN.md`](P24-根审阅纠偏_zh-CN.md)。
+- 本地审阅包及 SHA-256、141 文件 manifest、干净解压逐文件比较见该恢复记录。包不是公开发行包；第三方法律清权、真实 MainWindow、CAT/PTT/TX、HIL、LAN/公网和部署仍未完成/未验证。等待根任务复核，不在此宣称 P23 验收。
+
 ### 2026-09-23 P23 电台状态紧凑布局与直接操作（当前）
 
 - 当前行为与完整前后端映射见 [`P23-电台状态紧凑布局与直接操作_zh-CN.md`](P23-电台状态紧凑布局与直接操作_zh-CN.md)。该批覆盖历史章节中的旧页面和旧 Web 专属门控，历史记录保留但不代表当前行为。
