@@ -11,6 +11,7 @@ void QsoHistory::init()
     _data.clear();
     _blackdata.clear();
     _calldata.clear();
+    _autoCQCooldowns.clear();
     _working = true;
     _CQ.call = "";    
     _CQ.status = NONE;
@@ -69,6 +70,7 @@ int QsoHistory::remove(QString const& callsign)
   if (_working) {
     ret=_blackdata.remove(Radio::base_callsign (callsign));
     ret=_calldata.remove(Radio::base_callsign (callsign));
+    ret+=_autoCQCooldowns.remove(Radio::base_callsign (callsign));
     ret=_data.remove(Radio::base_callsign (callsign));
   }
   return ret;
@@ -85,18 +87,23 @@ int QsoHistory::blacklist(QString const& callsign)
   return ret;
 }
 
-void QsoHistory::calllist(QString const& callsign, int level=-35, unsigned time=0)
+void QsoHistory::calllist(QString const& callsign, int level, unsigned time,
+                          bool automaticCQFailure)
 {
-  CALLED ret;
-  ret.rep=-35;
-  ret.time=0;
   if (_working) {
-    ret = _calldata.value(Radio::base_callsign (callsign),ret);
-    if(ret.rep < level || ret.time < time || ret.time - time > 43200) {
-      ret.rep=level;
-      ret.time=time;
-      _calldata.insert(Radio::base_callsign (callsign),ret);
-    }
+    auto recordFailure = [=] (QHash<QString, CALLED>& records) {
+      CALLED ret;
+      ret.rep=-35;
+      ret.time=0;
+      ret = records.value(Radio::base_callsign (callsign),ret);
+      if(ret.rep < level || ret.time < time || ret.time - time > 43200) {
+        ret.rep=level;
+        ret.time=time;
+        records.insert(Radio::base_callsign (callsign),ret);
+      }
+    };
+    recordFailure (_calldata);
+    if (automaticCQFailure) recordFailure (_autoCQCooldowns);
   }
 }
 
@@ -239,9 +246,18 @@ QsoHistory::Status QsoHistory::autoseq(QString &callsign, QString &grid, QString
               is_called.rep=-35;
               is_called.time=0;
               is_called=_calldata.value(key,is_called);
-              if ((!rare_auto_call || !AutoCallPolicy::suppressFailedCQRetry (
-                       tt.status, is_called.rep, tt.s_rep.toInt (),
-                       is_called.time, tt.b_time))
+              CALLED automatic_failure;
+              automatic_failure.rep=-35;
+              automatic_failure.time=0;
+              automatic_failure=_autoCQCooldowns.value(key,automatic_failure);
+              bool const rare_target_cooldown = rare_auto_call
+                  ? AutoCallPolicy::suppressFailedCQRetry (
+                        tt.status, is_called.rep, tt.s_rep,
+                        is_called.time, tt.b_time)
+                  : AutoCallPolicy::suppressFailedCQRetry (
+                        tt.status, automatic_failure.rep, tt.s_rep,
+                        automatic_failure.time, tt.b_time);
+              if (!rare_target_cooldown
                   && on_black == 0 && tt.time == max_r_time && !tt.continent.isEmpty() && (!lastcalled || tt.time == tt.b_time) &&
                   (tt.status == RCALL || tt.status == RREPORT || tt.status == RRREPORT || tt.status == RRR || tt.status == RRR73 || 
                     ((tt.status == RCQ || tt.status == RFIN) && !mycall && autoCallPriorityAllowed (tt.priority, algo)))) {
@@ -297,9 +313,18 @@ QsoHistory::Status QsoHistory::autoseq(QString &callsign, QString &grid, QString
               is_called.rep=-35;
               is_called.time=0;
               is_called=_calldata.value(key,is_called);
-              if ((!rare_auto_call || !AutoCallPolicy::suppressFailedCQRetry (
-                       tt.status, is_called.rep, tt.s_rep.toInt (),
-                       is_called.time, tt.b_time))
+              CALLED automatic_failure;
+              automatic_failure.rep=-35;
+              automatic_failure.time=0;
+              automatic_failure=_autoCQCooldowns.value(key,automatic_failure);
+              bool const rare_target_cooldown = rare_auto_call
+                  ? AutoCallPolicy::suppressFailedCQRetry (
+                        tt.status, is_called.rep, tt.s_rep,
+                        is_called.time, tt.b_time)
+                  : AutoCallPolicy::suppressFailedCQRetry (
+                        tt.status, automatic_failure.rep, tt.s_rep,
+                        automatic_failure.time, tt.b_time);
+              if (!rare_target_cooldown
                   && on_black == 0 && ((tt.time - _CQ.time < 300 && tt.time >= 300) || (tt.time < 300 && tt.time - (_CQ.time - 86100) < 300))  && !tt.continent.isEmpty() && (!lastcalled || tt.time == tt.b_time) &&
                   (tt.status == RCALL || tt.status == RREPORT || tt.status == RRREPORT || tt.status == RRR || tt.status == RRR73 || 
                     ((tt.status == RCQ || tt.status == RFIN) && !mycall && autoCallPriorityAllowed (tt.priority, algo)))) {
@@ -354,7 +379,7 @@ QsoHistory::Status QsoHistory::autoseq(QString &callsign, QString &grid, QString
               is_called=_calldata.value(key,is_called);
               tt=_data[key];
               if (!AutoCallPolicy::suppressFailedCQRetry (
-                      tt.status, is_called.rep, tt.s_rep.toInt (),
+                      tt.status, is_called.rep, tt.s_rep,
                       is_called.time, tt.b_time)
                   && on_black == 0 && tt.time == max_r_time
                   && (tt.status == RCQ || (tt.status == RFIN && tt.priority > 0))

@@ -53,7 +53,8 @@ class QsoHistory
 	Status log_data(QString const& callsign, unsigned &time, QString &rrep, QString &srep);
 	int remove(QString const& callsign);		
 	int blacklist(QString const& callsign);
-	void calllist(QString const& callsign,int level, unsigned time);
+	void calllist(QString const& callsign,int level, unsigned time,
+                bool automaticCQFailure = false);
 	int reset_count(QString const& callsign,Status status = NONE);
 	JTDXDateTime * jtdxtime;
  private:
@@ -82,6 +83,7 @@ class QsoHistory
 	QHash<QString, QSO> _data;
 	QHash<QString, int> _blackdata;
 	QHash<QString, CALLED> _calldata;
+	QHash<QString, CALLED> _autoCQCooldowns;
 	bool _working = false;
 	bool as_active = false;
 	bool _strictdirCQ = false;

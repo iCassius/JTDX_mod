@@ -34,16 +34,27 @@ int main()
          "midnight cooldown expires after 300 seconds");
   expect(!AutoCallPolicy::suppressAutoCQCandidate (-35, -10, 0, 1100),
          "another candidate without a failed-attempt record remains eligible");
+  expect(AutoCallPolicy::receivedReportOrWeakest (QStringLiteral ("-10")) == -10,
+         "valid candidate report is preserved");
+  expect(AutoCallPolicy::receivedReportOrWeakest (QString {}) == -60,
+         "empty candidate report uses weakest-signal fallback");
+  expect(AutoCallPolicy::receivedReportOrWeakest (QStringLiteral ("unknown")) == -60,
+         "invalid candidate report uses weakest-signal fallback");
   const int ordinaryCQStatuses[] = {QsoHistory::RCQ, QsoHistory::RFIN};
   for (int status : ordinaryCQStatuses) {
-    expect(AutoCallPolicy::suppressFailedCQRetry (status, -10, -10, 1000, 1100),
-           "cooldown suppresses an ordinary RCQ/RFIN candidate in a mixed list");
+    expect(AutoCallPolicy::suppressFailedCQRetry (
+               status, -10, QStringLiteral ("-10"), 1000, 1100),
+           "existing calllist suppresses RCQ/RFIN independently of rare-target flags");
+    expect(AutoCallPolicy::suppressFailedCQRetry (
+               status, -10, QString {}, 1000, 1100),
+           "empty RCQ/RFIN report uses -60 and remains in a negative-report cooldown");
   }
   const int directedReplyStatuses[] = {QsoHistory::RCALL, QsoHistory::RREPORT,
                                        QsoHistory::RRREPORT, QsoHistory::RRR,
                                        QsoHistory::RRR73};
   for (int status : directedReplyStatuses) {
-    expect(!AutoCallPolicy::suppressFailedCQRetry (status, -10, -10, 1000, 1100),
+    expect(!AutoCallPolicy::suppressFailedCQRetry (
+               status, -10, QStringLiteral ("-10"), 1000, 1100),
            "a directed QSO response in a mixed list bypasses failed-CQ cooldown");
   }
   expect(DirectedCallPolicy::shouldArm (true, true, true, false, false,

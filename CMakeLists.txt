@@ -1583,6 +1583,13 @@ if (JTDX_BUILD_LOCAL_TESTS)
   add_executable (autocall_policy_test tests/autocall_policy_test.cpp)
   target_link_libraries (autocall_policy_test Qt5::Core)
   add_test (NAME autocall_policy_test COMMAND autocall_policy_test)
+  add_executable (autoseq_cooldown_test
+    tests/autoseq_cooldown_test.cpp
+    qsohistory.cpp
+    Radio.cpp)
+  target_include_directories (autoseq_cooldown_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_link_libraries (autoseq_cooldown_test Qt5::Core)
+  add_test (NAME autoseq_cooldown_test COMMAND autoseq_cooldown_test)
   add_executable (auto_tx_period_policy_test tests/auto_tx_period_policy_test.cpp)
   target_include_directories (auto_tx_period_policy_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   add_test (NAME auto_tx_period_policy_test COMMAND auto_tx_period_policy_test)

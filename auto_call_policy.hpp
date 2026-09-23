@@ -65,8 +65,8 @@ namespace AutoCallPolicy
     return storedCount;
   }
 
-  // calllist() records the last failed automatic CQ attempt. Keep the legacy
-  // five-minute/report-improvement rule in one testable predicate.
+  // Keep the existing five-minute/report-improvement rule in one predicate;
+  // QsoHistory chooses a general or special-target failure record by path.
   inline bool suppressAutoCQCandidate (int calledReport, int candidateReport,
                                        unsigned calledTime,
                                        unsigned candidateTime)
@@ -78,15 +78,24 @@ namespace AutoCallPolicy
         && elapsed <= 300u;
   }
 
+  inline int receivedReportOrWeakest (QString const& report)
+  {
+    bool valid = false;
+    int const value = report.toInt (&valid);
+    return valid ? value : -60;
+  }
+
   // Mixed candidate lists contain both ordinary CQ retries and responses to
   // this station. Failed-CQ cooldown applies only to RCQ/RFIN; genuine QSO
   // replies must pass through to the existing blacklist/direction checks.
   inline bool suppressFailedCQRetry (int status, int calledReport,
-                                     int candidateReport, unsigned calledTime,
+                                     QString const& candidateReport,
+                                     unsigned calledTime,
                                      unsigned candidateTime)
   {
     return (status == rcqStatus || status == rfinStatus)
-        && suppressAutoCQCandidate (calledReport, candidateReport, calledTime,
+        && suppressAutoCQCandidate (calledReport,
+                                    receivedReportOrWeakest (candidateReport), calledTime,
                                     candidateTime);
   }
 
