@@ -12,7 +12,8 @@
 - RFIN、RCQ、SCALL，以及跳过 TX1 时的 SREPORT，在回答 CQ 计数达到已启用上限后都生成终止清理动作。已配置的自动特殊目标仍进入待机清理；其他回答 CQ 目标走既有清理路径。
 - 自动特殊目标达到上限后调用既有 QsoHistory `calllist()`，在五分钟内抑制同报告或较弱报告的普通 CQ 自动入选。超过 300 秒或收到更强报告即可再次竞争；冷却是进程内短期状态，不写入持久配置。其他呼号没有失败记录，不受影响。
 - 冷却触发时仅在启用解码调试日志后写一条记录，包含呼号、优先级、重试次数/上限、报告和解码时间；已有逐批状态日志提供候选状态与计数。
-- 冷却只接入普通 CQ 目标筛选。定向来呼筛选仍在该筛选之前独立运行，因此明确面向本台的回应可以重新选中该呼号。
+- 冷却只抑制 RCQ/RFIN 普通 CQ 候选。两条同时包含 CQ 候选和定向回应的选择路径都按状态应用冷却：RCQ/RFIN 遵守失败冷却，RCALL、RREPORT、RRREPORT、RRR、RRR73 不受失败冷却阻止；第三条仅含 RCQ/RFIN 的路径保持冷却。黑名单、方向匹配和优先级条件仍按原有筛选执行。
+- 定向来呼专用筛选仍可在混合候选路径之前选中明确面向本台的回应；即使该路径未启用，混合候选表里的有效 QSO 回应也会旁路普通 CQ 失败冷却。
 - 五分钟按解码时间的日内秒数计算，跨午夜按 24 小时回绕处理；300 秒边界仍在冷却内，超过边界后释放。
 - 无法解析的报告等级按最弱报告 `-60` 记录，避免 `QString::toInt()` 失败得到 0 后把无效数据当成异常强报告；冷却仍受 300 秒上界约束。
 
@@ -24,6 +25,6 @@
 
 ## 验证范围
 
-定向策略测试覆盖活动呼号计数保持、各回答 CQ 状态的阈值终止、高优先级终止、同报告五分钟冷却、报告改善、其他候选、午夜回绕及有效定向来呼入口。CAT 恢复与定向呼叫既有策略测试也应保持通过。
+定向策略测试覆盖活动呼号计数保持、各回答 CQ 状态的阈值终止、高优先级终止、同报告五分钟冷却、报告改善、其他候选、午夜回绕，以及混合候选中的 RCQ/RFIN 冷却和 RCALL/RREPORT/RRREPORT/RRR/RR73 旁路。黑名单与方向筛选位于冷却条件之外，代码路径保持原样。CAT 恢复与定向呼叫既有策略测试也应保持通过。
 
 构建目录：`C:\JTDX64\build-webui-dev-msys2`（MinGW64/MSYS2）。全量构建命令 `C:\msys64\mingw64\bin\cmake.exe --build C:\JTDX64\build-webui-dev-msys2 -j 6` 通过。定向 `autocall_policy_test`、`directed_call_policy_test`、`autoseq_recovery_policy_test` 为 3/3 通过。完整 CTest 使用 PowerShell 设置 MSYS2 与构建运行时 DLL 的 `PATH`，设置 `QT_QPA_PLATFORM=offscreen`、`QT_QPA_PLATFORM_PLUGIN_PATH=C:\msys64\mingw64\share\qt5\plugins\platforms`，再执行 `C:\msys64\mingw64\bin\ctest.exe --test-dir C:\JTDX64\build-webui-dev-msys2 --output-on-failure`，结果 26/26 通过。首次未设 offscreen 的 GUI 测试运行超时；设置后全套重跑通过。本次不操作真实 CAT、PTT、TX 或电台。Hamlib 4.7.2 DLL不在本次改动范围内；真实电台联调和长时间运行 HIL 未验证。

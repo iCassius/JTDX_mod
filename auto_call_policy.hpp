@@ -78,6 +78,18 @@ namespace AutoCallPolicy
         && elapsed <= 300u;
   }
 
+  // Mixed candidate lists contain both ordinary CQ retries and responses to
+  // this station. Failed-CQ cooldown applies only to RCQ/RFIN; genuine QSO
+  // replies must pass through to the existing blacklist/direction checks.
+  inline bool suppressFailedCQRetry (int status, int calledReport,
+                                     int candidateReport, unsigned calledTime,
+                                     unsigned candidateTime)
+  {
+    return (status == rcqStatus || status == rfinStatus)
+        && suppressAutoCQCandidate (calledReport, candidateReport, calledTime,
+                                    candidateTime);
+  }
+
   // 与 readFromStdout 的停发条件保持一致；原始转呼标记不单独触发收尾。
   inline bool replyOtherTerminates (bool replyOther, bool frequencyOverlapsTx,
                                     bool haltTxReplyOther)

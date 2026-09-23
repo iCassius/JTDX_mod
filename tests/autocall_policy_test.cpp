@@ -34,6 +34,18 @@ int main()
          "midnight cooldown expires after 300 seconds");
   expect(!AutoCallPolicy::suppressAutoCQCandidate (-35, -10, 0, 1100),
          "another candidate without a failed-attempt record remains eligible");
+  const int ordinaryCQStatuses[] = {QsoHistory::RCQ, QsoHistory::RFIN};
+  for (int status : ordinaryCQStatuses) {
+    expect(AutoCallPolicy::suppressFailedCQRetry (status, -10, -10, 1000, 1100),
+           "cooldown suppresses an ordinary RCQ/RFIN candidate in a mixed list");
+  }
+  const int directedReplyStatuses[] = {QsoHistory::RCALL, QsoHistory::RREPORT,
+                                       QsoHistory::RRREPORT, QsoHistory::RRR,
+                                       QsoHistory::RRR73};
+  for (int status : directedReplyStatuses) {
+    expect(!AutoCallPolicy::suppressFailedCQRetry (status, -10, -10, 1000, 1100),
+           "a directed QSO response in a mixed list bypasses failed-CQ cooldown");
+  }
   expect(DirectedCallPolicy::shouldArm (true, true, true, false, false,
                                         false, false, false,
                                         DirectedCallPolicy::rcallStatus),

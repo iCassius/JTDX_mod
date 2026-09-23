@@ -239,8 +239,9 @@ QsoHistory::Status QsoHistory::autoseq(QString &callsign, QString &grid, QString
               is_called.rep=-35;
               is_called.time=0;
               is_called=_calldata.value(key,is_called);
-              if ((!rare_auto_call || !AutoCallPolicy::suppressAutoCQCandidate (
-                       is_called.rep, tt.s_rep.toInt (), is_called.time, tt.b_time))
+              if ((!rare_auto_call || !AutoCallPolicy::suppressFailedCQRetry (
+                       tt.status, is_called.rep, tt.s_rep.toInt (),
+                       is_called.time, tt.b_time))
                   && on_black == 0 && tt.time == max_r_time && !tt.continent.isEmpty() && (!lastcalled || tt.time == tt.b_time) &&
                   (tt.status == RCALL || tt.status == RREPORT || tt.status == RRREPORT || tt.status == RRR || tt.status == RRR73 || 
                     ((tt.status == RCQ || tt.status == RFIN) && !mycall && autoCallPriorityAllowed (tt.priority, algo)))) {
@@ -296,8 +297,9 @@ QsoHistory::Status QsoHistory::autoseq(QString &callsign, QString &grid, QString
               is_called.rep=-35;
               is_called.time=0;
               is_called=_calldata.value(key,is_called);
-              if ((!rare_auto_call || !AutoCallPolicy::suppressAutoCQCandidate (
-                       is_called.rep, tt.s_rep.toInt (), is_called.time, tt.b_time))
+              if ((!rare_auto_call || !AutoCallPolicy::suppressFailedCQRetry (
+                       tt.status, is_called.rep, tt.s_rep.toInt (),
+                       is_called.time, tt.b_time))
                   && on_black == 0 && ((tt.time - _CQ.time < 300 && tt.time >= 300) || (tt.time < 300 && tt.time - (_CQ.time - 86100) < 300))  && !tt.continent.isEmpty() && (!lastcalled || tt.time == tt.b_time) &&
                   (tt.status == RCALL || tt.status == RREPORT || tt.status == RRREPORT || tt.status == RRR || tt.status == RRR73 || 
                     ((tt.status == RCQ || tt.status == RFIN) && !mycall && autoCallPriorityAllowed (tt.priority, algo)))) {
@@ -351,8 +353,9 @@ QsoHistory::Status QsoHistory::autoseq(QString &callsign, QString &grid, QString
               is_called.time=0;
               is_called=_calldata.value(key,is_called);
               tt=_data[key];
-              if (!AutoCallPolicy::suppressAutoCQCandidate (
-                      is_called.rep, tt.s_rep.toInt (), is_called.time, tt.b_time)
+              if (!AutoCallPolicy::suppressFailedCQRetry (
+                      tt.status, is_called.rep, tt.s_rep.toInt (),
+                      is_called.time, tt.b_time)
                   && on_black == 0 && tt.time == max_r_time
                   && (tt.status == RCQ || (tt.status == RFIN && tt.priority > 0))
                   && (!rare_auto_call || autoCallPriorityAllowed (tt.priority, algo))
