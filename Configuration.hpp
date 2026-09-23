@@ -279,13 +279,7 @@ public:
   bool web_ui_automatic_port () const;
   port_type web_ui_port () const;
   QString web_ui_bind_address () const;
-  bool web_ui_allow_lan () const;
-  bool web_ui_frequency_control_enabled () const;
-  bool web_ui_dx_control_enabled () const;
-  bool web_ui_automation_control_enabled () const;
-  bool web_ui_radio_control_enabled () const;
   void set_web_ui_enabled (bool enabled);
-  QString web_ui_allowed_origin () const;
   void set_web_ui_status (QString const& state, QString const& detail);
   void set_web_ui_url (QString const& url);
   bool write_decoded () const;

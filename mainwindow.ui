@@ -5274,12 +5274,12 @@ list. The list can be maintained in Settings (F2).</string>
   <widget class="QStatusBar" name="statusBar"/>
   <action name="actionOpenWebUi">
    <property name="text"><string>打开 Web UI</string></property>
-   <property name="toolTip"><string>打开已运行的 Web UI；控制能力仍按设置单独受限。</string></property>
+   <property name="toolTip"><string>打开 Web UI。</string></property>
   </action>
   <action name="actionWebUiEnabled">
    <property name="checkable"><bool>true</bool></property>
-   <property name="text"><string>启用 WebUI</string></property>
-   <property name="toolTip"><string>启动或停止内置 Web UI。启动失败时保持未勾选。</string></property>
+   <property name="text"><string>允许 Web UI</string></property>
+   <property name="toolTip"><string>启动或停止内置 Web UI。</string></property>
   </action>
   <action name="actionExit">
    <property name="text">

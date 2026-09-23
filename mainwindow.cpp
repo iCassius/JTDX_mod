@@ -477,6 +477,8 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
   m_manual {network_manager}
 {
   ui->setupUi(this);
+  m_webState->set_cycle_clock_provider ([this] { return m_jtdxtime->currentMSecsSinceEpoch2 (); },
+                                        [this] { return m_TRperiod; });
   m_webControl->set_diagnostic_logger ([this] (QString const& line) {
       appendRecoveryLog (m_dataDir, QStringLiteral ("web-control"), line);
     });
@@ -2227,18 +2229,11 @@ void MainWindow::showStatusMessage(const QString& statusMsg) { statusBar()->show
 void MainWindow::applyWebUiConfiguration ()
 {
   if (!m_webService) return;
+  QSignalBlocker action_blocker {ui->actionWebUiEnabled};
   JtdxWebServer::Configuration configuration;
   configuration.automatic_port = m_config.web_ui_automatic_port ();
   configuration.port = configuration.automatic_port ? 0 : m_config.web_ui_port ();
-  configuration.allow_lan = m_config.web_ui_allow_lan ();
   configuration.bind_address = QHostAddress {m_config.web_ui_bind_address ()};
-  configuration.allowed_origin = m_config.web_ui_allowed_origin ();
-  // 配置开关只决定是否暴露频率 POST；实际 dispatch 仍由
-  // JtdxWebControl 在主线程重新读取 CAT/发送安全状态并等待实际回读。
-  configuration.enable_frequency_control = m_config.web_ui_frequency_control_enabled ();
-  configuration.enable_dx_control = m_config.web_ui_dx_control_enabled ();
-  configuration.enable_automation_control = m_config.web_ui_automation_control_enabled ();
-  configuration.enable_radio_control = m_config.web_ui_radio_control_enabled ();
   configuration.udp_ports.insert (m_config.udp_server_port ());
   configuration.udp_ports.insert (m_config.udp2_server_port ());
   bool const applied = m_webService->apply (m_config.web_ui_enabled (), configuration);
@@ -2262,7 +2257,7 @@ void MainWindow::applyWebUiConfiguration ()
       m_config.set_web_ui_status (QStringLiteral ("错误"), m_webService->last_error ());
       m_config.set_web_ui_url ({});
       ui->actionOpenWebUi->setEnabled (false);
-      ui->actionWebUiEnabled->setChecked (false);
+      ui->actionWebUiEnabled->setChecked (true);
       ui->actionOpenWebUi->setToolTip (tr ("Web UI 启动失败：%1").arg (m_webService->last_error ()));
     }
 }
@@ -2301,8 +2296,6 @@ JtdxWebControl::ObservedState MainWindow::webControlObservation () const
   result.frequency_generation = snapshot.value (QStringLiteral ("rig_generation")).toVariant ().toULongLong ();
   result.safety.known = snapshot.value (QStringLiteral ("online")).isBool ()
       && snapshot.value (QStringLiteral ("rig_online")).isBool ();
-  result.safety.fresh = snapshot.value (QStringLiteral ("freshness")).toString () == QStringLiteral ("fresh")
-      && snapshot.value (QStringLiteral ("rig_fresh")).toBool ();
   bool known = false;
   result.safety.transmitting = bool_value ("transmitting", &known);
   result.safety.transmitting = result.safety.transmitting || m_transmitting;
@@ -8290,7 +8283,7 @@ void MainWindow::handle_transceiver_update (Transceiver::TransceiverState const&
   if (m_webFrequencyPending && m_webControl)
     {
       auto const current = webControlObservation ();
-      bool const completed = s.online () && !s.ptt () && current.safety.known && current.safety.fresh
+      bool const completed = s.online () && !s.ptt () && current.safety.known
           && m_webControl->feedback_frequency (
               m_webFrequencyDispatch.request_id, m_webFrequencyDispatch.server_epoch,
               m_webState->rig_generation (), static_cast<qint64> (s.frequency ()),

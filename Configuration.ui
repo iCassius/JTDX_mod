@@ -7581,28 +7581,22 @@ AA1AAA,BB1BB,CC1CC&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
        <string>Web UI</string>
       </attribute>
       <attribute name="toolTip">
-       <string>Web 状态页面默认只读；频率、DX、自动化和电台面板能力需分别显式开启。</string>
+       <string>Web UI 启动、监听地址和 TCP 端口。</string>
       </attribute>
       <layout class="QVBoxLayout" name="web_ui_layout">
        <item>
         <widget class="QGroupBox" name="web_ui_group_box">
-         <property name="title"><string>内置 Web UI（默认只读；控制需显式开启）</string></property>
+         <property name="title"><string>内置 Web UI</string></property>
          <layout class="QGridLayout" name="web_ui_grid">
-          <item row="0" column="0"><widget class="QCheckBox" name="web_ui_enabled_check_box"><property name="text"><string>启用 Web UI</string></property><property name="toolTip"><string>默认关闭；只在点击设置对话框的确定后启动或重启服务。</string></property></widget></item>
+          <item row="0" column="0"><widget class="QCheckBox" name="web_ui_enabled_check_box"><property name="text"><string>允许 Web UI（启动时运行）</string></property></widget></item>
           <item row="0" column="1" colspan="3"><widget class="QLabel" name="web_ui_status_label"><property name="text"><string>已停止</string></property></widget></item>
-          <item row="1" column="0"><widget class="QLabel" name="web_ui_bind_label"><property name="text"><string>绑定：</string></property></widget></item>
-          <item row="1" column="1"><widget class="QComboBox" name="web_ui_bind_combo_box"><item><property name="text"><string>仅本机（127.0.0.1）</string></property></item><item><property name="text"><string>LAN（指定地址）</string></property></item></widget></item>
-          <item row="1" column="2"><widget class="QLineEdit" name="web_ui_bind_address_line_edit"><property name="placeholderText"><string>例如 192.168.1.20</string></property><property name="toolTip"><string>LAN 必须填写具体本机地址，禁止 Any/0.0.0.0。</string></property></widget></item>
+          <item row="1" column="0"><widget class="QLabel" name="web_ui_bind_label"><property name="text"><string>监听地址：</string></property></widget></item>
+          <item row="1" column="1" colspan="3"><widget class="QLineEdit" name="web_ui_bind_address_line_edit"><property name="placeholderText"><string>127.0.0.1</string></property></widget></item>
           <item row="2" column="0"><widget class="QCheckBox" name="web_ui_automatic_port_check_box"><property name="text"><string>自动 TCP 端口</string></property></widget></item>
           <item row="2" column="1"><widget class="QSpinBox" name="web_ui_port_spin_box"><property name="minimum"><number>1024</number></property><property name="maximum"><number>65535</number></property><property name="value"><number>49200</number></property></widget></item>
-          <item row="2" column="2" colspan="2"><widget class="QLabel" name="web_ui_url_label"><property name="text"><string>实际 URL：—</string></property><property name="textInteractionFlags"><set>Qt::TextSelectableByMouse</set></property></widget></item>
+          <item row="2" column="2" colspan="2"><widget class="QLabel" name="web_ui_url_label"><property name="text"><string>URL：—</string></property><property name="textInteractionFlags"><set>Qt::TextSelectableByMouse</set></property></widget></item>
           <item row="2" column="4"><widget class="QPushButton" name="web_ui_open_push_button"><property name="text"><string>打开 URL</string></property></widget></item>
           <item row="2" column="5"><widget class="QPushButton" name="web_ui_restart_push_button"><property name="text"><string>重启服务</string></property></widget></item>
-          <item row="4" column="0" colspan="4"><widget class="QCheckBox" name="web_ui_frequency_control_check_box"><property name="text"><string>允许 Web 频率控制</string></property><property name="toolTip"><string>默认关闭；开启后仍须通过同源和安全状态检查，并等待实际频率回读。</string></property></widget></item>
-          <item row="5" column="0" colspan="4"><widget class="QCheckBox" name="web_ui_dx_control_check_box"><property name="text"><string>允许 Web 选择 DX</string></property><property name="toolTip"><string>默认关闭；开启后只能选择新鲜实时解码中的合法呼号，不进入双击、QSO 或 TX 流程。</string></property></widget></item>
-          <item row="6" column="0" colspan="4"><widget class="QCheckBox" name="web_ui_automation_control_check_box"><property name="text"><string>允许 Web CQ/AutoSeq 启停</string></property><property name="toolTip"><string>默认关闭；页面每次启停都需二次确认，仍须通过主程序状态门和业务状态回读，不代表已发射。</string></property></widget></item>
-          <item row="7" column="0" colspan="4"><widget class="QCheckBox" name="web_ui_radio_control_check_box"><property name="text"><string>允许 Web 电台操作面板</string></property><property name="toolTip"><string>默认关闭；只开放受限的 JTDX 现有操作入口，危险操作需页面确认并等待状态回读。</string></property></widget></item>
-          <item row="8" column="0" colspan="4"><widget class="QLabel" name="web_ui_help_label"><property name="wordWrap"><bool>true</bool></property><property name="text"><string>默认仅本机访问；LAN 必须选择具体地址并匹配精确 Origin。控制默认关闭，完成以实际状态回读为准。</string></property></widget></item>
          </layout>
         </widget>
        </item>

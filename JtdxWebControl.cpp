@@ -109,7 +109,7 @@ bool JtdxWebControl::safe_to_dispatch (SafetySnapshot const& safety, Operation o
   // watchdog path is active so the existing Halt/stop entry can quiesce it.
   // It does not unlock or start any unsafe path.
   if (operation == Operation::StopAutoCall) return true;
-  if (!safety.known || !safety.fresh) *reason = QStringLiteral ("safety_unknown_or_stale");
+  if (!safety.known) *reason = QStringLiteral ("safety_unknown");
   else if (!safety.rig_online) *reason = QStringLiteral ("rig_offline");
   else if (!safety.monitoring) *reason = QStringLiteral ("monitor_not_active");
   else if (safety.transmitting) *reason = QStringLiteral ("transmitting");
@@ -416,8 +416,6 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
   }
   if (shutdown_ || !server_epoch_bound_ || epoch_ != request_epoch)
     return reject (request, QStringLiteral ("epoch_changed"), 409);
-  if (current.state_revision != request.state_revision)
-    return reject (request, QStringLiteral ("state_revision_conflict"), 409);
   QString safety_reason;
   if (!safe_to_dispatch (current.safety, request.operation, &safety_reason)
       && !(request.operation == Operation::Radio && request.radio_action == QStringLiteral ("stop-tx")))
@@ -453,7 +451,7 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
   auto inserted = records_.find (request.request_id);
   inserted.value ().result.received_ms = record.received_ms;
   inserted.value ().result.deadline_ms = record.deadline_ms;
-  inserted.value ().result.initial_state_revision = request.state_revision;
+  inserted.value ().result.initial_state_revision = current.state_revision;
   inserted.value ().result.snapshot = current;
   inserted.value ().result.status_history.append (Status::Received);
 

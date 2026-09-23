@@ -30,7 +30,15 @@ int main (int argc, char ** argv)
 
   auto json = state.json_snapshot ();
   check (json.value (QStringLiteral ("rig_generation")).isNull (), "empty rig generation is null");
-  check (json.value (QStringLiteral ("freshness")).toString () == QStringLiteral ("unknown"), "empty state freshness");
+  check (!json.contains (QStringLiteral ("freshness"))
+             && !json.contains (QStringLiteral ("generated_at"))
+             && !json.contains (QStringLiteral ("stale_after_ms")),
+         "snapshot omits user-facing freshness and age fields");
+  state.set_cycle_clock_provider ([] { return qint64 {123456789}; }, [] { return 7.5; });
+  json = state.json_snapshot ();
+  check (json.value (QStringLiteral ("jtdx_time_ms")).toVariant ().toLongLong () == 123456789
+             && json.value (QStringLiteral ("cycle_period_ms")).toInt () == 7500,
+         "snapshot exposes the JTDX corrected clock and actual mode cycle period");
   check (json.value (QStringLiteral ("mode")).isNull (), "empty mode is null");
   check (json.value (QStringLiteral ("frequency")).isNull (), "empty CAT frequency is null");
   check (json.value (QStringLiteral ("recent_decodes")).isArray (), "decodes is an array");
@@ -48,7 +56,7 @@ int main (int argc, char ** argv)
                         false, QString {}, false, false);
   check (state.rig_generation () == 0, "status observation does not create rig generation");
   json = state.json_snapshot ();
-  check (json.value (QStringLiteral ("freshness")).toString () == QStringLiteral ("fresh"), "fresh status");
+  check (!json.contains (QStringLiteral ("freshness")), "status does not add a freshness display field");
   check (json.value (QStringLiteral ("target_frequency")).toDouble () == 14074000, "target frequency");
   check (json.value (QStringLiteral ("frequency")).isNull (), "target is not CAT frequency");
   check (json.value (QStringLiteral ("tx_enabled")).isBool (), "boolean JSON type");
@@ -103,7 +111,7 @@ int main (int argc, char ** argv)
          "empty candidate list keeps the new mode context");
   auto revision_after_status = state.revision ();
   state.advance_clock_for_test (5001);
-  check (state.json_snapshot ().value (QStringLiteral ("freshness")).toString () == QStringLiteral ("stale"), "stale status");
+  check (!state.json_snapshot ().contains (QStringLiteral ("freshness")), "elapsed time does not add a freshness display field");
 
   state.observe_rig (true, 14074123u, 14074150u, false);
   check (state.rig_generation () == 1, "first rig event increments rig generation");
@@ -135,30 +143,25 @@ int main (int argc, char ** argv)
   check (decodes.last ().toObject ().value (QStringLiteral ("callsign")).toString () == QStringLiteral ("N0CALL"), "decoded callsign is carried through");
   check (decodes.last ().toObject ().value (QStringLiteral ("grid")).toString () == QStringLiteral ("FN31"), "decoded grid is carried through");
   auto const live_decode_id = decodes.last ().toObject ().value (QStringLiteral ("decode_id")).toDouble ();
-  check (decodes.last ().toObject ().value (QStringLiteral ("fresh")).toBool (), "live decode starts fresh");
+  check (!decodes.last ().toObject ().contains (QStringLiteral ("fresh"))
+             && !decodes.last ().toObject ().contains (QStringLiteral ("age_ms")),
+         "decode rows omit freshness and age fields");
   state.advance_clock_for_test (5001);
 
-  auto before_replay = json.value (QStringLiteral ("last_decode_update"));
   int const before_replay_count = decodes.size ();
   state.observe_decode (false, QTime {0, 0, 2}, -5, 0.2f, 1, QStringLiteral ("FT8"),
                         QStringLiteral ("replay"), false, false);
-  check (state.json_snapshot ().value (QStringLiteral ("last_decode_update")) == before_replay,
-         "replay does not refresh decode freshness");
+  check (!state.json_snapshot ().contains (QStringLiteral ("last_decode_update")),
+         "decode replay does not expose a last-update clock");
   check (state.json_snapshot ().value (QStringLiteral ("recent_decodes")).toArray ().size () == before_replay_count,
          "replay does not grow decode buffer");
   state.observe_decode (true, QTime {0, 0, 3}, -5, 0.2f, 1, QStringLiteral ("FT8"),
                         QStringLiteral ("off-air"), false, true);
-  check (state.json_snapshot ().value (QStringLiteral ("last_decode_update")) == before_replay,
-         "off-air does not refresh decode freshness");
-  check (!state.json_snapshot ().value (QStringLiteral ("rig_fresh")).toBool (), "CAT state becomes stale");
-  bool live_decode_is_stale = false;
-  for (auto const& value : state.json_snapshot ().value (QStringLiteral ("recent_decodes")).toArray ())
-    {
-      auto const item = value.toObject ();
-      if (item.value (QStringLiteral ("decode_id")).toDouble () == live_decode_id)
-        live_decode_is_stale = !item.value (QStringLiteral ("fresh")).toBool ();
-    }
-  check (live_decode_is_stale, "the same live decode becomes stale");
+  check (!state.json_snapshot ().contains (QStringLiteral ("last_decode_update"))
+             && !state.json_snapshot ().contains (QStringLiteral ("rig_fresh")),
+         "off-air and elapsed observations do not create age fields");
+  check (state.decode_selection (static_cast<quint64> (live_decode_id), &selection),
+         "selection of a retained live decode has no Web snapshot-age timeout gate");
 
   auto before_clear = state.revision ();
   state.clear_decodes ();

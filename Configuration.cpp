@@ -900,12 +900,6 @@ private:
   bool web_ui_automatic_port_;
   port_type web_ui_port_;
   QString web_ui_bind_address_;
-  bool web_ui_allow_lan_;
-  QString web_ui_allowed_origin_;
-  bool web_ui_frequency_control_enabled_;
-  bool web_ui_dx_control_enabled_;
-  bool web_ui_automation_control_enabled_;
-  bool web_ui_radio_control_enabled_;
   bool enable_udp2_broadcast_;
   bool write_decoded_;
   bool write_decoded_debug_;
@@ -951,13 +945,12 @@ bool Configuration::web_ui_enabled () const {return m_->web_ui_enabled_;}
 bool Configuration::web_ui_automatic_port () const {return m_->web_ui_automatic_port_;}
 Configuration::port_type Configuration::web_ui_port () const {return m_->web_ui_port_;}
 QString Configuration::web_ui_bind_address () const {return m_->web_ui_bind_address_;}
-bool Configuration::web_ui_allow_lan () const {return m_->web_ui_allow_lan_;}
-QString Configuration::web_ui_allowed_origin () const {return m_->web_ui_allowed_origin_;}
-bool Configuration::web_ui_frequency_control_enabled () const {return m_->web_ui_frequency_control_enabled_;}
-bool Configuration::web_ui_dx_control_enabled () const {return m_->web_ui_dx_control_enabled_;}
-bool Configuration::web_ui_automation_control_enabled () const {return m_->web_ui_automation_control_enabled_;}
-bool Configuration::web_ui_radio_control_enabled () const {return m_->web_ui_radio_control_enabled_;}
-void Configuration::set_web_ui_enabled (bool enabled) { m_->web_ui_enabled_ = enabled; }
+void Configuration::set_web_ui_enabled (bool enabled)
+{
+  m_->web_ui_enabled_ = enabled;
+  m_->settings_->setValue ("WebUiEnabled", enabled);
+  m_->settings_->sync ();
+}
 void Configuration::set_web_ui_status (QString const& state, QString const& detail)
 {
   if (m_->ui_)
@@ -2287,13 +2280,6 @@ Radio::convert_dark("#fafbfe",useDarkStyle_),Radio::convert_dark("#dcdef1",useDa
   ui_->tcp_server_port_spin_box->setValue (tcp_server_port_);
   ui_->TCP_checkBox->setChecked (enable_tcp_connection_);
   ui_->web_ui_enabled_check_box->setChecked (web_ui_enabled_);
-  ui_->web_ui_frequency_control_check_box->setChecked (web_ui_frequency_control_enabled_);
-  ui_->web_ui_dx_control_check_box->setChecked (web_ui_dx_control_enabled_);
-  ui_->web_ui_automation_control_check_box->setChecked (web_ui_automation_control_enabled_);
-  ui_->web_ui_radio_control_check_box->setChecked (web_ui_radio_control_enabled_);
-  ui_->web_ui_frequency_control_check_box->setToolTip (
-      tr ("默认关闭；仅在确认 CAT 实际频率回读后允许 Web 客户端切换频率。"));
-  ui_->web_ui_bind_combo_box->setCurrentIndex (web_ui_allow_lan_ ? 1 : 0);
   ui_->web_ui_bind_address_line_edit->setText (web_ui_bind_address_);
   ui_->web_ui_automatic_port_check_box->setChecked (web_ui_automatic_port_);
   ui_->web_ui_port_spin_box->setValue (web_ui_port_ ? web_ui_port_ : 49200);
@@ -2781,7 +2767,7 @@ void Configuration::impl::read_settings ()
   if(settings_->value ("EnableTCPConnection").toString()=="false" || settings_->value ("EnableTCPConnection").toString()=="true")
     enable_tcp_connection_ = settings_->value("EnableTCPConnection").toBool ();
   else enable_tcp_connection_ = false;
-  web_ui_enabled_ = settings_->value ("WebUiEnabled", false).toBool ();
+  web_ui_enabled_ = settings_->value ("WebUiEnabled", true).toBool ();
   web_ui_automatic_port_ = settings_->value ("WebUiAutomaticPort", true).toBool ();
   bool web_ui_port_ok {false};
   auto const configured_web_ui_port = settings_->value ("WebUiPort", 49200).toUInt (&web_ui_port_ok);
@@ -2796,15 +2782,8 @@ void Configuration::impl::read_settings ()
       // 在缩窄为 quint16 前先校验；范围外的 INI 值不得回绕成另一个看似有效的端口。
       // 同时关闭 Web UI，避免已启用的实例意外启动。
       web_ui_port_ = 49200;
-      web_ui_enabled_ = false;
     }
   web_ui_bind_address_ = settings_->value ("WebUiBindAddress", "127.0.0.1").toString ();
-  web_ui_allow_lan_ = settings_->value ("WebUiAllowLan", false).toBool ();
-  web_ui_frequency_control_enabled_ = settings_->value ("WebUiFrequencyControlEnabled", false).toBool ();
-  web_ui_dx_control_enabled_ = settings_->value ("WebUiDxControlEnabled", false).toBool ();
-  web_ui_automation_control_enabled_ = settings_->value ("WebUiAutomationControlEnabled", false).toBool ();
-  web_ui_radio_control_enabled_ = settings_->value ("WebUiRadioControlEnabled", false).toBool ();
-  web_ui_allowed_origin_ = settings_->value ("WebUiAllowedOrigin").toString ().trimmed ();
 
   write_decoded_ = settings_->value ("WriteDecodedALLTXT", true).toBool ();
   write_decoded_debug_ = settings_->value ("WriteDecodedDebugALLTXT", false).toBool ();
@@ -3101,12 +3080,6 @@ void Configuration::impl::write_settings ()
   settings_->setValue ("WebUiAutomaticPort", web_ui_automatic_port_);
   settings_->setValue ("WebUiPort", web_ui_port_);
   settings_->setValue ("WebUiBindAddress", web_ui_bind_address_);
-  settings_->setValue ("WebUiAllowLan", web_ui_allow_lan_);
-  settings_->setValue ("WebUiFrequencyControlEnabled", web_ui_frequency_control_enabled_);
-  settings_->setValue ("WebUiDxControlEnabled", web_ui_dx_control_enabled_);
-  settings_->setValue ("WebUiAutomationControlEnabled", web_ui_automation_control_enabled_);
-  settings_->setValue ("WebUiRadioControlEnabled", web_ui_radio_control_enabled_);
-  settings_->setValue ("WebUiAllowedOrigin", web_ui_allowed_origin_);
   settings_->setValue ("WriteDecodedALLTXT", write_decoded_);
   settings_->setValue ("WriteDecodedDebugALLTXT", write_decoded_debug_);
   settings_->setValue ("udpWindowToFront", udpWindowToFront_);
@@ -3283,22 +3256,13 @@ bool Configuration::impl::validate ()
 {
   if (ui_->web_ui_enabled_check_box->isChecked ())
     {
-      bool const allow_lan = ui_->web_ui_bind_combo_box->currentIndex () == 1;
-      QString const bind = allow_lan ? ui_->web_ui_bind_address_line_edit->text ().trimmed ()
-                                     : QStringLiteral ("127.0.0.1");
+      QString const bind = ui_->web_ui_bind_address_line_edit->text ().trimmed ();
       QHostAddress address;
-      if (!address.setAddress (bind) || (!address.isLoopback () && !allow_lan)
-          || address.isNull () || address == QHostAddress::Any || address == QHostAddress::AnyIPv4
+      if (!address.setAddress (bind) || address.isNull ()
+          || address == QHostAddress::Any || address == QHostAddress::AnyIPv4
           || address == QHostAddress::AnyIPv6)
         {
-          message_box_critical (tr ("Web UI 绑定地址无效；LAN 必须使用具体本机地址。"));
-          return false;
-        }
-      if (!ui_->web_ui_automatic_port_check_box->isChecked ()
-          && (ui_->web_ui_port_spin_box->value () == ui_->udp_server_port_spin_box->value ()
-              || ui_->web_ui_port_spin_box->value () == ui_->udp2_server_port_spin_box->value ()))
-        {
-          message_box_critical (tr ("Web UI TCP 端口不能与已有 UDP 端口相同。"));
+          message_box_critical (tr ("Web UI 绑定地址无效；请填写具体地址。"));
           return false;
         }
     }
@@ -3796,21 +3760,9 @@ void Configuration::impl::accept ()
   accept_udp_requests_ = ui_->accept_udp_requests_check_box->isChecked ();
   enable_tcp_connection_ = ui_->TCP_checkBox->isChecked ();
   web_ui_enabled_ = ui_->web_ui_enabled_check_box->isChecked ();
-  web_ui_frequency_control_enabled_ = ui_->web_ui_frequency_control_check_box->isChecked ();
-  web_ui_dx_control_enabled_ = ui_->web_ui_dx_control_check_box->isChecked ();
-  web_ui_automation_control_enabled_ = ui_->web_ui_automation_control_check_box->isChecked ();
-  web_ui_radio_control_enabled_ = ui_->web_ui_radio_control_check_box->isChecked ();
   web_ui_automatic_port_ = ui_->web_ui_automatic_port_check_box->isChecked ();
   web_ui_port_ = static_cast<port_type> (ui_->web_ui_port_spin_box->value ());
-  web_ui_allow_lan_ = ui_->web_ui_bind_combo_box->currentIndex () == 1;
-  web_ui_bind_address_ = web_ui_allow_lan_ ? ui_->web_ui_bind_address_line_edit->text ().trimmed ()
-                                           : QStringLiteral ("127.0.0.1");
-  QString origin_host = web_ui_bind_address_;
-  QHostAddress origin_address;
-  if (origin_address.setAddress (origin_host)
-      && origin_address.protocol () == QAbstractSocket::IPv6Protocol)
-    origin_host = QStringLiteral ("[") + origin_host + QStringLiteral ("]");
-  web_ui_allowed_origin_ = QStringLiteral ("http://") + origin_host;
+  web_ui_bind_address_ = ui_->web_ui_bind_address_line_edit->text ().trimmed ();
   write_decoded_ = ui_->write_decoded_check_box->isChecked ();
   write_decoded_debug_ = ui_->write_decoded_debug_check_box->isChecked ();
   udpWindowToFront_ = ui_->udpWindowToFront->isChecked ();

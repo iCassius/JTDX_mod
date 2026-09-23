@@ -32,13 +32,7 @@ public:
     QHostAddress bind_address {QHostAddress::LocalHost};
     quint16 port {0};                 // 0 = 自动端口；手动端口必须为 1024..65535
     bool automatic_port {true};
-    bool allow_lan {false};           // 非 loopback 绑定必须显式开启
     QSet<quint16> udp_ports;          // 仅排除数字，不执行 UDP bind
-    QString allowed_origin;            // LAN 时必须精确匹配；空值拒绝 Origin
-    bool enable_frequency_control {false}; // 仅显式开启时允许频率 POST
-    bool enable_dx_control {false}; // 仅显式开启时允许选择 DX POST
-    bool enable_automation_control {false}; // 仅显式开启时允许 CQ/AutoSeq 控制 POST
-    bool enable_radio_control {false}; // 仅显式开启时允许受限电台面板 action POST
   };
 
   static constexpr quint16 automatic_port_first = 49152;
@@ -88,8 +82,6 @@ private:
   bool choose_and_listen (Configuration const& configuration);
   bool listen_on (QHostAddress const& address, quint16 port);
   bool validate_configuration (Configuration const& configuration, QString * error) const;
-  bool host_allowed (QByteArray const& host) const;
-  bool origin_allowed (QByteArray const& origin) const;
   QByteArray event_id () const;
   QJsonObject state_snapshot () const;
   QJsonObject operation_result (JtdxWebControl::Result const& result) const;

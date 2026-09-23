@@ -12,6 +12,7 @@
 #include <QTime>
 #include <QString>
 #include <QStringList>
+#include <functional>
 
 #include <utility>
 
@@ -106,6 +107,8 @@ public:
   void set_frequency_candidates (QString const& mode, QString const& region,
                                  FrequencyCandidates const& candidates);
   void clear_decodes ();
+  void set_cycle_clock_provider (std::function<qint64 ()> jtdx_time_ms,
+                                 std::function<double ()> cycle_period_seconds);
 
   // 测试时使用单调时钟，避免墙上时钟调整影响新鲜度断言。
   void set_clock_for_test (qint64 monotonic_ms);
@@ -147,6 +150,8 @@ private:
   QString application_version_;
   QString instance_id_;
   QElapsedTimer clock_;
+  std::function<qint64 ()> jtdx_time_provider_;
+  std::function<double ()> cycle_period_provider_;
   bool test_clock_ {false};
   qint64 test_now_ms_ {0};
   int decode_limit_ {default_decode_limit};

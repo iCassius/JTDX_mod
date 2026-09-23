@@ -25,7 +25,6 @@ public:
   struct SafetySnapshot
   {
     bool known {false};
-    bool fresh {false};
     bool transmitting {false};
     bool ptt {false};
     bool tx_enabled {false};

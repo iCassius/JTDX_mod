@@ -23,7 +23,6 @@ namespace
   {
     Control::ObservedState state;
     state.safety.known = true;
-    state.safety.fresh = true;
     state.safety.business_state_known = true;
     state.safety.rig_online = true;
     state.safety.monitoring = true;
@@ -65,10 +64,20 @@ int main ()
   unsafe.safety.known = false;
   control.set_observed_state (unsafe);
   auto rejected = control.submit (frequency_request (control, QStringLiteral ("unknown"), 14074000));
-  check (rejected.status == Control::Status::Rejected && rejected.reason == QStringLiteral ("safety_unknown_or_stale"),
+  check (rejected.status == Control::Status::Rejected && rejected.reason == QStringLiteral ("safety_unknown"),
          "unknown safety fails closed");
   check (rejected.received_ms == 1000 && rejected.snapshot.state_revision == 1,
          "rejected result preserves bounded timestamp and cached observation");
+  control.set_observed_state (safe_state (1));
+  auto aged_but_known = safe_state (1);
+  Control aged_state_control {100};
+  bind_fixture_epoch (aged_state_control);
+  aged_state_control.set_clock_for_test (1000);
+  aged_state_control.set_observed_state (aged_but_known);
+  aged_state_control.set_frequency_dispatcher ([] (Control::Dispatch const&) {});
+  check (aged_state_control.submit (frequency_request (aged_state_control,
+              QStringLiteral ("aged-known"), 14074000)).status == Control::Status::Pending,
+         "known native safety state remains admissible without a Web snapshot-age gate");
   control.set_observed_state (safe_state (1));
 
   Control startup_gate {100};

@@ -42,7 +42,6 @@ namespace
   {
     JtdxWebControl::ObservedState state;
     state.safety.known = true;
-    state.safety.fresh = true;
     state.safety.rig_online = true;
     state.safety.monitoring = true;
     state.safety.business_state_known = true;

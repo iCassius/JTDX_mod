@@ -88,18 +88,12 @@ JtdxWebServer::~JtdxWebServer ()
 bool JtdxWebServer::validate_configuration (Configuration const& configuration,
                                              QString * error) const
 {
-  bool const loopback = configuration.bind_address.isLoopback ();
-  if (!loopback && !configuration.allow_lan)
+  if (configuration.bind_address.isNull ()
+      || configuration.bind_address == QHostAddress::Any
+      || configuration.bind_address == QHostAddress::AnyIPv4
+      || configuration.bind_address == QHostAddress::AnyIPv6)
     {
-      if (error) *error = QStringLiteral ("LAN binding requires allow_lan");
-      return false;
-    }
-  if (configuration.allow_lan
-      && (configuration.bind_address == QHostAddress::Any
-          || configuration.bind_address == QHostAddress::AnyIPv4
-          || configuration.bind_address == QHostAddress::AnyIPv6))
-    {
-      if (error) *error = QStringLiteral ("P2 LAN binding requires an explicit local address");
+      if (error) *error = QStringLiteral ("a concrete listen address is required");
       return false;
     }
   if (configuration.automatic_port)
@@ -119,25 +113,6 @@ bool JtdxWebServer::validate_configuration (Configuration const& configuration,
     {
       if (error) *error = QStringLiteral ("web port is reserved by UDP configuration");
       return false;
-    }
-  if (configuration.allow_lan && configuration.allowed_origin.isEmpty())
-    {
-      if (error) *error = QStringLiteral ("LAN binding requires an exact allowed_origin");
-      return false;
-    }
-  if (configuration.allow_lan)
-    {
-      QUrl const origin {configuration.allowed_origin};
-      QString const expected_host = configuration.bind_address.toString ();
-      if (!origin.isValid () || origin.scheme () != QStringLiteral ("http")
-          || origin.host ().compare (expected_host, Qt::CaseInsensitive) != 0
-          || !origin.userInfo ().isEmpty () || !origin.query ().isEmpty ()
-          || (origin.path () != QString {} && origin.path () != QStringLiteral ("/"))
-          || origin.fragment () != QString {})
-        {
-          if (error) *error = QStringLiteral ("allowed_origin must be http and match the bind address");
-          return false;
-        }
     }
   return true;
 }
@@ -487,68 +462,6 @@ void JtdxWebServer::on_ready_read (QTcpSocket * socket)
   process_request (socket, request);
 }
 
-bool JtdxWebServer::host_allowed (QByteArray const& host) const
-{
-  QString value = QString::fromUtf8 (host).trimmed ();
-  if (value.isEmpty () || value.contains (QRegExp (QStringLiteral ("[\\s/@,]")))) return false;
-  QString hostname;
-  QString port;
-  if (value.startsWith (QChar {'['}))
-    {
-      int const close = value.indexOf (QChar {']'});
-      if (close < 0 || close + 1 >= value.size () || value.at (close + 1) != QChar {':'}) return false;
-      hostname = value.mid (1, close - 1);
-      port = value.mid (close + 2);
-    }
-  else
-    {
-      int const colon = value.lastIndexOf (QChar {':'});
-      if (colon <= 0) return false;
-      hostname = value.left (colon);
-      port = value.mid (colon + 1);
-      if (hostname.contains (QChar {':'})) return false;
-    }
-  bool ok = false;
-  quint16 const parsed_port = port.toUShort (&ok);
-  if (!ok || parsed_port != actual_port_ || hostname.isEmpty ()) return false;
-  if (!configuration_.allow_lan)
-    {
-      return hostname.compare (QStringLiteral ("localhost"), Qt::CaseInsensitive) == 0
-          || hostname == QStringLiteral ("127.0.0.1")
-          || hostname == QStringLiteral ("::1");
-    }
-  if (hostname == QStringLiteral ("0.0.0.0") || hostname == QStringLiteral ("::")) return false;
-  bool const any_address = configuration_.bind_address == QHostAddress::Any
-      || configuration_.bind_address == QHostAddress::AnyIPv4
-      || configuration_.bind_address == QHostAddress::AnyIPv6;
-  QString expected = configuration_.bind_address.toString ();
-  if (!any_address)
-    return hostname.compare (expected, Qt::CaseInsensitive) == 0;
-  QUrl const origin {configuration_.allowed_origin};
-  return origin.isValid () && hostname.compare (origin.host (), Qt::CaseInsensitive) == 0;
-}
-
-bool JtdxWebServer::origin_allowed (QByteArray const& origin) const
-{
-  if (origin.isEmpty ()) return true;
-  QString const value = QString::fromUtf8 (origin);
-  if (configuration_.allow_lan)
-    {
-      QUrl const origin {configuration_.allowed_origin};
-      QString expected = origin.scheme () + QStringLiteral ("://");
-      QString host = configuration_.bind_address.toString ();
-      if (configuration_.bind_address.protocol () == QAbstractSocket::IPv6Protocol)
-        host = QStringLiteral ("[") + host + QStringLiteral ("]");
-      expected += host + QStringLiteral (":") + QString::number (actual_port_);
-      return value == expected;
-    }
-  QString const base = url ();
-  QString const local = QStringLiteral ("http://localhost:") + QString::number (actual_port_);
-  QString const ipv4 = QStringLiteral ("http://127.0.0.1:") + QString::number (actual_port_);
-  QString const ipv6 = QStringLiteral ("http://[::1]:") + QString::number (actual_port_);
-  return value == base || value == local || value == ipv4 || value == ipv6;
-}
-
 QByteArray JtdxWebServer::event_id () const
 {
   QByteArray const material = QByteArray::number (state_ ? state_->revision () : 0)
@@ -642,33 +555,6 @@ QJsonObject JtdxWebServer::state_snapshot () const
 {
   QJsonObject snapshot = state_ ? state_->json_snapshot () : QJsonObject {};
   snapshot.insert (QStringLiteral ("server_epoch"), server_epoch_);
-  snapshot.insert (QStringLiteral ("web_server_state"), web_server_state_);
-  snapshot.insert (QStringLiteral ("frequency_control_enabled"),
-                   configuration_.enable_frequency_control
-                   && control_
-                   && control_->server_epoch_bound ()
-                   && control_->server_epoch () == server_epoch_
-                   && !control_->is_shutdown ()
-                   && static_cast<bool> (frequency_validator_));
-  snapshot.insert (QStringLiteral ("dx_control_enabled"),
-                   configuration_.enable_dx_control
-                   && control_
-                   && control_->server_epoch_bound ()
-                   && control_->server_epoch () == server_epoch_
-                   && !control_->is_shutdown ()
-                   && static_cast<bool> (state_));
-  snapshot.insert (QStringLiteral ("automation_control_enabled"),
-                   configuration_.enable_automation_control
-                   && control_
-                   && control_->server_epoch_bound ()
-                   && control_->server_epoch () == server_epoch_
-                   && !control_->is_shutdown ()
-                   && static_cast<bool> (state_));
-  snapshot.insert (QStringLiteral ("radio_control_enabled"),
-                   configuration_.enable_radio_control
-                   && control_ && control_->server_epoch_bound ()
-                   && control_->server_epoch () == server_epoch_
-                   && !control_->is_shutdown () && static_cast<bool> (state_));
   QJsonObject const operations = operations_snapshot ();
   snapshot.insert (QStringLiteral ("operation_revision"), operations.value (QStringLiteral ("operation_revision")));
   snapshot.insert (QStringLiteral ("operations"), operations.value (QStringLiteral ("operations")));
@@ -900,16 +786,6 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
         }
       headers.insert (name, value);
     }
-  if (!headers.contains (QByteArrayLiteral ("host")) || !host_allowed (headers.value (QByteArrayLiteral ("host"))))
-    {
-      reject_connection (socket, 400, QByteArrayLiteral ("invalid host"));
-      return;
-    }
-  if (!origin_allowed (headers.value (QByteArrayLiteral ("origin"))))
-    {
-      reject_connection (socket, 403, QByteArrayLiteral ("origin denied"));
-      return;
-    }
   if (headers.contains (QByteArrayLiteral ("transfer-encoding"))
       || headers.contains (QByteArrayLiteral ("expect"))
       || headers.contains (QByteArrayLiteral ("upgrade")))
@@ -937,17 +813,6 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
   if (method == QByteArrayLiteral ("POST") && !headers.contains (QByteArrayLiteral ("content-length")))
     {
       reject_connection (socket, 400, QByteArrayLiteral ("content-length is required"));
-      return;
-    }
-  if (method == QByteArrayLiteral ("POST") && !origin_allowed (headers.value (QByteArrayLiteral ("origin"))))
-    {
-      reject_connection (socket, 403, QByteArrayLiteral ("same-origin Origin is required"));
-      return;
-    }
-  if (method == QByteArrayLiteral ("POST") && (!headers.contains (QByteArrayLiteral ("origin"))
-                                                || headers.value (QByteArrayLiteral ("origin")).isEmpty ()))
-    {
-      reject_connection (socket, 403, QByteArrayLiteral ("same-origin Origin is required"));
       return;
     }
   QByteArray const path = target;
@@ -985,7 +850,6 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
           ? JtdxWebControl::Operation::StartCq
           : path.endsWith (QByteArrayLiteral ("start-auto-call"))
             ? JtdxWebControl::Operation::StartAutoCall : JtdxWebControl::Operation::StopAutoCall;
-      constexpr double max_safe_json_integer = 9007199254740991.0;
       bool const valid_utf8_body = !body.isEmpty () && body.size () <= 4096
           && QString::fromUtf8 (body).toUtf8 () == body;
       QJsonParseError parse_error {};
@@ -1005,7 +869,6 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
                    json_response (control_error_response (status, std::move (reason),
                                                          trusted_request_id, operation)));
       };
-      if (!configuration_.enable_automation_control) { reject_control (409, QStringLiteral ("automation_control_disabled")); return; }
       if (!control_ || !state_) { reject_control (409, QStringLiteral ("control_unavailable")); return; }
       if (!valid_utf8_body || !parsed_object) { reject_control (400, QStringLiteral ("invalid_json")); return; }
       QJsonObject const input = document.object ();
@@ -1013,19 +876,12 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
                                          QStringLiteral ("state_revision"), QStringLiteral ("confirm")};
       for (QString const& key : input.keys ())
         if (!fields.contains (key)) { reject_control (400, QStringLiteral ("unknown_json_field")); return; }
-      if (trusted_request_id.isEmpty () || !input.value (QStringLiteral ("server_epoch")).isString ()
-          || !input.value (QStringLiteral ("state_revision")).isDouble ()
-          || input.value (QStringLiteral ("confirm")).toBool () != true
-          || !input.value (QStringLiteral ("confirm")).isBool ())
-        { reject_control (400, QStringLiteral ("confirmation_required")); return; }
-      double const revision_number = input.value (QStringLiteral ("state_revision")).toDouble ();
-      if (!std::isfinite (revision_number) || revision_number < 0 || revision_number > max_safe_json_integer
-          || revision_number != std::floor (revision_number))
-        { reject_control (400, QStringLiteral ("invalid_state_revision")); return; }
+      if (trusted_request_id.isEmpty () || !input.value (QStringLiteral ("server_epoch")).isString ())
+        { reject_control (400, QStringLiteral ("invalid_control_fields")); return; }
       JtdxWebControl::Request control_request;
       control_request.request_id = input.value (QStringLiteral ("request_id")).toString ();
       control_request.server_epoch = input.value (QStringLiteral ("server_epoch")).toString ();
-      control_request.state_revision = static_cast<quint64> (revision_number);
+      control_request.state_revision = 0;
       control_request.operation = operation;
       auto const result = control_->submit (std::move (control_request));
       send_http (socket, result.http_status, status_reason (result.http_status),
@@ -1034,7 +890,6 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
     }
   if (method == QByteArrayLiteral ("POST") && path == QByteArrayLiteral ("/api/v1/control/radio"))
     {
-      constexpr double max_safe_json_integer = 9007199254740991.0;
       bool const valid_utf8_body = !body.isEmpty () && body.size () <= 4096
           && QString::fromUtf8 (body).toUtf8 () == body;
       QJsonParseError parse_error {};
@@ -1054,7 +909,6 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
                    json_response (control_error_response (status, std::move (reason),
                                                          trusted_request_id, JtdxWebControl::Operation::Radio)));
       };
-      if (!configuration_.enable_radio_control) { reject_control (409, QStringLiteral ("radio_control_disabled")); return; }
       if (!control_ || !state_) { reject_control (409, QStringLiteral ("control_unavailable")); return; }
       if (!valid_utf8_body || !parsed_object) { reject_control (400, QStringLiteral ("invalid_json")); return; }
       QJsonObject const input = document.object ();
@@ -1066,20 +920,9 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
       for (QString const& key : input.keys ())
         if (!fields.contains (key)) { reject_control (400, QStringLiteral ("unknown_json_field")); return; }
       if (trusted_request_id.isEmpty () || !input.value (QStringLiteral ("server_epoch")).isString ()
-          || !input.value (QStringLiteral ("state_revision")).isDouble ()
           || !input.value (QStringLiteral ("action")).isString ())
         { reject_control (400, QStringLiteral ("invalid_control_fields")); return; }
-      double const revision_number = input.value (QStringLiteral ("state_revision")).toDouble ();
-      if (!std::isfinite (revision_number) || revision_number < 0 || revision_number > max_safe_json_integer
-          || revision_number != std::floor (revision_number))
-        { reject_control (400, QStringLiteral ("invalid_state_revision")); return; }
       QString const action = input.value (QStringLiteral ("action")).toString ().trimmed ();
-      static const QSet<QString> dangerous {QStringLiteral ("enable-tx"), QStringLiteral ("stop-tx"),
-                                             QStringLiteral ("log-qso-confirm"), QStringLiteral ("cq")};
-      if (dangerous.contains (action)
-          && (!input.value (QStringLiteral ("confirm")).isBool ()
-              || !input.value (QStringLiteral ("confirm")).toBool ()))
-        { reject_control (400, QStringLiteral ("confirmation_required")); return; }
       int tx_index = input.value (QStringLiteral ("tx_index")).toInt (0);
       if (input.contains (QStringLiteral ("tx_index"))
           && (!input.value (QStringLiteral ("tx_index")).isDouble () || tx_index < 0 || tx_index > 6))
@@ -1122,7 +965,7 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
       JtdxWebControl::Request control_request;
       control_request.request_id = input.value (QStringLiteral ("request_id")).toString ();
       control_request.server_epoch = input.value (QStringLiteral ("server_epoch")).toString ();
-      control_request.state_revision = static_cast<quint64> (revision_number);
+      control_request.state_revision = 0;
       control_request.operation = JtdxWebControl::Operation::Radio;
       control_request.radio_action = action;
       control_request.radio_value = input.value (QStringLiteral ("value")).toBool (false);
@@ -1136,7 +979,6 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
     }
   if (method == QByteArrayLiteral ("POST") && path == QByteArrayLiteral ("/api/v1/control/select-dx"))
     {
-      constexpr double max_safe_json_integer = 9007199254740991.0;
       bool const valid_utf8_body = !body.isEmpty () && body.size () <= 4096
           && QString::fromUtf8 (body).toUtf8 () == body;
       QJsonParseError parse_error {};
@@ -1159,11 +1001,6 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
                                                          std::move (effective_request_id),
                                                          JtdxWebControl::Operation::SelectDx)));
       };
-      if (!configuration_.enable_dx_control)
-        {
-          reject_control (409, QStringLiteral ("dx_control_disabled"));
-          return;
-        }
       if (!control_ || !state_)
         {
           reject_control (409, QStringLiteral ("control_unavailable"));
@@ -1182,7 +1019,8 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
       QJsonObject const input = document.object ();
       static const QSet<QString> fields {
         QStringLiteral ("request_id"), QStringLiteral ("server_epoch"),
-        QStringLiteral ("state_revision"), QStringLiteral ("decode_id")};
+        QStringLiteral ("state_revision"), QStringLiteral ("decode_id"),
+        QStringLiteral ("call"), QStringLiteral ("grid")};
       for (QString const& key : input.keys ())
         if (!fields.contains (key))
           {
@@ -1191,31 +1029,31 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
           }
       if (!input.value (QStringLiteral ("request_id")).isString ()
           || !input.value (QStringLiteral ("server_epoch")).isString ()
-          || !input.value (QStringLiteral ("state_revision")).isDouble ()
-          || !input.value (QStringLiteral ("decode_id")).isDouble ()
+          || (!input.value (QStringLiteral ("decode_id")).isDouble ()
+              && (!input.value (QStringLiteral ("call")).isString ()
+                  || !input.value (QStringLiteral ("grid")).isString ()))
           || trusted_request_id.isEmpty ())
         {
           reject_control (400, QStringLiteral ("invalid_control_fields"));
           return;
         }
-      double const revision_number = input.value (QStringLiteral ("state_revision")).toDouble ();
       double const decode_id_number = input.value (QStringLiteral ("decode_id")).toDouble ();
-      if (!std::isfinite (revision_number) || revision_number < 0
-          || revision_number > max_safe_json_integer || revision_number != std::floor (revision_number)
-          || !std::isfinite (decode_id_number) || decode_id_number <= 0
-          || decode_id_number > max_safe_json_integer || decode_id_number != std::floor (decode_id_number))
+      bool const from_decode = input.value (QStringLiteral ("decode_id")).isDouble ();
+      if (from_decode && (!std::isfinite (decode_id_number) || decode_id_number <= 0
+          || decode_id_number > 9007199254740991.0 || decode_id_number != std::floor (decode_id_number)))
         {
           reject_control (400, QStringLiteral ("invalid_control_number"));
           return;
         }
       JtdxWebState::DecodeSelection selection;
-      quint64 const decode_id = static_cast<quint64> (decode_id_number);
-      if (!state_->decode_selection (decode_id, &selection))
+      if (from_decode && !state_->decode_selection (static_cast<quint64> (decode_id_number), &selection))
         {
           reject_control (409, QStringLiteral ("invalid_or_stale_decode"));
           return;
         }
-      auto const normalized = JtdxWebDx::normalize (selection.call, selection.grid);
+      QString const dx_call = from_decode ? selection.call : input.value (QStringLiteral ("call")).toString ();
+      QString const dx_grid = from_decode ? selection.grid : input.value (QStringLiteral ("grid")).toString ();
+      auto const normalized = JtdxWebDx::normalize (dx_call, dx_grid);
       if (!normalized.valid)
         {
           reject_control (400, normalized.reason);
@@ -1224,14 +1062,14 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
       JtdxWebControl::Request control_request;
       control_request.request_id = input.value (QStringLiteral ("request_id")).toString ();
       control_request.server_epoch = input.value (QStringLiteral ("server_epoch")).toString ();
-      control_request.state_revision = static_cast<quint64> (revision_number);
+      control_request.state_revision = 0;
       control_request.operation = JtdxWebControl::Operation::SelectDx;
       control_request.dx_call = normalized.call;
       control_request.dx_grid = normalized.grid;
-      control_request.dx_frequency_offset = selection.delta_frequency;
-      control_request.dx_time = selection.time;
-      control_request.dx_selection_source = QStringLiteral ("decode");
-      control_request.dx_source_decode_id = selection.decode_id;
+      control_request.dx_frequency_offset = from_decode ? selection.delta_frequency : 0;
+      control_request.dx_time = from_decode ? selection.time : QString {};
+      control_request.dx_selection_source = from_decode ? QStringLiteral ("decode") : QStringLiteral ("manual");
+      control_request.dx_source_decode_id = from_decode ? selection.decode_id : 0;
       auto const result = control_->submit (std::move (control_request));
       send_http (socket, result.http_status, status_reason (result.http_status),
                  QByteArrayLiteral ("application/json"), json_response (control_response (result)));
@@ -1263,11 +1101,6 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
                    json_response (control_error_response (status, std::move (reason),
                                                          std::move (effective_request_id))));
       };
-      if (!configuration_.enable_frequency_control)
-        {
-          reject_control (409, QStringLiteral ("frequency_control_disabled"));
-          return;
-        }
       if (!control_)
         {
           reject_control (409, QStringLiteral ("control_unavailable"));
@@ -1290,8 +1123,8 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
         }
       QJsonObject const input = document.object ();
       static const QSet<QString> fields {
-        QStringLiteral ("request_id"), QStringLiteral ("server_epoch"),
-        QStringLiteral ("state_revision"), QStringLiteral ("frequency_hz")};
+        QStringLiteral ("request_id"), QStringLiteral ("server_epoch"), QStringLiteral ("state_revision"),
+        QStringLiteral ("frequency_hz")};
       for (QString const& key : input.keys ())
         if (!fields.contains (key))
           {
@@ -1300,8 +1133,7 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
           }
       if (!input.value (QStringLiteral ("request_id")).isString ()
           || !input.value (QStringLiteral ("server_epoch")).isString ()
-          || !input.value (QStringLiteral ("frequency_hz")).isString ()
-          || !input.value (QStringLiteral ("state_revision")).isDouble ())
+          || !input.value (QStringLiteral ("frequency_hz")).isString ())
         {
           reject_control (400, QStringLiteral ("invalid_control_fields"));
           return;
@@ -1309,15 +1141,6 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
       if (trusted_request_id.isEmpty ())
         {
           reject_control (400, QStringLiteral ("invalid_request_id"));
-          return;
-        }
-      double const revision_number = input.value (QStringLiteral ("state_revision")).toDouble ();
-      constexpr double max_safe_json_integer = 9007199254740991.0;
-      if (!std::isfinite (revision_number) || revision_number < 0
-          || revision_number > max_safe_json_integer
-          || revision_number != std::floor (revision_number))
-        {
-          reject_control (400, QStringLiteral ("invalid_state_revision"));
           return;
         }
       QString const frequency_text = input.value (QStringLiteral ("frequency_hz")).toString ();
@@ -1331,7 +1154,7 @@ void JtdxWebServer::process_request (QTcpSocket * socket, QByteArray const& requ
       JtdxWebControl::Request control_request;
       control_request.request_id = input.value (QStringLiteral ("request_id")).toString ();
       control_request.server_epoch = input.value (QStringLiteral ("server_epoch")).toString ();
-      control_request.state_revision = static_cast<quint64> (revision_number);
+      control_request.state_revision = 0;
       control_request.frequency_hz = frequency_hz;
       control_request.operation = JtdxWebControl::Operation::Frequency;
       auto const result = control_->submit (std::move (control_request));

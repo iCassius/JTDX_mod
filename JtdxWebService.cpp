@@ -29,11 +29,7 @@ QString JtdxWebService::signature (JtdxWebServer::Configuration const& configura
   udp_ports.sort ();
   return QStringList {
     QString::number (configuration.automatic_port), QString::number (configuration.port),
-    configuration.bind_address.toString (), QString::number (configuration.allow_lan),
-    configuration.allowed_origin,
-    QString::number (configuration.enable_frequency_control),
-    QString::number (configuration.enable_dx_control),
-    QString::number (configuration.enable_automation_control),
+    configuration.bind_address.toString (),
     udp_ports.join (QStringLiteral (","))}.join (QChar {'|'});
 }
 

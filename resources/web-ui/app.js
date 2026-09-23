@@ -1,15 +1,10 @@
 (function () {
   "use strict";
 
-  const MAX_OPERATION_ROWS = 128;
-  const DISPLAY_OPERATION_ROWS = 20;
   let lastId = "";
-  let lastUpdate = 0;
   let controller = null;
   let running = false;
   let runId = 0;
-  let operationEpoch = null;
-  let operationRows = [];
   let currentSnapshot = null;
   let qsoDraftEditGeneration = null;
   let qsoDraftDirty = false;
@@ -26,11 +21,12 @@
   let radioRequest = null;
   let radioUnknown = false;
   let radioAbort = null;
-  let confirmationResolver = null;
-  let confirmationPreviousFocus = null;
   let connectionSession = 0;
   let connected = false;
   let frequencyCandidates = [];
+  let cycleAnchorJtdx = null;
+  let cycleAnchorPerformance = null;
+  let cyclePeriodMs = 15000;
 
   const el = (id) => document.getElementById(id);
   const text = (id, value) => {
@@ -40,29 +36,13 @@
 
   if (location.hash === "#fixture") el("demo_notice").hidden = false;
 
-  function setOperationsFreshness(kind, message) {
-    const card = el("operations_card");
-    const meta = el("operations_meta");
-    if (!card || !meta) return;
-    card.classList.toggle("stale", kind === "stale");
-    card.classList.toggle("unknown", kind === "unknown");
-    meta.textContent = message;
-  }
-
   function setConnected(yes) {
     connected = yes;
     const connection = el("connection");
     connection.textContent = yes ? "已连接" : "未连接";
     connection.classList.toggle("ok", yes);
     if (!yes) {
-      if (lastUpdate) {
-        text("online", "未连接（旧快照）");
-        text("freshness", "连接断开");
-        text("frequency_freshness", "连接断开");
-        setOperationsFreshness("stale", "连接断开，保留旧操作快照");
-      } else {
-        setOperationsFreshness("unknown", "未取得操作快照");
-      }
+      text("online", "未连接");
     }
     updateFrequencyForm();
     updateDxControls();
@@ -71,13 +51,6 @@
 
   function bool(value) {
     return value == null ? "未知" : value ? "是" : "否";
-  }
-
-  function age(value) {
-    if (value == null) return null;
-    const timestamp = Date.parse(value);
-    if (!Number.isFinite(timestamp)) return null;
-    return Math.max(0, Math.round((Date.now() - timestamp) / 1000)) + " 秒前";
   }
 
   function boundedString(value, limit) {
@@ -101,19 +74,10 @@
   }
 
   function frequencyInputToHz(value) {
-    if (typeof value !== "string" || !/^(?:0|[1-9]\d*)(?:\.\d{1,6})?$/.test(value)) return null;
-    const parts = value.split(".");
-    const whole = parts[0];
-    const fraction = (parts[1] || "").padEnd(6, "0");
-    const hz = (whole + fraction).replace(/^0+/, "");
-    return hz && hz.length <= 19 ? hz : null;
-  }
-
-  function frequencyHzToMhz(value) {
-    const hz = canonicalHz(value);
-    if (!hz) return null;
-    const padded = hz.padStart(7, "0");
-    return padded.slice(0, -6) + "." + padded.slice(-6);
+    const hz = canonicalHz(typeof value === "string" ? value.trim() : "");
+    if (!hz || hz.length > 8) return null;
+    const parsed = Number(hz);
+    return Number.isSafeInteger(parsed) && parsed >= 100000 && parsed <= 60000000 ? hz : null;
   }
 
   function frequencyCandidateLess(lhs, rhs) {
@@ -172,8 +136,7 @@
     presetSelect.replaceChildren();
     addOption(presetSelect, "", "选择常用频率");
     filtered.forEach((row) => {
-      const mhz = frequencyHzToMhz(row.hz);
-      if (mhz) addOption(presetSelect, row.hz, mhz + " MHz · " + row.band);
+      addOption(presetSelect, row.hz, row.hz + " Hz · " + row.band);
     });
     const validPreset = filtered.some((row) => row.hz === previousPreset);
     presetSelect.value = validPreset ? previousPreset : "";
@@ -235,53 +198,6 @@
     node.className = "frequency-result " + (kind || "");
   }
 
-  function finishConfirmation(accepted) {
-    const resolver = confirmationResolver;
-    if (!resolver) return;
-    confirmationResolver = null;
-    const previousFocus = confirmationPreviousFocus;
-    confirmationPreviousFocus = null;
-    const dialog = el("confirm_dialog");
-    if (dialog) dialog.hidden = true;
-    if (previousFocus && typeof previousFocus.focus === "function") previousFocus.focus();
-    resolver(accepted);
-  }
-
-  function requestConfirmation(title, message) {
-    if (confirmationResolver) return Promise.resolve(false);
-    const dialog = el("confirm_dialog");
-    const titleNode = el("confirm_title");
-    const messageNode = el("confirm_message");
-    const cancel = el("confirm_cancel");
-    if (!dialog || !titleNode || !messageNode || !cancel) return Promise.resolve(false);
-    titleNode.textContent = title;
-    messageNode.textContent = message;
-    confirmationPreviousFocus = document.activeElement;
-    dialog.hidden = false;
-    cancel.focus();
-    return new Promise((resolve) => { confirmationResolver = resolve; });
-  }
-
-  function handleConfirmationKeydown(event) {
-    if (!confirmationResolver) return;
-    if (event.key === "Escape") {
-      event.preventDefault();
-      finishConfirmation(false);
-      return;
-    }
-    if (event.key !== "Tab") return;
-    const cancel = el("confirm_cancel");
-    const accept = el("confirm_accept");
-    if (!cancel || !accept) return;
-    if (event.shiftKey && document.activeElement === cancel) {
-      event.preventDefault();
-      accept.focus();
-    } else if (!event.shiftKey && document.activeElement === accept) {
-      event.preventDefault();
-      cancel.focus();
-    }
-  }
-
   function operationForRequest(snapshot) {
     if (!frequencyRequest || !snapshot || !Array.isArray(snapshot.operations)) return null;
     return snapshot.operations.find((row) => row && typeof row === "object"
@@ -321,10 +237,13 @@
 
   function readbackMatchesDx(row, request) {
     const readback = row && row.readback && typeof row.readback === "object" ? row.readback : null;
+    const sourceMatches = request.decodeId == null
+      ? readback && readback.dx_selection_source === "manual"
+      : readback && readback.dx_selection_source === "decode"
+        && integerValue(readback.dx_source_decode_id) === request.decodeId;
     return !!(readback && readback.confirmed === true
       && readback.dx_call === request.call && (readback.dx_grid || "") === (request.grid || "")
-      && readback.dx_selection_source === "decode"
-      && integerValue(readback.dx_source_decode_id) === request.decodeId);
+      && sourceMatches);
   }
 
   function readbackMatchesBusiness(row, request) {
@@ -485,19 +404,15 @@
   }
 
   function frequencyGateReason(snapshot) {
-    if (!snapshot) return "等待新鲜状态快照";
-    if (snapshot.frequency_control_enabled !== true) return "桌面尚未开放频率控制";
+    if (!snapshot) return "等待状态";
     if (!connected) return "等待连接和最新状态快照";
     if (snapshot.online !== true) return "主程序未在线";
     if (snapshot.rig_online !== true) return "电台连接未在线";
-    if (snapshot.rig_fresh !== true || snapshot.freshness !== "fresh") return "实际频率或状态快照陈旧";
     if (snapshot.tx_enabled !== false) return "TX 允许状态不是明确安全值";
     if (snapshot.transmitting !== false) return "当前正在发射或发射状态未知";
     if (snapshot.ptt !== false) return "PTT 状态不是明确关闭";
     if (snapshot.watchdog_timeout !== false) return "看门狗状态不是明确安全值";
     if (typeof snapshot.server_epoch !== "string" || snapshot.server_epoch.length === 0) return "状态快照缺少必要信息";
-    if (integerValue(snapshot.state_revision) == null || integerValue(snapshot.state_revision) < 0) return "状态快照版本无效";
-    if (!lastUpdate || Date.now() - lastUpdate > 15000) return "状态快照已超时";
     if (frequencyUnknown) return "上一次请求结果未知，等待明确回读或新状态";
     if (frequencyRequest) return "已有频率请求处理中";
     return "";
@@ -508,34 +423,24 @@
     const input = el("frequency_input");
     const reason = el("frequency_control_status");
     if (!button || !input || !reason) return;
+    if (currentSnapshot && document.activeElement !== input && input.dataset.dirty !== "1"
+        && Number.isSafeInteger(currentSnapshot.frequency) && currentSnapshot.frequency > 0)
+      input.value = String(currentSnapshot.frequency);
     const targetHz = frequencyInputToHz(input.value);
     const gate = frequencyGateReason(currentSnapshot);
-    const inputReason = targetHz ? "" : "请输入正的十进制 MHz，最多 6 位小数";
+    const inputReason = targetHz ? "" : "请输入 100000 至 60000000 之间的整数 Hz";
     const disabledReason = gate || inputReason;
     button.disabled = !!disabledReason;
     reason.textContent = disabledReason || "可以发送；服务端仍会进行最终校验";
     reason.className = "frequency-control-status " + (disabledReason ? "blocked" : "ready");
-    const label = el("access_mode");
-    if (label) {
-      const enabled = [];
-      if (currentSnapshot && currentSnapshot.frequency_control_enabled === true) enabled.push("频率");
-      if (currentSnapshot && currentSnapshot.dx_control_enabled === true) enabled.push("DX");
-      if (currentSnapshot && currentSnapshot.automation_control_enabled === true) enabled.push("CQ/AutoSeq");
-      if (currentSnapshot && currentSnapshot.radio_control_enabled === true) enabled.push("电台面板");
-      label.textContent = enabled.length ? enabled.join("、") + "控制已开放" : "按能力开放 · 当前仅只读";
-    }
   }
 
   function dxGateReason(snapshot) {
-    if (!snapshot) return "等待新鲜状态快照";
-    if (snapshot.dx_control_enabled !== true) return "桌面尚未开放 DX 选择";
+    if (!snapshot) return "等待状态";
     if (!connected) return "等待连接和最新状态快照";
     if (snapshot.online !== true || snapshot.rig_online !== true) return "主程序或电台未在线";
-    if (snapshot.rig_fresh !== true || snapshot.freshness !== "fresh") return "状态快照陈旧";
     if (snapshot.tx_enabled !== false || snapshot.transmitting !== false || snapshot.ptt !== false
         || snapshot.watchdog_timeout !== false) return "当前 TX/PTT 状态不是明确安全值";
-    if (integerValue(snapshot.state_revision) == null || integerValue(snapshot.state_revision) < 0) return "状态快照版本无效";
-    if (!lastUpdate || Date.now() - lastUpdate > 15000) return "状态快照已超时";
     if (dxUnknown) return "上一次 DX 选择结果未知，等待明确回读或新状态";
     if (dxRequest) return "已有 DX 选择处理中";
     return "";
@@ -545,24 +450,23 @@
     const reason = dxGateReason(currentSnapshot);
     const status = el("dx_selection_status");
     if (status) {
-      status.textContent = reason || "可选择新鲜实时解码";
+      status.textContent = reason || "可选择解码或填写 DX";
       status.className = "frequency-control-status " + (reason ? "blocked" : "ready");
     }
+    const apply = el("dx_apply");
+    if (apply) apply.disabled = !connected || !currentSnapshot || !!reason || !!dxRequest
+      || !(el("dx_call_input").value.trim() || el("dx_grid_input").value.trim());
   }
 
   function businessGateReason(snapshot, operation) {
-    if (!snapshot) return "等待新鲜状态快照";
-    if (snapshot.automation_control_enabled !== true) return "桌面尚未开放 CQ/AutoSeq 控制";
+    if (!snapshot) return "等待状态";
     if (!connected) return "等待连接和最新状态快照";
     if (operation === "stop-auto-call") {
-      if (integerValue(snapshot.state_revision) == null) return "状态快照版本无效";
       return "";
     }
     if (snapshot.online !== true || snapshot.rig_online !== true) return "主程序或电台未在线";
-    if (snapshot.rig_fresh !== true || snapshot.freshness !== "fresh") return "状态快照陈旧";
     if (snapshot.tx_enabled !== false || snapshot.transmitting !== false || snapshot.ptt !== false
         || snapshot.watchdog_timeout !== false) return "当前 TX/PTT 状态不是明确安全值";
-    if (integerValue(snapshot.state_revision) == null) return "状态快照版本无效";
     if (businessUnknown) return "上一次 CQ/AutoSeq 结果未知；若服务端仍保留未确认锁，请重启 JTDX";
     if (businessRequest) return "已有 CQ/AutoSeq 请求处理中";
     return "";
@@ -581,17 +485,14 @@
     if (status) {
       status.textContent = startReason
         ? "启动受限：" + startReason + (stopReason ? "" : "；停止可用")
-        : "每次操作都需要页面确认";
+        : "操作将直接提交，并显示实际结果";
       status.className = "frequency-control-status " + (startReason ? "blocked" : "ready");
     }
   }
 
   function radioGateReason(snapshot, action) {
-    if (!snapshot) return "等待新鲜状态快照";
-    if (snapshot.radio_control_enabled !== true) return "桌面尚未开放 Web 电台操作面板";
+    if (!snapshot) return "等待状态";
     if (!connected || snapshot.online !== true) return "等待主程序在线";
-    if (snapshot.freshness !== "fresh" || snapshot.rig_fresh !== true) return "状态快照陈旧";
-    if (integerValue(snapshot.state_revision) == null) return "状态快照版本无效";
     if (radioUnknown) return "上一次电台操作结果未知；先确认桌面状态或重启 JTDX";
     if (radioRequest) return "已有电台操作处理中";
     if (["enable-tx", "cq"].includes(action)
@@ -674,20 +575,15 @@
   function clearRenderedSnapshot(message) {
     currentSnapshot = null;
     frequencyCandidates = [];
-    lastUpdate = 0;
     lastId = "";
-    operationEpoch = null;
-    operationRows = [];
-    ["web_server_state", "application_name", "mode_band", "instance_id", "online", "frequency",
-      "freshness", "frequency_freshness", "last_status_update", "last_decode_update", "decode_age",
-      "dx_call", "dx_grid", "report", "df", "tx_mode", "tx_enabled", "transmitting", "decoding",
+    ["application_name", "mode_band", "instance_id", "online", "frequency", "tx_summary",
+      "report", "df", "tx_mode", "tx_enabled", "transmitting", "decoding",
       "tx_first", "watchdog_timeout", "cq_qso", "auto_sequence_state", "current_tx_text", "decode_count",
       "dx_selection_status", "dx_selection_result", "business_control_status", "business_result",
       "radio_control_status", "radio_result", "radio_state_badge"]
       .forEach((id) => text(id, null));
     const box = el("decodes");
     if (box) box.replaceChildren();
-    renderOperations("unknown", message || "等待当前会话的状态快照");
     updateFrequencyChoices(null);
     updateFrequencyForm();
     updateDxControls();
@@ -695,151 +591,33 @@
     updateRadioControls();
   }
 
-  function operationLabel(value) {
-    if (value === "frequency") return "频率";
-    if (value === "select-dx") return "选择 DX";
-    if (value === "start-cq") return "启动 CQ";
-    if (value === "start-auto-call") return "启用 AutoSeq";
-    if (value === "stop-auto-call") return "停止 CQ/AutoSeq";
-    return "未知";
-  }
-
-  function statusLabel(row) {
-    const status = typeof row.status === "string" ? row.status : "";
-    const readback = row.readback && typeof row.readback === "object" ? row.readback : null;
-    if (status === "accepted" || status === "pending") {
-      return { label: "处理中", className: "processing" };
-    }
-    if (status === "completed") {
-      return readback && readback.confirmed === true
-        ? { label: "已完成（已确认）", className: "completed" }
-        : { label: "未知（完成未确认）", className: "unknown" };
-    }
-    if (status === "received") return { label: "已接收", className: "processing" };
-    if (status === "failed") return { label: "失败", className: "failed" };
-    if (status === "rejected") return { label: "已拒绝", className: "rejected" };
-    if (status === "timeout") return { label: "超时", className: "timeout" };
-    return { label: "未知", className: "unknown" };
-  }
-
-  function confirmedFrequency(row, status) {
-    const readback = row.readback && typeof row.readback === "object" ? row.readback : null;
-    if (row.operation !== "frequency" || status !== "completed" || !readback
-        || readback.confirmed !== true || readback.frequency_known !== true) {
-      return "未知";
-    }
-    const value = typeof readback.frequency_hz === "string"
-      && /^\d+$/.test(readback.frequency_hz) ? Number(readback.frequency_hz) : null;
-    if (!Number.isSafeInteger(value) || value <= 0) return "未知";
-    return (value / 1000000).toFixed(6) + " MHz";
-  }
-
-  function appendField(list, label, value) {
-    const term = document.createElement("dt");
-    term.textContent = label;
-    const description = document.createElement("dd");
-    description.textContent = value;
-    list.appendChild(term);
-    list.appendChild(description);
-  }
-
-  function renderOperations(kind, message) {
-    const box = el("operations");
-    if (!box) return;
-    setOperationsFreshness(kind, message);
-    box.replaceChildren();
-    const visibleRows = operationRows.slice(-DISPLAY_OPERATION_ROWS).reverse();
-    if (visibleRows.length === 0) {
-      const empty = document.createElement("p");
-      empty.className = "operation-empty";
-      empty.textContent = kind === "unknown" ? "操作结果未知。" : "当前快照没有操作结果。";
-      box.appendChild(empty);
-      return;
-    }
-    visibleRows.forEach((row) => {
-      const item = document.createElement("article");
-      item.className = "operation-row";
-      const heading = document.createElement("div");
-      heading.className = "operation-heading";
-      const title = document.createElement("strong");
-      title.textContent = operationLabel(row.operation);
-      const status = statusLabel(row);
-      const badge = document.createElement("span");
-      badge.className = "operation-status " + status.className;
-      badge.textContent = status.label;
-      heading.appendChild(title);
-      heading.appendChild(badge);
-      item.appendChild(heading);
-
-      const fields = document.createElement("dl");
-      appendField(fields, "原因", boundedString(row.reason, 160));
-      appendField(fields, "确认频率", confirmedFrequency(row, row.status));
-      item.appendChild(fields);
-      box.appendChild(item);
-    });
-  }
-
-  function updateOperations(snapshot) {
-    const epoch = typeof snapshot.server_epoch === "string" && snapshot.server_epoch.length > 0
-      ? snapshot.server_epoch : null;
-    if (!epoch) {
-      operationEpoch = null;
-      operationRows = [];
-      renderOperations("unknown", "当前快照缺少操作状态");
-      return;
-    }
-    if (operationEpoch !== epoch) operationRows = [];
-    operationEpoch = epoch;
-    if (!Array.isArray(snapshot.operations)) {
-      operationRows = [];
-      renderOperations("unknown", "当前快照缺少操作结果");
-      return;
-    }
-    const incoming = snapshot.operations.slice(0, MAX_OPERATION_ROWS);
-    operationRows = incoming.filter((row) => row && typeof row === "object"
-      && row.server_epoch === epoch);
-    const freshness = snapshot.freshness === "fresh" ? "fresh"
-      : snapshot.freshness === "stale" ? "stale" : "unknown";
-    const message = freshness === "stale" ? "服务状态陈旧，以下为旧操作快照"
-      : freshness === "unknown" ? "操作快照新鲜度未知"
-      : "保留 " + operationRows.length + " 条，显示最近 "
-        + Math.min(operationRows.length, DISPLAY_OPERATION_ROWS) + " 条";
-    renderOperations(freshness, message);
-    reconcileFrequency(snapshot);
-    reconcileDx(snapshot);
-    reconcileBusiness(snapshot);
-    reconcileRadio(snapshot);
-  }
-
   function render(snapshot) {
     if (!snapshot || typeof snapshot !== "object") return;
     currentSnapshot = snapshot;
+    if (Number.isSafeInteger(snapshot.cycle_period_ms) && snapshot.cycle_period_ms > 0
+        && snapshot.cycle_period_ms !== cyclePeriodMs) {
+      cyclePeriodMs = snapshot.cycle_period_ms;
+      cycleAnchorJtdx = null;
+      calibrateCycle();
+    }
     setConnected(true);
-    lastUpdate = Date.now();
-    const stale = snapshot.freshness === "stale";
-    const rigStale = snapshot.rig_fresh === false;
-    const rigState = snapshot.rig_fresh === true ? "实际频率新鲜"
-      : rigStale ? "实际频率陈旧" : "实际频率未知";
-    text("last_update", "流更新时间：" + (snapshot.generated_at || "未知"));
-    text("web_server_state", snapshot.web_server_state);
     text("application_name", snapshot.application_name);
     text("mode_band", [snapshot.mode, snapshot.band].filter(Boolean).join(" / ") || "未知");
     text("instance_id", snapshot.instance_id);
-    text("online", snapshot.online == null ? null : snapshot.online
-      ? stale ? "在线（数据陈旧）" : "在线" : "离线");
+    text("online", snapshot.online == null ? null : snapshot.online ? "在线" : "离线");
     text("frequency", snapshot.frequency == null ? "未取得实际频率"
-      : (Number(snapshot.frequency) / 1000000).toFixed(6) + " MHz");
-    text("freshness", stale ? "陈旧" : snapshot.freshness === "fresh" ? "新鲜" : snapshot.freshness);
-    text("frequency_freshness", rigState);
-    text("last_status_update", snapshot.last_status_update);
-    text("last_decode_update", snapshot.last_decode_update);
-    text("decode_age", age(snapshot.last_decode_update));
-    text("dx_call", snapshot.dx_call);
-    text("dx_grid", snapshot.dx_grid);
+      : String(integerValue(snapshot.frequency)) + " Hz");
+    const dxCallInput = el("dx_call_input");
+    const dxGridInput = el("dx_grid_input");
+    if (dxCallInput && document.activeElement !== dxCallInput && !dxCallInput.dataset.dirty)
+      dxCallInput.value = typeof snapshot.dx_call === "string" ? snapshot.dx_call : "";
+    if (dxGridInput && document.activeElement !== dxGridInput && !dxGridInput.dataset.dirty)
+      dxGridInput.value = typeof snapshot.dx_grid === "string" ? snapshot.dx_grid : "";
     text("report", snapshot.report);
     text("df", (snapshot.rx_df == null ? "未知" : snapshot.rx_df) + " / "
       + (snapshot.tx_df == null ? "未知" : snapshot.tx_df));
     text("tx_mode", snapshot.tx_mode);
+    text("tx_summary", bool(snapshot.tx_enabled) + " / " + bool(snapshot.transmitting));
     text("tx_enabled", bool(snapshot.tx_enabled));
     text("transmitting", bool(snapshot.transmitting));
     text("decoding", bool(snapshot.decoding));
@@ -867,7 +645,7 @@
         node.textContent = String(value);
         row.appendChild(node);
       });
-      if (decode.is_new === true && decode.fresh === true && typeof decode.callsign === "string"
+      if (decode.is_new === true && decode.off_air !== true && typeof decode.callsign === "string"
           && decode.callsign.length > 0) {
         const button = document.createElement("button");
         button.type = "button";
@@ -879,7 +657,6 @@
       box.appendChild(row);
     });
     updateFrequencyChoices(snapshot);
-    updateOperations(snapshot);
     updateFrequencyForm();
     updateDxControls();
     updateBusinessControls();
@@ -973,7 +750,6 @@
         body: JSON.stringify({
           request_id: request.requestId,
           server_epoch: request.epoch,
-          state_revision: integerValue(currentSnapshot.state_revision),
           frequency_hz: request.targetHz
         }),
         cache: "no-store",
@@ -1042,7 +818,9 @@
   async function sendSelectDx(decode) {
     const gate = dxGateReason(currentSnapshot);
     const decodeId = integerValue(decode && decode.decode_id);
-    if (gate || decodeId == null || !currentSnapshot) {
+    const call = String(decode ? decode.callsign || "" : el("dx_call_input").value || "").trim().toUpperCase();
+    const grid = String(decode ? decode.grid || "" : el("dx_grid_input").value || "").trim().toUpperCase();
+    if (gate || !currentSnapshot || (!call && !grid)) {
       updateDxControls();
       return;
     }
@@ -1055,8 +833,8 @@
       requestId,
       epoch: currentSnapshot.server_epoch,
       decodeId,
-      call: String(decode.callsign || "").toUpperCase(),
-      grid: String(decode.grid || "").toUpperCase(),
+      call,
+      grid,
       session: connectionSession,
       state: "sending"
     };
@@ -1071,12 +849,8 @@
       const response = await fetch("/api/v1/control/select-dx", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Accept": "application/json" },
-        body: JSON.stringify({
-          request_id: request.requestId,
-          server_epoch: request.epoch,
-          state_revision: integerValue(currentSnapshot.state_revision),
-          decode_id: request.decodeId
-        }),
+        body: JSON.stringify(Object.assign({request_id: request.requestId, server_epoch: request.epoch},
+          request.decodeId == null ? {call: request.call, grid: request.grid} : {decode_id: request.decodeId})),
         cache: "no-store",
         signal: local.signal
       });
@@ -1111,10 +885,6 @@
     const gate = businessGateReason(currentSnapshot, operation);
     if (gate || !currentSnapshot) { updateBusinessControls(); return; }
     const labels = {"start-cq": "启动 CQ", "start-auto-call": "启用 AutoSeq", "stop-auto-call": "停止 CQ/AutoSeq"};
-    const confirmation = operation === "start-auto-call"
-      ? "确认启用 AutoSeq？它会等待现有实时解码驱动自动呼叫，不会凭空生成目标或立即证明已呼叫。"
-      : "确认" + labels[operation] + "？页面只提交命令，完成必须等待主程序业务状态回读。";
-    if (!await requestConfirmation(labels[operation], confirmation)) return;
     let requestId;
     try { requestId = secureRequestId(); } catch (_) {
       businessStatus("浏览器没有可用的安全随机源，无法发送命令。", "error");
@@ -1133,8 +903,7 @@
       const response = await fetch("/api/v1/control/" + operation, {
         method: "POST",
         headers: {"Content-Type": "application/json", "Accept": "application/json"},
-        body: JSON.stringify({request_id: request.requestId, server_epoch: request.epoch,
-          state_revision: integerValue(currentSnapshot.state_revision), confirm: true}),
+        body: JSON.stringify({request_id: request.requestId, server_epoch: request.epoch}),
         cache: "no-store", signal: local.signal
       });
       if (request.session !== connectionSession || businessRequest !== request) return;
@@ -1203,9 +972,6 @@
     const dangerous = ["enable-tx", "stop-tx", "log-qso-confirm", "cq"].includes(action);
     if (action === "log-qso-confirm" && !qso) qso = qsoDraftFromDom();
     if (action === "log-qso-confirm" && !qso) { radioStatus("记录草稿缺少必填字段。", "error"); return; }
-    if (dangerous && !await requestConfirmation(labels[action], action === "log-qso-confirm"
-        ? "确认提交这条 QSO？提交后将按主程序记录模型写入 ADIF，重复提交会被拦截。"
-        : "确认" + labels[action] + "？完成必须等待主程序实际状态回读。")) return;
     let requestId;
     try { requestId = secureRequestId(); } catch (_) { radioStatus("浏览器没有可用的安全随机源，无法发送操作。", "error"); return; }
     const request = {requestId, epoch: currentSnapshot.server_epoch, action, value: value === true,
@@ -1223,8 +989,8 @@
       const response = await fetch("/api/v1/control/radio", {
         method: "POST", headers: {"Content-Type": "application/json", "Accept": "application/json"},
         body: JSON.stringify({request_id: request.requestId, server_epoch: request.epoch,
-          state_revision: integerValue(currentSnapshot.state_revision), action: request.action,
-          value: request.value, tx_index: request.index, text: request.message, confirm: dangerous, qso: request.qso}),
+          action: request.action, value: request.value, tx_index: request.index,
+          text: request.message, qso: request.qso}),
         cache: "no-store", signal: local.signal
       });
       if (request.session !== connectionSession || radioRequest !== request) return;
@@ -1350,13 +1116,37 @@
     clearRenderedSnapshot("等待当前会话的状态快照");
     setConnected(false);
     running = true;
+    calibrateCycle();
     stream(runId);
   }
 
+  async function calibrateCycle() {
+    const started = performance.now();
+    try {
+      const response = await fetch("/api/v1/state", {cache: "no-store", headers: {Accept: "application/json"}});
+      const snapshot = await response.json();
+      const ended = performance.now();
+      if (!response.ok || !Number.isFinite(snapshot.jtdx_time_ms)
+          || !Number.isFinite(snapshot.server_monotonic_ms)
+          || !Number.isSafeInteger(snapshot.cycle_period_ms) || snapshot.cycle_period_ms <= 0) return;
+      cycleAnchorJtdx = snapshot.jtdx_time_ms;
+      cycleAnchorPerformance = (started + ended) / 2;
+      cyclePeriodMs = snapshot.cycle_period_ms;
+      if (currentSnapshot) renderCycle();
+    } catch (_) { /* SSE reconnect retries the same local clock calibration. */ }
+  }
+
+  function renderCycle() {
+    if (!currentSnapshot || cycleAnchorJtdx == null || cycleAnchorPerformance == null) return;
+    const estimatedJtdx = cycleAnchorJtdx + (performance.now() - cycleAnchorPerformance);
+    const phase = ((estimatedJtdx % cyclePeriodMs) + cyclePeriodMs) % cyclePeriodMs;
+    const progress = el("cycle_progress");
+    if (progress) progress.style.width = (100 * phase / cyclePeriodMs).toFixed(2) + "%";
+    text("cycle_label", (currentSnapshot.mode || "周期") + " · " + (cyclePeriodMs / 1000).toFixed(cyclePeriodMs % 1000 ? 1 : 0) + " 秒");
+    text("cycle_remaining", ((cyclePeriodMs - phase) / 1000).toFixed(1) + " 秒");
+  }
+
   el("frequency_send").addEventListener("click", sendFrequency);
-  el("confirm_cancel").addEventListener("click", () => finishConfirmation(false));
-  el("confirm_accept").addEventListener("click", () => finishConfirmation(true));
-  el("confirm_dialog").addEventListener("keydown", handleConfirmationKeydown);
   el("business_start_cq").addEventListener("click", () => sendBusiness("start-cq"));
   el("business_start_auto").addEventListener("click", () => sendBusiness("start-auto-call"));
   el("business_stop").addEventListener("click", () => sendBusiness("stop-auto-call"));
@@ -1407,21 +1197,24 @@
   });
   el("frequency_preset").addEventListener("change", () => {
     const selected = canonicalHz(el("frequency_preset").value);
-    if (selected) {
-      const value = frequencyHzToMhz(selected);
-      if (value) el("frequency_input").value = value;
-    }
+    if (selected) { el("frequency_input").value = selected; el("frequency_input").dataset.dirty = "1"; }
     updateFrequencyForm();
   });
   el("frequency_input").addEventListener("input", () => {
+    el("frequency_input").dataset.dirty = "1";
     el("frequency_preset").value = "";
     updateFrequencyForm();
   });
+  el("frequency_input").addEventListener("focus", () => { el("frequency_input").dataset.editing = "1"; });
+  el("frequency_input").addEventListener("blur", () => { el("frequency_input").dataset.editing = ""; });
+  el("dx_call_input").addEventListener("input", () => { el("dx_call_input").dataset.dirty = "1"; updateDxControls(); });
+  el("dx_grid_input").addEventListener("input", () => { el("dx_grid_input").dataset.dirty = "1"; updateDxControls(); });
+  el("dx_apply").addEventListener("click", () => sendSelectDx(null));
 
-  setInterval(() => {
-    if (lastUpdate && Date.now() - lastUpdate > 15000) setConnected(false);
-    updateFrequencyForm();
-  }, 1000);
+  setInterval(renderCycle, 100);
+  setInterval(calibrateCycle, 60000);
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) calibrateCycle(); });
+  window.addEventListener("pageshow", calibrateCycle);
   updateFrequencyChoices(null);
   updateFrequencyForm();
   updateBusinessControls();

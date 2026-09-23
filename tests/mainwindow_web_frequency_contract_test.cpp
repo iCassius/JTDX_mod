@@ -21,7 +21,6 @@ namespace
   {
     JtdxWebControl::ObservedState state;
     state.safety.known = true;
-    state.safety.fresh = true;
     state.safety.rig_online = true;
     state.safety.monitoring = true;
     state.safety.business_state_known = true;
@@ -50,17 +49,24 @@ int main ()
   QFile web_style {QStringLiteral (JTDX_SOURCE_DIR "/resources/web-ui/style.css")};
   check (web_style.open (QIODevice::ReadOnly), "open Web UI stylesheet");
   QByteArray const web_style_source = web_style.readAll ();
-  check (web_index_source.contains ("role=\"dialog\"")
-             && web_index_source.contains ("aria-modal=\"true\"")
-             && web_app_source.contains ("function requestConfirmation")
-             && web_app_source.contains ("finishConfirmation(false)")
-             && web_app_source.contains ("await requestConfirmation")
-             && web_app_source.contains ("if (value === \"start-cq\") return \"启动 CQ\";")
-             && web_app_source.contains ("if (value === \"stop-auto-call\") return \"停止 CQ/AutoSeq\";")
+  check (!web_index_source.contains ("role=\"dialog\"")
+             && !web_index_source.contains ("aria-modal=\"true\"")
+             && !web_app_source.contains ("requestConfirmation")
+             && !web_app_source.contains ("confirm_dialog")
              && web_app_source.contains ("function startConnection()")
              && !web_app_source.contains ("Authorization")
              && !web_app_source.contains ("token_input")
              && !web_index_source.contains ("token_input")
+             && !web_index_source.contains ("freshness")
+             && !web_index_source.contains ("operations_card")
+             && web_index_source.contains ("目标频率（Hz）")
+             && web_index_source.contains ("dx_call_input")
+             && web_index_source.contains ("dx_grid_input")
+             && !web_index_source.contains ("MHz")
+             && !web_app_source.contains ("Date.now")
+             && web_app_source.contains ("/api/v1/state")
+             && web_app_source.contains ("snapshot.jtdx_time_ms")
+             && web_style_source.contains (".cycle-strip { position: sticky")
              && web_index_source.contains ("class=\"workbench\"")
              && web_index_source.contains ("class=\"workbench-left\"")
              && web_index_source.contains ("class=\"workbench-right\"")
@@ -71,9 +77,10 @@ int main ()
              && web_style_source.contains (".workbench { grid-template-columns: 1fr; }")
              && web_style_source.contains ("overflow-x: hidden")
              && !web_app_source.contains ("globalThis.confirm"),
-         "business controls use an accessible confirmation and the page keeps the compact responsive layout");
-  check (source.contains ("configuration.enable_frequency_control = m_config.web_ui_frequency_control_enabled ()"),
-         "MainWindow forwards the explicit frequency-control setting");
+         "UI omits Web-specific confirmation/auth/freshness cards and uses the JTDX clock in a responsive Hz layout");
+  check (!source.contains ("enable_frequency_control") && !source.contains ("enable_dx_control")
+             && !source.contains ("enable_automation_control") && !source.contains ("enable_radio_control"),
+         "MainWindow does not configure per-feature Web capability gates");
   auto const lang_menu = main_window_ui_source.indexOf ("<addaction name=\"menuLang\"/>");
   auto const web_menu = main_window_ui_source.indexOf ("<addaction name=\"menuWebUI\"/>");
   auto const help_menu = main_window_ui_source.indexOf ("<addaction name=\"menuHelp\"/>");
@@ -91,10 +98,11 @@ int main ()
              && source.contains ("m_logDlg->acceptWebQSO (&write_reason)")
              && source.contains ("m_logDlg->done (QDialog::Accepted)"),
          "Web QSO uses an editable draft, explicit commit, and duplicate guard");
-  check (source.contains ("configuration.enable_dx_control = m_config.web_ui_dx_control_enabled ()"),
-         "MainWindow forwards the explicit DX-control setting");
   check (source.contains ("result.safety.rig_online = m_rigOk && m_config.is_transceiver_online ()"),
          "MainWindow adapter requires both CAT observation and configuration online state");
+  check (!source.contains ("current.safety.fresh")
+             && !source.contains ("result.safety.fresh"),
+         "MainWindow Web readback no longer depends on a removed freshness snapshot");
   check (source.contains ("result.safety.monitoring = m_monitoring")
              && source.contains ("result.safety.start2 = m_start2")
              && source.contains ("result.safety.tune = m_tune")
@@ -129,8 +137,7 @@ int main ()
              && !dx_dispatch_body.contains ("enableTx_mode")
              && !dx_dispatch_body.contains ("haltTx"),
          "DX adapter only updates the input projection and cannot enter QSO or TX paths");
-  check (source.contains ("configuration.enable_automation_control = m_config.web_ui_automation_control_enabled ()")
-             && source.contains ("void MainWindow::dispatchWebBusiness")
+  check (source.contains ("void MainWindow::dispatchWebBusiness")
              && source.contains ("m_webControl->feedback_business"),
          "MainWindow forwards CQ/AutoSeq commands through a separate business-state readback adapter");
   auto const cq_apply = source.indexOf ("void MainWindow::applyWebStartCq");

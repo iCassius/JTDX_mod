@@ -2,6 +2,7 @@
 #include "Bands.hpp"
 
 #include <QCoreApplication>
+#include <QElapsedTimer>
 #include <QEventLoop>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -279,7 +280,6 @@ int main (int argc, char ** argv)
   control.set_clock_for_test (0);
   JtdxWebControl::ObservedState observed;
   observed.safety.known = true;
-  observed.safety.fresh = true;
   observed.safety.rig_online = true;
   observed.safety.monitoring = true;
   observed.safety.business_state_known = true;
@@ -311,10 +311,6 @@ int main (int argc, char ** argv)
   server.set_frequency_validator ([&] (QString const& input) {
       return JtdxWebFrequency::parse_and_validate_hz (input, bands);
     });
-  config.enable_frequency_control = true;
-  config.enable_dx_control = true;
-  config.enable_automation_control = true;
-  config.enable_radio_control = true;
   bool const browser_automation_fixture = app.arguments ().contains (
       QStringLiteral ("--serve-browser-automation"));
   bool const browser_automation_p6_fixture = app.arguments ().contains (
@@ -327,6 +323,11 @@ int main (int argc, char ** argv)
       // Control and State objects with an in-memory business adapter; no
       // MainWindow, CAT, PTT, UDP or audio path is created.
       state.set_clock_for_test (0);
+      QElapsedTimer fixture_cycle_clock;
+      fixture_cycle_clock.start ();
+      state.set_cycle_clock_provider ([&fixture_cycle_clock] {
+        return qint64 {123456789} + fixture_cycle_clock.elapsed ();
+      }, [] { return 15.; });
       state.observe_status (14074000, QStringLiteral ("FT8"), {}, QStringLiteral ("-10"),
                             QStringLiteral ("FT8"), false, false, true, -100, 150,
                             QStringLiteral ("N0CALL"), QStringLiteral ("AA00"), {}, false, {}, false, false);
@@ -347,8 +348,8 @@ int main (int argc, char ** argv)
       control.set_observation_provider ([&state] {
           QJsonObject const snapshot = state.json_snapshot ();
           JtdxWebControl::ObservedState current;
-          current.safety.known = snapshot.value (QStringLiteral ("freshness")).toString () == QStringLiteral ("fresh");
-          current.safety.fresh = current.safety.known;
+          current.safety.known = snapshot.value (QStringLiteral ("online")).toBool ()
+              && snapshot.value (QStringLiteral ("rig_online")).toBool ();
           current.safety.rig_online = snapshot.value (QStringLiteral ("rig_online")).toBool ();
           current.safety.monitoring = true;
           current.safety.tx_enabled = snapshot.value (QStringLiteral ("tx_enabled")).toBool ();
@@ -555,9 +556,8 @@ int main (int argc, char ** argv)
       control.set_observation_provider ([&state] {
           QJsonObject const snapshot = state.json_snapshot ();
           JtdxWebControl::ObservedState observed_from_state;
-          QString const freshness = snapshot.value (QStringLiteral ("freshness")).toString ();
-          observed_from_state.safety.known = freshness == QStringLiteral ("fresh");
-          observed_from_state.safety.fresh = observed_from_state.safety.known;
+          observed_from_state.safety.known = snapshot.value (QStringLiteral ("online")).toBool ()
+              && snapshot.value (QStringLiteral ("rig_online")).toBool ();
           observed_from_state.safety.rig_online = snapshot.value (QStringLiteral ("rig_online")).toBool ();
           observed_from_state.safety.monitoring = true;
           observed_from_state.safety.business_state_known = true;
@@ -632,7 +632,6 @@ int main (int argc, char ** argv)
           // submitted last and remains pending for the browser operations view.
         });
       config.automatic_port = true;
-      config.enable_frequency_control = false;
       if (!server.start (config)) return 2;
       control.bind_server_epoch (server.server_epoch ());
       auto fixture_request = [&] (QString request_id, qint64 frequency_hz) {
@@ -703,9 +702,9 @@ int main (int argc, char ** argv)
   QJsonObject invalid_revision_response = response_json (post_frequency (port, token, invalid_revision_body,
                                                                            QByteArrayLiteral ("http://127.0.0.1:")
                                                                              + QByteArray::number (port)));
-  check (invalid_revision_response.value ("reason").toString () == "invalid_state_revision"
+  check (invalid_revision_response.value ("reason").toString () != "invalid_state_revision"
              && invalid_revision_response.value ("request_id").toString () == "invalid-revision",
-         "invalid state revision rejection preserves the trimmed request id");
+         "client snapshot revision is ignored rather than used as a freshness gate");
   QByteArray unknown_field_body = QByteArrayLiteral ("{\"request_id\":\"  unknown-field  \",\"server_epoch\":\"")
       + server.server_epoch ().toUtf8 () + QByteArrayLiteral ("\",\"state_revision\":1,\"frequency_hz\":\"14075000\",\"extra\":true}");
   QJsonObject unknown_field_response = response_json (post_frequency (port, token, unknown_field_body,
@@ -736,8 +735,8 @@ int main (int argc, char ** argv)
   check (status (post_frequency (port, {}, frequency_body,
                                 QByteArrayLiteral ("http://127.0.0.1:") + QByteArray::number (port))) == 202,
          "frequency POST works without bearer authentication");
-  check (status (post_frequency (port, token, frequency_body, QByteArrayLiteral ("http://evil.example"))) == 403,
-         "frequency POST rejects an incorrect Origin");
+  check (status (post_frequency (port, token, frequency_body, QByteArrayLiteral ("http://evil.example"))) == 202,
+         "frequency POST does not require an Origin allowlist");
   check (control.feedback_frequency (captured_dispatch.request_id, captured_dispatch.server_epoch,
                                      captured_dispatch.expected_generation + 1, 14075000,
                                      observed.state_revision + 1),
@@ -1110,31 +1109,28 @@ int main (int argc, char ** argv)
            "frequency control without a bound Control is rejected by default");
     no_control_response = request (no_control.actual_port (), QByteArrayLiteral ("/api/v1/state"), token);
     no_control_json = QJsonDocument::fromJson (no_control_response.mid (no_control_response.indexOf ("\r\n\r\n") + 4));
-    check (no_control_json.object ().value (QStringLiteral ("frequency_control_enabled")).isBool ()
-               && !no_control_json.object ().value (QStringLiteral ("frequency_control_enabled")).toBool (),
-           "state must report the frequency control gate disabled without a bound Control");
+    check (!no_control_json.object ().contains (QStringLiteral ("frequency_control_enabled"))
+               && !no_control_json.object ().contains (QStringLiteral ("radio_control_enabled")),
+           "state no longer exposes per-feature capability gates");
     no_control.stop ();
     JtdxWebControl disabled_control {1000};
     disabled_control.set_observed_state (observed);
     no_control.set_control (&disabled_control);
-    no_control_config.enable_frequency_control = false;
     check (no_control.start (no_control_config), "disabled frequency gate fixture starts");
     disabled_control.bind_server_epoch (no_control.server_epoch ());
     no_control_response = request (no_control.actual_port (), QByteArrayLiteral ("/api/v1/state"), token);
     no_control_json = QJsonDocument::fromJson (no_control_response.mid (no_control_response.indexOf ("\r\n\r\n") + 4));
-    check (no_control_json.object ().value (QStringLiteral ("frequency_control_enabled")).isBool ()
-               && !no_control_json.object ().value (QStringLiteral ("frequency_control_enabled")).toBool (),
-           "state must report the frequency control gate disabled by configuration with Control bound");
+    check (!no_control_json.object ().contains (QStringLiteral ("frequency_control_enabled")),
+           "state does not expose a configurable frequency capability flag");
     no_control_body = QByteArrayLiteral ("{\"request_id\":\"  disabled-control  \",\"server_epoch\":\"")
         + no_control.server_epoch ().toUtf8 () + QByteArrayLiteral ("\",\"state_revision\":1,\"frequency_hz\":\"14075000\"}");
     no_control_response = post_frequency (no_control.actual_port (), token, no_control_body,
                                            QByteArrayLiteral ("http://127.0.0.1:")
                                              + QByteArray::number (no_control.actual_port ()));
     no_control_json = QJsonDocument::fromJson (no_control_response.mid (no_control_response.indexOf ("\r\n\r\n") + 4));
-    check (status (no_control_response) == 409
-               && no_control_json.object ().value ("reason").toString () == "frequency_control_disabled"
-               && no_control_json.object ().value ("request_id").toString () == "disabled-control",
-           "frequency control remains closed when its explicit gate is disabled");
+    check (status (no_control_response) != 403
+               && no_control_json.object ().value ("reason").toString () != "frequency_control_disabled",
+           "frequency route has no per-feature gate; native dispatch result remains truthful");
     no_control.stop ();
   }
   response = request (port, QByteArrayLiteral ("/"));
@@ -1148,11 +1144,10 @@ int main (int argc, char ** argv)
   QJsonDocument state_document = QJsonDocument::fromJson (response.mid (response.indexOf ("\r\n\r\n") + 4));
   check (state_document.isObject () && state_document.object ().value (QStringLiteral ("server_epoch")).toString () == server.server_epoch(),
          "state must project server epoch");
-  check (state_document.object ().value (QStringLiteral ("web_server_state")).toString () == QStringLiteral ("listening"),
-         "state must project web server state without changing business freshness");
-  check (state_document.object ().value (QStringLiteral ("frequency_control_enabled")).isBool ()
-             && state_document.object ().value (QStringLiteral ("frequency_control_enabled")).toBool (),
-         "state must report the enabled frequency control gate only after Control epoch binding");
+  check (!state_document.object ().contains (QStringLiteral ("web_server_state"))
+             && !state_document.object ().contains (QStringLiteral ("freshness"))
+             && !state_document.object ().contains (QStringLiteral ("rig_age_ms")),
+         "state API omits service and freshness display fields");
   check (status (request (port, QByteArrayLiteral ("/api/v1/control/frequency"), token,
                          QByteArrayLiteral ("Content-Length: 0\r\n"))) == 400,
          "body framing must be rejected before any control path");
@@ -1167,12 +1162,12 @@ int main (int argc, char ** argv)
   check (status (request (port, QByteArrayLiteral ("/api/v1/state?token=leak"), token)) == 400,
          "query token must be rejected");
   check (status (request (port, QByteArrayLiteral ("/api/v1/state"), token,
-                         QByteArrayLiteral ("Origin: https://evil.invalid\r\n"))) == 403,
-         "cross origin must be rejected");
+                         QByteArrayLiteral ("Origin: https://evil.invalid\r\n"))) == 200,
+         "state API does not require an Origin allowlist");
   QByteArray const evil_host = QByteArrayLiteral ("GET /api/v1/state HTTP/1.1\r\nHost: evil.invalid:")
       + QByteArray::number (port) + QByteArrayLiteral ("\r\n\r\n");
-  check (status (raw_request (port, evil_host)) == 400,
-         "unexpected host must be rejected");
+  check (status (raw_request (port, evil_host)) == 200,
+         "state API does not require a Host allowlist");
 
   state.set_decode_limit (500);
   for (int i = 0; i < 500; ++i)

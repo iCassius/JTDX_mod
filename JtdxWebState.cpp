@@ -7,10 +7,6 @@
 #include <QtGlobal>
 #include <utility>
 
-namespace {
-constexpr qint64 stale_after_ms = 5000;
-}
-
 constexpr int JtdxWebState::default_decode_limit;
 constexpr int JtdxWebState::hard_decode_limit;
 constexpr int JtdxWebState::default_frequency_candidate_limit;
@@ -224,11 +220,9 @@ void JtdxWebState::observe_radio_controls (bool multi_decode, bool agc_compensat
 bool JtdxWebState::decode_selection (quint64 decode_id, DecodeSelection * selection) const
 {
   if (!selection || decode_id == 0) return false;
-  qint64 const now = monotonic_now ();
-  constexpr qint64 stale_after_ms = 5000;
   for (auto const& decode : decodes_)
     if (decode.id == decode_id && decode.is_new && !decode.off_air
-        && now - decode.received_ms <= stale_after_ms && !decode.callsign.isEmpty ())
+        && !decode.callsign.isEmpty ())
       {
         selection->decode_id = decode.id;
         selection->source_revision = decode.source_revision;
@@ -317,6 +311,13 @@ void JtdxWebState::clear_decodes ()
   decodes_.clear ();
 }
 
+void JtdxWebState::set_cycle_clock_provider (std::function<qint64 ()> jtdx_time_ms,
+                                             std::function<double ()> cycle_period_seconds)
+{
+  jtdx_time_provider_ = std::move (jtdx_time_ms);
+  cycle_period_provider_ = std::move (cycle_period_seconds);
+}
+
 void JtdxWebState::set_clock_for_test (qint64 monotonic_ms)
 {
   test_clock_ = true;
@@ -372,23 +373,14 @@ QJsonObject JtdxWebState::json_snapshot () const
   object.insert (QStringLiteral ("server_epoch"), QJsonValue {QJsonValue::Null});
   object.insert (QStringLiteral ("state_revision"), static_cast<qint64> (revision_));
   object.insert (QStringLiteral ("revision"), static_cast<qint64> (revision_));
-  object.insert (QStringLiteral ("generated_at"), QDateTime::currentDateTimeUtc ().toString (Qt::ISODateWithMs));
-  object.insert (QStringLiteral ("stale_after_ms"), stale_after_ms);
-
   qint64 const now = monotonic_now ();
-  QString freshness = QStringLiteral ("unknown");
-  if (has_status_)
-    freshness = now - status_seen_ms_ <= stale_after_ms ? QStringLiteral ("fresh")
-                                                        : QStringLiteral ("stale");
-  object.insert (QStringLiteral ("freshness"), freshness);
+  object.insert (QStringLiteral ("server_monotonic_ms"), now);
+  if (jtdx_time_provider_) object.insert (QStringLiteral ("jtdx_time_ms"), jtdx_time_provider_ ());
+  if (cycle_period_provider_)
+    object.insert (QStringLiteral ("cycle_period_ms"),
+                   qMax<qint64> (1, qRound64 (cycle_period_provider_ () * 1000.0)));
   object.insert (QStringLiteral ("online"), nullable_bool (has_status_, has_status_));
   object.insert (QStringLiteral ("rig_online"), nullable_bool (rig_online_, has_rig_));
-  object.insert (QStringLiteral ("last_seen"), status_wall_.isValid ()
-                ? QJsonValue {status_wall_.toString (Qt::ISODateWithMs)} : QJsonValue {QJsonValue::Null});
-  object.insert (QStringLiteral ("last_status_update"), status_wall_.isValid ()
-                ? QJsonValue {status_wall_.toString (Qt::ISODateWithMs)} : QJsonValue {QJsonValue::Null});
-  object.insert (QStringLiteral ("last_decode_update"), decode_wall_.isValid ()
-                ? QJsonValue {decode_wall_.toString (Qt::ISODateWithMs)} : QJsonValue {QJsonValue::Null});
   object.insert (QStringLiteral ("target_frequency"), nullable_frequency (target_frequency_, has_target_frequency_));
   object.insert (QStringLiteral ("nominal_frequency"), nullable_frequency (target_frequency_, has_target_frequency_));
   object.insert (QStringLiteral ("frequency"), nullable_frequency (rig_frequency_, has_rig_ && rig_online_));
@@ -396,11 +388,6 @@ QJsonObject JtdxWebState::json_snapshot () const
   object.insert (QStringLiteral ("rig_reported_tx_frequency"), nullable_frequency (rig_tx_frequency_, has_rig_ && rig_online_));
   object.insert (QStringLiteral ("rig_generation"), has_rig_ ? QJsonValue {static_cast<qint64> (rig_generation_)}
                                                                : QJsonValue {QJsonValue::Null});
-  object.insert (QStringLiteral ("rig_age_ms"), has_rig_ ? QJsonValue {qMax<qint64> (0, now - rig_seen_ms_)}
-                                                           : QJsonValue {QJsonValue::Null});
-  object.insert (QStringLiteral ("rig_fresh"), nullable_bool (rig_online_ && has_rig_
-                                                               && now - rig_seen_ms_ <= stale_after_ms,
-                                                               has_rig_));
   object.insert (QStringLiteral ("mode"), nullable_string (mode_));
   object.insert (QStringLiteral ("band"), nullable_string (band_));
   object.insert (QStringLiteral ("frequency_candidate_mode"), nullable_string (frequency_candidate_mode_));
@@ -427,9 +414,7 @@ QJsonObject JtdxWebState::json_snapshot () const
   object.insert (QStringLiteral ("sub_mode"), nullable_string (sub_mode_));
   object.insert (QStringLiteral ("fast_mode"), nullable_bool (fast_mode_, has_status_));
   object.insert (QStringLiteral ("tx_first"), nullable_bool (tx_first_, has_status_));
-  object.insert (QStringLiteral ("ptt"), nullable_bool (rig_ptt_, has_rig_ && rig_online_
-                                                          && now - rig_seen_ms_ <= stale_after_ms));
-  object.insert (QStringLiteral ("web_server_state"), QJsonValue {QJsonValue::Null});
+  object.insert (QStringLiteral ("ptt"), nullable_bool (rig_ptt_, has_rig_ && rig_online_));
   object.insert (QStringLiteral ("auto_sequence_state"), has_business_state_
                 ? QJsonValue {auto_sequence_enabled_ ? QStringLiteral ("enabled")
                                                       : QStringLiteral ("disabled")}
@@ -491,9 +476,6 @@ QJsonObject JtdxWebState::json_snapshot () const
       item.insert (QStringLiteral ("off_air"), decode.off_air);
       item.insert (QStringLiteral ("is_new"), decode.is_new);
       item.insert (QStringLiteral ("realtime"), decode.is_new && !decode.off_air);
-      item.insert (QStringLiteral ("fresh"), decode.is_new && !decode.off_air
-                   && now - decode.received_ms <= stale_after_ms);
-      item.insert (QStringLiteral ("age_ms"), qMax<qint64> (0, now - decode.received_ms));
       item.insert (QStringLiteral ("frequency"), nullable_frequency (decode.frequency, decode.wspr));
       item.insert (QStringLiteral ("drift"), decode.wspr ? QJsonValue {decode.drift} : QJsonValue {QJsonValue::Null});
       item.insert (QStringLiteral ("power"), decode.wspr ? QJsonValue {decode.power} : QJsonValue {QJsonValue::Null});
