@@ -86,4 +86,4 @@ $env:PATH = 'C:\JTDX64\deps-webui\temp\P25-runtime-stage-05ee60d\bin;C:\msys64\m
 
 ## 清理结果与限制
 
-本批实际释放 0 bytes、删除 0 项。P26 临时目录、失败 build 缓存及 P26 旧 evidence 原件仍保留；P21–P25 临时目录、历史 evidence/deps、两棵既有开发/验证构建树也均保留；这不是全量清空。CMake build tree 有绝对路径，不能直接移动。没有启动真实 JTDX、CAT/PTT/TX/HIL，也没有重建无关项目。
+本批实际释放 0 bytes、删除 0 项。P26 临时目录、失败 build 缓存及 P26 旧 evidence 原件仍保留；P21–P25 临时目录、历史 evidence/deps、两棵既有开发/验证构建树也均保留；这不是全量清空。用户要求的 Explorer 手动候选说明位于 `C:\JTDX64\待手动清理\清理候选清单_2026-09-24.md`；该文件夹仅含说明，不含移动来的文件。CMake build tree 有绝对路径，不能直接移动。没有启动真实 JTDX、CAT/PTT/TX/HIL，也没有重建无关项目。
