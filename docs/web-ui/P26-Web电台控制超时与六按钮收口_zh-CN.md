@@ -17,13 +17,14 @@
 ## 验证与证据
 
 - Release 应用及全部测试目标由 `C:\JTDX64\build-webui-p25-release` 构建。该目录为此前已配置的本机 Release 构建，重用其 MSYS2/Qt/Hamlib 工具链；未使用失败的全新 P26 配置目录作为证据。
-- 最终实现提交 `b0732b9` 上完整 Release 构建所有应用和测试目标通过，日志：`C:\JTDX64\deps-webui\evidence\P26\final-build.log`。全量 CTest 为 26/26、100%、58.04 秒，日志：`C:\JTDX64\deps-webui\evidence\P26\final-ctest.log`。构建/测试重用此前已配置的 `C:\JTDX64\build-webui-p25-release`；未将失败的全新 P26 配置目录作为验证证据。
+- 最终实现提交 `b0732b9` 上完整 Release 构建所有应用和测试目标通过，日志：`C:\JTDX64\jtdx_sourcecode\local-support\evidence\P26\final-build.log`。全量 CTest 为 26/26、100%、58.04 秒，日志：`C:\JTDX64\jtdx_sourcecode\local-support\evidence\P26\final-ctest.log`。构建/测试重用此前已配置的 `C:\JTDX64\build-webui-p25-release`；未将失败的全新 P26 配置目录作为验证证据。
 - 新增 adapter/控制/服务器/MainWindow 静态契约覆盖单次 dispatch、去重、QSO 草稿、嵌套安全回读及超时锁范围。
-- 浏览器使用 `http://127.0.0.1:49154/#fixture` 本机 loopback 内存夹具；对 Enable Tx 的开/关分别检查了 UI 勾选、模拟状态快照和安全门回读。430px CSS 视口实测 `innerWidth=430`、文档宽度 `430`、各卡片宽 `406`、解码行宽 `358` 且无元素越过视口；桌面 1440×1100 也留存截图。截图：`C:\JTDX64\deps-webui\evidence\P26\browser-desktop.png`、`browser-mobile.png`。这是隔离 fixture 及前端的可视/交互证据，不是真实 MainWindow、无线电或 ADIF 集成验收；adapter 行为使用 mock，MainWindow 以静态契约覆盖。
+- 浏览器使用 `http://127.0.0.1:49154/#fixture` 本机 loopback 内存夹具；对 Enable Tx 的开/关分别检查了 UI 勾选、模拟状态快照和安全门回读。430px CSS 视口实测 `innerWidth=430`、文档宽度 `430`、各卡片宽 `406`、解码行宽 `358` 且无元素越过视口；桌面 1440×1100 也留存截图。截图：`C:\JTDX64\jtdx_sourcecode\local-support\evidence\P26\browser-desktop.png`、`browser-mobile.png`。这是隔离 fixture 及前端的可视/交互证据，不是真实 MainWindow、无线电或 ADIF 集成验收；adapter 行为使用 mock，MainWindow 以静态契约覆盖。
 
 ## 本机审阅包
 
-- 最新实现审阅 ZIP：`C:\JTDX64\JTDX-2.2.159.2.10-local-b0732b9-P26.zip`（49,376,987 bytes），SHA-256 `9F29D8F2C60BE6C05A136ADE976998BBA0D6BBAF8C607C969953DEA9BD814EE3`；sidecar 和简短说明同处 `C:\JTDX64` 根目录。141 文件 manifest：`C:\JTDX64\deps-webui\evidence\P26\manifest-P26-b0732b9.csv`。独立清洁解压后 141/141 个文件与 manifest 大小及 SHA-256 全部一致，0 差异；直接根项为 `bin/`、`plugins/`、`share/`、`NOTICE_zh-CN.md`。本机审阅候选，不是公开发行物。
+- 最新实现审阅 ZIP：`C:\JTDX64\JTDX-2.2.159.2.10-local-b0732b9-P26.zip`（49,376,987 bytes），SHA-256 `9F29D8F2C60BE6C05A136ADE976998BBA0D6BBAF8C607C969953DEA9BD814EE3`；sidecar 和简短说明同处 `C:\JTDX64` 根目录。141 文件 manifest：`C:\JTDX64\jtdx_sourcecode\local-support\evidence\P26\manifest-P26-b0732b9.csv`。独立清洁解压后 141/141 个文件与 manifest 大小及 SHA-256 全部一致，0 差异；直接根项为 `bin/`、`plugins/`、`share/`、`NOTICE_zh-CN.md`。本机审阅候选，不是公开发行物。
+- 本地支持目录/历史临时材料用途、P26 证据复制记录、清理命令被策略拒绝的确切范围及未移除的 P21–P25 项见 [`../../local-support/README_zh-CN.md`](../../local-support/README_zh-CN.md)。P26 证据已复制到源码本地支持目录并核验；`deps-webui/evidence/P26` 原件仍在，未称为迁移或清理完成。
 - 回退代码时可在仓库执行 `git revert <P26提交>`；本轮不执行回退、不推送、不打标签。
 
 ## 边界

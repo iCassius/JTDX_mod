@@ -11,3 +11,4 @@ jtdx_debug.txt
 jtdx_recovery.log*
 *.pro.user*
 *.out
+local-support/evidence/

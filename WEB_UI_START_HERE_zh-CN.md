@@ -6,6 +6,8 @@ P26 基于 `main/26cf365`，最终实现提交 `b0732b9`。除修复 Radio dispa
 
 候选 ZIP SHA-256：`9F29D8F2C60BE6C05A136ADE976998BBA0D6BBAF8C607C969953DEA9BD814EE3`；141 个文件逐项清洁解压核对通过。
 
+本地生成证据与构建恢复目录索引：[local-support/README_zh-CN.md](local-support/README_zh-CN.md)。本次仅将 P26 证据复制并校验到源码目录；平台拒绝了清理命令，旧副本及 P26 临时目录仍保留，未释放空间。
+
 浏览器验证只使用本机 loopback 内存夹具。未启动真实 MainWindow，未连接/操作 CAT/PTT/TX、未发射、未做 HIL、UDP 服务线程、LAN/公网或部署验证；不得把本机审阅候选解释为公开发行包。
 
 ## 当前候选：P25 解码与安全门纠偏（2026-09-23；待根任务复核）

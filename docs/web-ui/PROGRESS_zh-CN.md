@@ -3,9 +3,10 @@
 # 2026-09-24 P26 Web 电台控制超时与六按钮收口（待根任务复核）
 
 - P26 基线 `26cf3655a450c3cf42b30ca57ea556d22bb6f16c`，实现 Radio dispatch 超时修复、嵌套安全回读、启用/停止一致回读和窄屏宽度约束；范围、映射、锁策略及边界见 [`P26-Web电台控制超时与六按钮收口_zh-CN.md`](P26-Web电台控制超时与六按钮收口_zh-CN.md)。最终实现提交 `b0732b9`。
-- 页面电台区收口为六项，保留 QSO 草稿取消/确认；430px CSS 视口实测文档宽 430px、卡片宽 406px、解码行宽 358px、无元素越界。桌面与窄屏截图保存在 `C:\JTDX64\deps-webui\evidence\P26\`。浏览器使用 loopback 内存夹具，不是真实 MainWindow/ADIF/设备验证。
+- 页面电台区收口为六项，保留 QSO 草稿取消/确认；430px CSS 视口实测文档宽 430px、卡片宽 406px、解码行宽 358px、无元素越界。桌面与窄屏截图及构建/CTest/manifest 证据归档在 `C:\JTDX64\jtdx_sourcecode\local-support\evidence\P26\`。浏览器使用 loopback 内存夹具，不是真实 MainWindow/ADIF/设备验证。
 - 在最终实现提交上完整 Release 构建成功，全量 CTest 26/26、100%、58.04 秒。最终日志为 `final-build.log`、`final-ctest.log`；141 文件安装 manifest 和清洁解压逐项 SHA-256 结果见本批归档记录。
 - 最新本机审阅 ZIP：`C:\JTDX64\JTDX-2.2.159.2.10-local-b0732b9-P26.zip`，SHA-256 `9F29D8F2C60BE6C05A136ADE976998BBA0D6BBAF8C607C969953DEA9BD814EE3`；141/141 文件清洁解压与 manifest 哈希一致，根项结构已核验。仅本机审阅，不表示根任务接受或公开发行；未做 CAT/PTT/TX/HIL、UDP 服务线程或部署验证。
+- 本地整理记录：[local-support/README_zh-CN.md](../../local-support/README_zh-CN.md)。P26 的 11 份证据已复制至 `local-support/evidence/P26` 并逐项核对 SHA-256，原 `deps-webui/evidence/P26` 仍保留。含删除操作的单条 PowerShell 清理命令在进程启动前被平台策略拒绝；按约束未改用其他工具/拆分重试，故本批删除 0 项、释放 0 bytes。P21–P25 历史依赖/临时项和两棵既有构建树均未删除，逐项用途与重建限制见整理记录。
 
 # 2026-09-23 P25 解码地理字段与电台安全门纠偏（待根任务复核）
 
