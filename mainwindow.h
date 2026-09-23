@@ -419,6 +419,7 @@ private:
   bool cancelWebLogQsoDraft ();
   bool commitWebLogQsoDraft (QJsonObject const& draft, QString * reason);
   void dispatchWebRadio (JtdxWebControl::Dispatch dispatch);
+  void tryCompletePendingWebRadio ();
   void refreshWebFrequencyCandidates () const;
   JtdxWebControl::ObservedState webControlObservation () const;
   void dispatchWebFrequency (JtdxWebControl::Dispatch);
@@ -780,6 +781,8 @@ private:
   JtdxWebService * m_webService;
   JtdxWebControl::Dispatch m_webFrequencyDispatch;
   bool m_webFrequencyPending {false};
+  QString m_webRadioPendingRequestId;
+  QString m_webRadioPendingEpoch;
   QJsonObject m_webLogQsoDraft;
   quint64 m_webLogQsoGeneration {0};
   QString m_webLastLoggedQsoKey;

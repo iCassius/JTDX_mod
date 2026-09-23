@@ -33,5 +33,12 @@ bool JtdxWebRadioAdapter::dispatch (JtdxWebControl& control,
       control.fail (prepared.request_id, prepared.server_epoch,
                     QStringLiteral ("radio_dispatch_exception"));
       return false;
-    }
+  }
+}
+
+bool JtdxWebRadioAdapter::observe (JtdxWebControl& control, QString const& request_id,
+                                   QString const& server_epoch,
+                                   JtdxWebControl::ObservedState const& observed)
+{
+  return control.feedback_radio (request_id, server_epoch, observed.state_revision, observed);
 }

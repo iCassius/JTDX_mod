@@ -2574,7 +2574,8 @@ void MainWindow::dispatchWebBusiness (JtdxWebControl::Dispatch dispatch)
 void MainWindow::dispatchWebRadio (JtdxWebControl::Dispatch dispatch)
 {
   if (!m_webControl || m_webControl->is_shutdown ()) return;
-  JtdxWebRadioAdapter::dispatch (*m_webControl, dispatch,
+  tryCompletePendingWebRadio ();
+  bool const completed = JtdxWebRadioAdapter::dispatch (*m_webControl, dispatch,
       [this] (JtdxWebControl::Dispatch const& action, QString * reason) {
         if (action.radio_action == QStringLiteral ("enable-tx")) enableTx_mode (action.radio_value);
         else if (action.radio_action == QStringLiteral ("stop-tx")) on_stopTxButton_clicked ();
@@ -2606,6 +2607,36 @@ void MainWindow::dispatchWebRadio (JtdxWebControl::Dispatch dispatch)
         statusUpdate ();
         return webControlObservation ();
       });
+  if (!completed && m_webControl->result (dispatch.request_id).status == JtdxWebControl::Status::Pending)
+    {
+      m_webRadioPendingRequestId = dispatch.request_id;
+      m_webRadioPendingEpoch = dispatch.server_epoch;
+    }
+}
+
+void MainWindow::tryCompletePendingWebRadio ()
+{
+  if (!m_webControl || m_webControl->is_shutdown () || m_webRadioPendingRequestId.isEmpty ()) return;
+  JtdxWebControl::Result const pending = m_webControl->result (m_webRadioPendingRequestId);
+  if (pending.status != JtdxWebControl::Status::Pending
+      || pending.server_epoch != m_webRadioPendingEpoch)
+    {
+      m_webRadioPendingRequestId.clear ();
+      m_webRadioPendingEpoch.clear ();
+      return;
+    }
+  JtdxWebControl::ObservedState const observed = webControlObservation ();
+  if (JtdxWebRadioAdapter::observe (*m_webControl, m_webRadioPendingRequestId,
+                                   m_webRadioPendingEpoch, observed))
+    {
+      m_webRadioPendingRequestId.clear ();
+      m_webRadioPendingEpoch.clear ();
+    }
+  else if (m_webControl->result (m_webRadioPendingRequestId).status != JtdxWebControl::Status::Pending)
+    {
+      m_webRadioPendingRequestId.clear ();
+      m_webRadioPendingEpoch.clear ();
+    }
 }
 
 void MainWindow::on_actionOpenWebUi_triggered ()
@@ -8348,6 +8379,7 @@ void MainWindow::handle_transceiver_update (Transceiver::TransceiverState const&
     writeToALLTXT("handle_transceiver_update " + pttstate + splitstate  + " s.frequency:" + QString::number(s.frequency(),10) + " s.tx_frequency:"  + QString::number(s.tx_frequency(),10));
   }
   if(m_start2) { if(m_config.monitor_off_at_startup ()) on_monitorButton_clicked(false); m_start2=false; }
+  tryCompletePendingWebRadio ();
 }
 
 void MainWindow::handle_transceiver_failure (QString const& reason)
@@ -9182,6 +9214,7 @@ void MainWindow::statusUpdate () const
                                   m_config.my_callsign (), m_config.my_grid (),
                                   m_hisGrid, m_txwatchdog, submode != QChar::Null ? QString {submode} : QString {},
                                   false, m_txFirst, false);
+  const_cast<MainWindow *> (this)->tryCompletePendingWebRadio ();
 }
 
 void MainWindow::childEvent (QChildEvent * e)

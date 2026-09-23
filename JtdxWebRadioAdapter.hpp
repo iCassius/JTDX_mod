@@ -17,6 +17,11 @@ public:
                         JtdxWebControl::Dispatch const& incoming,
                         Apply const& apply,
                         PublishAndRead const& publish_and_read);
+
+  // Reconcile a pending operation with a later, newly published MainWindow state.
+  static bool observe (JtdxWebControl& control, QString const& request_id,
+                       QString const& server_epoch,
+                       JtdxWebControl::ObservedState const& observed);
 };
 
 #endif

@@ -101,10 +101,54 @@ int main (int argc, char ** argv)
   confirm.radio_qso = {{"call", "K1ABC"}};
   check (control.submit (confirm).status == Control::Status::Completed,
          "QSO confirmation waits for a successful generation change and closed draft");
-  check (native_calls == 7, "each successful user request invokes its action exactly once");
+  check (submit ("enable-tx-on", "enable-tx", true).status == Control::Status::Completed
+             && observed.safety.tx_enabled,
+         "Enable Tx toggle arms through the native boolean entry and matches true readback");
+  check (submit ("enable-tx-off", "enable-tx", false).status == Control::Status::Completed
+             && !observed.safety.tx_enabled,
+         "Enable Tx toggle disarms through the same native boolean entry and matches false readback");
+  check (native_calls == 9, "each successful user request invokes its action exactly once");
   check (submit ("sync-1", "sync", true).status == Control::Status::Completed
-             && native_calls == 7,
+             && native_calls == 9,
          "same request id replay returns the stored result without reapplying the action");
+
+  Control asynchronous_stop {100};
+  asynchronous_stop.bind_server_epoch (asynchronous_stop.server_epoch ());
+  asynchronous_stop.set_clock_for_test (2500);
+  auto stop_state = state (10);
+  stop_state.safety.tx_enabled = true;
+  stop_state.safety.transmitting = true;
+  stop_state.safety.ptt = true;
+  stop_state.safety.tune = true;
+  asynchronous_stop.set_observed_state (stop_state);
+  int asynchronous_stop_calls = 0;
+  asynchronous_stop.set_business_dispatcher ([&] (Control::Dispatch const& dispatch) {
+      JtdxWebRadioAdapter::dispatch (asynchronous_stop, dispatch,
+        [&] (Control::Dispatch const& action, QString *) {
+          ++asynchronous_stop_calls;
+          check (action.radio_action == QStringLiteral ("stop-tx"), "dispatch is the original Stop action");
+          stop_state.safety.tx_enabled = false;
+          // Native slot dispatch and tune cancellation are synchronous, but rig PTT
+          // and transmit-state readback can arrive later from MainWindow's event flow.
+          return true;
+        },
+        [&] { ++stop_state.state_revision; return stop_state; });
+    });
+  auto pending_stop = asynchronous_stop.submit (request (asynchronous_stop, "async-stop", "stop-tx"));
+  check (pending_stop.status == Control::Status::Pending && asynchronous_stop_calls == 1,
+         "Stop remains pending while later PTT/transmitting/tune readback is unsafe");
+  check (asynchronous_stop.submit (request (asynchronous_stop, "async-stop", "stop-tx")).status
+             == Control::Status::Pending && asynchronous_stop_calls == 1,
+         "duplicate pending Stop does not replay the native action");
+  ++stop_state.state_revision;
+  stop_state.safety.transmitting = false;
+  stop_state.safety.ptt = false;
+  stop_state.safety.tune = false;
+  check (JtdxWebRadioAdapter::observe (asynchronous_stop, QStringLiteral ("async-stop"),
+                                       asynchronous_stop.server_epoch (), stop_state)
+             && asynchronous_stop.result (QStringLiteral ("async-stop")).status == Control::Status::Completed
+             && asynchronous_stop_calls == 1,
+         "new safe-state publication completes the original Stop without re-executing it");
 
   // Reproduce the old MainWindow route: its outer prepare/begin consumed the
   // request, so the radio adapter's own prepare must refuse to call the slot.

@@ -257,7 +257,7 @@
     const readback = row && row.readback && typeof row.readback === "object" ? row.readback : null;
     if (!readback || readback.confirmed !== true || readback.radio_state_known !== true) return false;
     const values = {
-      "enable-tx": readback.safety_known === true && readback.tx_enabled === true,
+      "enable-tx": readback.safety_known === true && readback.tx_enabled === request.value,
       "stop-tx": readback.safety_known === true && readback.tx_enabled === false
         && readback.transmitting === false && readback.ptt === false && readback.tune === false,
       "clear-windows": true,
@@ -486,13 +486,14 @@
       businessStatus("", "");
   }
 
-  function radioGateReason(snapshot, action) {
+  function radioGateReason(snapshot, action, requestedValue) {
     if (!snapshot) return "等待状态";
     if (!connected || snapshot.online !== true) return "等待主程序在线";
     if (action === "stop-tx") return "";
     if (radioUnknown) return "上一次电台操作结果未知；先确认桌面状态或重启 JTDX";
     if (radioRequest) return "已有电台操作处理中";
-    if (["enable-tx", "cq"].includes(action)
+    if (action === "enable-tx" && typeof requestedValue !== "boolean") return "等待发射启用状态";
+    if (((action === "enable-tx" && requestedValue === true) || action === "cq")
         && (snapshot.rig_online !== true || snapshot.tx_enabled !== false
             || snapshot.transmitting !== false || snapshot.ptt !== false
             || snapshot.watchdog_timeout !== false)) return "TX/PTT 状态不是明确安全值";
@@ -516,9 +517,13 @@
       const action = id === "enable_tx" ? "enable-tx" : id === "stop_tx" ? "stop-tx"
         : id === "log_qso" ? "log-qso" : id === "clear_windows" ? "clear-windows"
         : id === "multi_decode" ? "multi-decode" : id;
-      node.disabled = !!radioGateReason(snapshot, action) || (action !== "stop-tx" && !known);
+      const requestedValue = action === "enable-tx"
+        ? (typeof snapshot?.tx_enabled === "boolean" ? !snapshot.tx_enabled : null) : undefined;
+      node.disabled = !!radioGateReason(snapshot, action, requestedValue) || (action !== "stop-tx" && !known);
       node.classList.toggle("active", (action === "multi-decode" && state.multi_decode === true)
-        || (action === "sync" && state.sync === true));
+        || (action === "sync" && state.sync === true)
+        || (action === "enable-tx" && snapshot?.tx_enabled === true));
+      if (action === "enable-tx") node.setAttribute("aria-pressed", String(snapshot?.tx_enabled === true));
     });
     const qsoDraft = state.qso_draft && typeof state.qso_draft === "object" ? state.qso_draft : {};
     const qsoOpen = state.qso_draft_open === true;
@@ -958,7 +963,7 @@
   }
 
   async function sendRadio(action, value, index, message, qso) {
-    const gate = radioGateReason(currentSnapshot, action);
+    const gate = radioGateReason(currentSnapshot, action, action === "enable-tx" ? value : undefined);
     if (gate || !currentSnapshot) { updateRadioControls(); return; }
     const labels = {"enable-tx": "启用发射", "stop-tx": "终止发射", "log-qso": "打开记录草稿",
       "log-qso-confirm": "提交记录通联", "log-qso-cancel": "取消记录草稿",
@@ -1186,7 +1191,7 @@
   el("business_start_auto").addEventListener("click", () => sendBusiness("start-auto-call"));
   el("business_stop").addEventListener("click", () => sendBusiness("stop-auto-call"));
   const radioButtons = {
-    radio_enable_tx: ["enable-tx", true], radio_stop_tx: ["stop-tx", false],
+    radio_enable_tx: ["enable-tx", false], radio_stop_tx: ["stop-tx", false],
     radio_log_qso: ["log-qso", false], radio_clear_windows: ["clear-windows", false],
     radio_sync: ["sync", true], radio_multi_decode: ["multi-decode", true]
   };
@@ -1194,7 +1199,11 @@
     el(id).addEventListener("click", () => {
       const state = currentSnapshot && currentSnapshot.radio_controls ? currentSnapshot.radio_controls : {};
       const toggles = ["sync", "multi-decode"];
-      const value = toggles.includes(config[0]) ? !(state[config[0].replace("agc-compensation", "agc_compensation").replace("multi-decode", "multi_decode").replace("skip-tx1", "skip_tx1")] === true) : config[1];
+      const value = config[0] === "enable-tx"
+        ? currentSnapshot?.tx_enabled === false
+        : toggles.includes(config[0])
+          ? !(state[config[0].replace("agc-compensation", "agc_compensation").replace("multi-decode", "multi_decode").replace("skip-tx1", "skip_tx1")] === true)
+          : config[1];
       sendRadio(config[0], value, 0, "");
     });
   });

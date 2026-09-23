@@ -928,7 +928,7 @@ bool JtdxWebControl::feedback_radio (QString const& request_id, QString const& s
     return false;
   bool matched = true;
   if (record.radio_action == QStringLiteral ("enable-tx"))
-    matched = observed.safety.known && observed.safety.tx_enabled;
+    matched = observed.safety.known && observed.safety.tx_enabled == record.radio_value;
   else if (record.radio_action == QStringLiteral ("stop-tx"))
     matched = observed.safety.known && !observed.safety.tx_enabled
       && !observed.safety.transmitting && !observed.safety.ptt && !observed.safety.tune;

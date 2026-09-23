@@ -236,6 +236,30 @@ int main ()
              && radio_body.contains ("on_swlButton_clicked (action.radio_value)")
              && radio_body.contains ("commitWebLogQsoDraft (action.radio_qso"),
          "the six Web radio controls reuse the native desktop entry points");
+  check (web_app_source.contains ("readback.tx_enabled === request.value")
+             && web_app_source.contains ("currentSnapshot?.tx_enabled === false")
+             && web_app_source.contains ("snapshot?.tx_enabled === true")
+             && web_app_source.contains ("radio_enable_tx: [\"enable-tx\", false]"),
+         "Enable Tx mirrors the native checkable button and confirms either requested boolean state");
+  check (radio_body.contains ("m_webRadioPendingRequestId = dispatch.request_id")
+             && radio_body.contains ("JtdxWebRadioAdapter::observe")
+             && radio_body.contains ("tryCompletePendingWebRadio ()"),
+         "a nonterminal radio action is later reconciled by state publication without replaying dispatch");
+  auto const rig_update = source.indexOf ("void MainWindow::handle_transceiver_update");
+  auto const rig_failure = source.indexOf ("void MainWindow::handle_transceiver_failure", rig_update);
+  auto const rig_update_body = source.mid (rig_update, rig_failure - rig_update);
+  check (rig_update >= 0 && rig_failure > rig_update
+             && rig_update_body.indexOf ("m_webState->observe_rig")
+                    < rig_update_body.indexOf ("tryCompletePendingWebRadio ()")
+             && source.contains ("const_cast<MainWindow *> (this)->tryCompletePendingWebRadio ();"),
+         "subsequent rig and status observations can complete a pending radio request");
+  auto const native_stop = source.indexOf ("void MainWindow::on_stopTxButton_clicked");
+  auto const native_stop_end = source.indexOf ("void MainWindow::rigOpen", native_stop);
+  auto const native_stop_body = source.mid (native_stop, native_stop_end - native_stop);
+  check (native_stop >= 0 && native_stop_end > native_stop
+             && native_stop_body.contains ("if (m_tune) stop_tuning ();" )
+             && native_stop_body.contains ("if (m_enableTx and !m_tuneup) enableTx_mode (false);"),
+         "Stop preserves native tune cancellation and the tuneup-specific Enable Tx rule");
   auto const cq_apply = source.indexOf ("void MainWindow::applyWebStartCq");
   auto const cq_next = source.indexOf ("void MainWindow::applyWebStartAutoCall", cq_apply);
   auto const cq_body = source.mid (cq_apply, cq_next - cq_apply);
