@@ -230,6 +230,7 @@ private:
   static QString canonical_payload (Request const& request);
   static bool safe_to_dispatch (SafetySnapshot const& safety, Operation operation,
                                 QString const& radio_action, bool radio_value, QString * reason);
+  static bool requires_unconfirmed_latch (Record const& record);
   void mark_operations_changed ();
 
   qint64 now () const;

@@ -37,6 +37,7 @@
 #endif
 
 #include "revision_utils.hpp"
+#include "JtdxWebRadioAdapter.hpp"
 #include "qt_helpers.hpp"
 #include "soundout.h"
 #include "soundin.h"
@@ -2545,6 +2546,13 @@ void MainWindow::applyWebStopAutoCall ()
 void MainWindow::dispatchWebBusiness (JtdxWebControl::Dispatch dispatch)
 {
   if (!m_webControl || m_webControl->is_shutdown ()) return;
+  // Radio has its own adapter because it publishes and matches radio-control
+  // readback. Do not mark it begun here and again in dispatchWebRadio().
+  if (dispatch.operation == JtdxWebControl::Operation::Radio)
+    {
+      dispatchWebRadio (std::move (dispatch));
+      return;
+    }
   JtdxWebControl::Dispatch prepared;
   if (!m_webControl->prepare_dispatch (dispatch.request_id, dispatch.server_epoch, &prepared)) return;
   if (!m_webControl->begin_dispatch (prepared)) return;
@@ -2554,7 +2562,6 @@ void MainWindow::dispatchWebBusiness (JtdxWebControl::Dispatch dispatch)
     case JtdxWebControl::Operation::StartCq: applyWebStartCq (true); break;
     case JtdxWebControl::Operation::StartAutoCall: applyWebStartAutoCall (); break;
     case JtdxWebControl::Operation::StopAutoCall: applyWebStopAutoCall (); break;
-    case JtdxWebControl::Operation::Radio: dispatchWebRadio (dispatch); return;
     default: m_webControl->fail (dispatch.request_id, dispatch.server_epoch, QStringLiteral ("invalid_business_operation")); return;
     }
   statusUpdate ();
@@ -2567,71 +2574,38 @@ void MainWindow::dispatchWebBusiness (JtdxWebControl::Dispatch dispatch)
 void MainWindow::dispatchWebRadio (JtdxWebControl::Dispatch dispatch)
 {
   if (!m_webControl || m_webControl->is_shutdown ()) return;
-  JtdxWebControl::Dispatch prepared;
-  if (!m_webControl->prepare_dispatch (dispatch.request_id, dispatch.server_epoch, &prepared)) return;
-  if (!m_webControl->begin_dispatch (prepared)) return;
-  dispatch = std::move (prepared);
-  const auto action = dispatch.radio_action;
-  if (action == QStringLiteral ("enable-tx")) enableTx_mode (dispatch.radio_value);
-  else if (action == QStringLiteral ("stop-tx")) on_stopTxButton_clicked ();
-  else if (action == QStringLiteral ("log-qso"))
-    {
-      if (!openWebLogQsoDraft ())
-        { m_webControl->fail (dispatch.request_id, dispatch.server_epoch, QStringLiteral ("no_current_qso")); return; }
-    }
-  else if (action == QStringLiteral ("log-qso-cancel"))
-    {
-      if (!cancelWebLogQsoDraft ())
-        { m_webControl->fail (dispatch.request_id, dispatch.server_epoch, QStringLiteral ("qso_draft_not_open")); return; }
-    }
-  else if (action == QStringLiteral ("log-qso-confirm"))
-    {
-      QString reason;
-      if (!commitWebLogQsoDraft (dispatch.radio_qso, &reason))
-        { m_webControl->fail (dispatch.request_id, dispatch.server_epoch, reason); return; }
-    }
-  else if (action == QStringLiteral ("clear-windows")) on_EraseButton_clicked ();
-  else if (action == QStringLiteral ("sync")) ui->syncButton->setChecked (dispatch.radio_value);
-  else if (action == QStringLiteral ("multi-decode")) { ui->swlButton->setChecked (dispatch.radio_value); on_swlButton_clicked (dispatch.radio_value); }
-  else if (action == QStringLiteral ("agc-compensation")) { ui->AGCcButton->setChecked (dispatch.radio_value); on_AGCcButton_clicked (dispatch.radio_value); }
-  else if (action == QStringLiteral ("narrow")) { ui->filterButton->setChecked (dispatch.radio_value); on_filterButton_clicked (dispatch.radio_value); }
-  else if (action == QStringLiteral ("decode")) on_DecodeButton_clicked (true);
-  else if (action == QStringLiteral ("clear-dx")) on_ClearDxButton_clicked ();
-  else if (action == QStringLiteral ("generate-message"))
-    {
-      if (!dispatch.radio_text.trimmed ().isEmpty ()) ui->genMsg->setText (dispatch.radio_text.trimmed ());
-      on_genStdMsgsPushButton_clicked ();
-    }
-  else if (action == QStringLiteral ("cq")) applyWebStartCq (true);
-  else if (action == QStringLiteral ("skip-tx1")) { ui->skipTx1->setChecked (dispatch.radio_value); on_skipTx1_clicked (dispatch.radio_value); }
-  else if (action == QStringLiteral ("select-tx"))
-    {
-      switch (dispatch.radio_index)
-        {
-        case 1: on_txb1_clicked (); break; case 2: on_txb2_clicked (); break;
-        case 3: on_txb3_clicked (); break; case 4: on_txb4_clicked (); break;
-        case 5: on_txb5_clicked (); break; case 6: on_txb6_clicked (); break;
-        default: m_webControl->fail (dispatch.request_id, dispatch.server_epoch, QStringLiteral ("invalid_tx_index")); return;
-        }
-    }
-  else if (action == QStringLiteral ("set-tx-message"))
-    {
-      switch (dispatch.radio_index)
-        {
-        case 1: { QSignalBlocker blocker {ui->tx1}; ui->tx1->setText (dispatch.radio_text); on_tx1_editingFinished (); break; }
-        case 2: { QSignalBlocker blocker {ui->tx2}; ui->tx2->setText (dispatch.radio_text); on_tx2_editingFinished (); break; }
-        case 3: { QSignalBlocker blocker {ui->tx3}; ui->tx3->setText (dispatch.radio_text); on_tx3_editingFinished (); break; }
-        case 4: { QSignalBlocker blocker {ui->tx4}; ui->tx4->setText (dispatch.radio_text); on_tx4_editingFinished (); break; }
-        case 5: ui->tx5->setCurrentText (dispatch.radio_text); break;
-        case 6: { QSignalBlocker blocker {ui->tx6}; ui->tx6->setText (dispatch.radio_text); on_tx6_editingFinished (); break; }
-        default: m_webControl->fail (dispatch.request_id, dispatch.server_epoch, QStringLiteral ("invalid_tx_index")); return;
-        }
-    }
-  else { m_webControl->fail (dispatch.request_id, dispatch.server_epoch, QStringLiteral ("invalid_radio_action")); return; }
-  statusUpdate ();
-  auto const observed = webControlObservation ();
-  m_webControl->feedback_radio (dispatch.request_id, dispatch.server_epoch,
-                                observed.state_revision, observed);
+  JtdxWebRadioAdapter::dispatch (*m_webControl, dispatch,
+      [this] (JtdxWebControl::Dispatch const& action, QString * reason) {
+        if (action.radio_action == QStringLiteral ("enable-tx")) enableTx_mode (action.radio_value);
+        else if (action.radio_action == QStringLiteral ("stop-tx")) on_stopTxButton_clicked ();
+        else if (action.radio_action == QStringLiteral ("log-qso"))
+          {
+            if (!openWebLogQsoDraft ())
+              { if (reason) *reason = QStringLiteral ("no_current_qso"); return false; }
+          }
+        else if (action.radio_action == QStringLiteral ("log-qso-cancel"))
+          {
+            if (!cancelWebLogQsoDraft ())
+              { if (reason) *reason = QStringLiteral ("qso_draft_not_open"); return false; }
+          }
+        else if (action.radio_action == QStringLiteral ("log-qso-confirm"))
+          {
+            QString write_reason;
+            if (!commitWebLogQsoDraft (action.radio_qso, &write_reason))
+              { if (reason) *reason = write_reason; return false; }
+          }
+        else if (action.radio_action == QStringLiteral ("clear-windows")) on_EraseButton_clicked ();
+        else if (action.radio_action == QStringLiteral ("sync")) ui->syncButton->setChecked (action.radio_value);
+        else if (action.radio_action == QStringLiteral ("multi-decode"))
+          { ui->swlButton->setChecked (action.radio_value); on_swlButton_clicked (action.radio_value); }
+        else
+          { if (reason) *reason = QStringLiteral ("invalid_radio_action"); return false; }
+        return true;
+      },
+      [this] {
+        statusUpdate ();
+        return webControlObservation ();
+      });
 }
 
 void MainWindow::on_actionOpenWebUi_triggered ()

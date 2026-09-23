@@ -156,11 +156,7 @@ int main ()
   QStringList const local_radio_actions {
     QStringLiteral ("log-qso"), QStringLiteral ("log-qso-confirm"),
     QStringLiteral ("log-qso-cancel"), QStringLiteral ("clear-windows"),
-    QStringLiteral ("sync"), QStringLiteral ("multi-decode"),
-    QStringLiteral ("agc-compensation"), QStringLiteral ("narrow"),
-    QStringLiteral ("decode"), QStringLiteral ("clear-dx"),
-    QStringLiteral ("generate-message"), QStringLiteral ("skip-tx1"),
-    QStringLiteral ("select-tx"), QStringLiteral ("set-tx-message")};
+    QStringLiteral ("sync"), QStringLiteral ("multi-decode")};
   QStringList const safety_conditions {
     QStringLiteral ("unknown"), QStringLiteral ("rig_offline"),
     QStringLiteral ("monitor_off"), QStringLiteral ("transmitting"),
@@ -199,8 +195,6 @@ int main ()
              "Stop Tx remains available in every observed safety condition");
       auto enable_tx = submit_radio_action (QStringLiteral ("enable-tx"), true, safety,
                                             condition + QStringLiteral ("-enable-tx"));
-      auto cq = submit_radio_action (QStringLiteral ("cq"), true, safety,
-                                     condition + QStringLiteral ("-cq"));
       QString expected_reason = QStringLiteral ("tx_path_active");
       if (condition == QStringLiteral ("unknown")) expected_reason = QStringLiteral ("safety_unknown");
       else if (condition == QStringLiteral ("rig_offline")) expected_reason = QStringLiteral ("rig_offline");
@@ -219,9 +213,9 @@ int main ()
                                           condition + QStringLiteral ("-start-auto"));
       auto stop_business = submit_operation (Control::Operation::StopAutoCall, safety,
                                             condition + QStringLiteral ("-stop-auto"));
-      check (enable_tx.status == Control::Status::Rejected && cq.status == Control::Status::Rejected,
-             "TX arming and CQ remain behind the native safety-state matrix");
-      check (enable_tx.reason == expected_reason && cq.reason == expected_reason,
+      check (enable_tx.status == Control::Status::Rejected,
+             "TX arming remains behind the native safety-state matrix");
+      check (enable_tx.reason == expected_reason,
              "TX-enabling actions report the precise first failing safety condition");
       check (frequency.status == Control::Status::Rejected && start_cq.status == Control::Status::Rejected
                  && start_auto.status == Control::Status::Rejected
@@ -243,11 +237,10 @@ int main ()
   queued_radio.operation = Control::Operation::Radio;
   queued_radio.server_epoch = stop_priority.server_epoch ();
   queued_radio.state_revision = 1;
-  queued_radio.radio_action = QStringLiteral ("set-tx-message");
-  queued_radio.radio_index = 1;
-  queued_radio.radio_text = QStringLiteral ("CQ W1ABC FN31");
+  queued_radio.radio_action = QStringLiteral ("sync");
+  queued_radio.radio_value = true;
   check (stop_priority.submit (queued_radio).status == Control::Status::Pending,
-         "TX message editing request can enter the existing MainWindow route");
+         "local sync request can enter the existing MainWindow route");
   auto priority_stop_request = queued_radio;
   priority_stop_request.request_id = QStringLiteral ("priority-stop");
   priority_stop_request.radio_action = QStringLiteral ("stop-tx");
@@ -271,14 +264,15 @@ int main ()
   auto unknown_radio = queued_radio;
   unknown_radio.request_id = QStringLiteral ("unknown-radio-before-stop");
   unknown_radio.server_epoch = unknown_stop.server_epoch ();
+  unknown_radio.radio_action = QStringLiteral ("enable-tx");
   check (unknown_stop.submit (unknown_radio).status == Control::Status::Pending,
-         "radio operation can be pending before its bounded timeout");
+         "TX-enable operation can be pending before its bounded timeout");
   Control::Dispatch prepared_unknown_radio;
   check (unknown_stop.prepare_dispatch (dispatched_unknown_radio.request_id,
                                         dispatched_unknown_radio.server_epoch,
                                         &prepared_unknown_radio)
              && unknown_stop.begin_dispatch (prepared_unknown_radio),
-         "radio operation begins before the unconfirmed-result timeout");
+         "TX-enable begins before the unconfirmed-result timeout");
   unknown_stop.advance_clock_for_test (11);
   unknown_stop.expire ();
   Control::Dispatch stop_after_unknown_dispatch;

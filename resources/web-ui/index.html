@@ -35,21 +35,13 @@
         <article class="card radio-panel">
           <div class="section-heading"><h2>电台控制</h2><span id="radio_state_badge">—</span></div>
           <div class="radio-actions">
-            <button id="radio_enable_tx" type="button" disabled>启用发射 (N)</button>
-            <button id="radio_stop_tx" type="button" disabled>终止发射 (H)</button>
-            <button id="radio_log_qso" type="button" disabled>记录通联 (Q)</button>
-            <button id="radio_clear_windows" type="button" disabled>清空窗口 (E)</button>
+            <button id="radio_enable_tx" type="button" disabled>启用发射</button>
+            <button id="radio_stop_tx" class="danger" type="button" disabled>终止发射</button>
+            <button id="radio_log_qso" type="button" disabled>记录通联</button>
+            <button id="radio_clear_windows" type="button" disabled>清空窗口</button>
             <button id="radio_sync" type="button" disabled>同步</button>
-            <button id="radio_multi_decode" type="button" disabled>多次解码 (W)</button>
-            <button id="radio_agc" type="button" disabled>AGC 补偿</button>
-            <button id="radio_narrow" type="button" disabled>窄频</button>
-            <button id="radio_decode" type="button" disabled>解码 (O)</button>
-            <button id="radio_clear_dx" type="button" disabled>清除 DX</button>
-            <button id="radio_generate" type="button" disabled>生成消息</button>
-            <button id="radio_cq" type="button" disabled>CQ</button>
-            <button id="radio_skip_tx1" type="button" disabled>跳过 Tx1</button>
+            <button id="radio_multi_decode" type="button" disabled>多次解码</button>
           </div>
-          <div class="cq-editor"><label for="radio_cq_text">CQ 文本<input id="radio_cq_text" type="text" maxlength="32" autocomplete="off"></label></div>
           <p id="radio_result" class="frequency-result" aria-live="polite" hidden></p>
           <div id="radio_qso_draft" class="qso-draft" hidden>
             <div class="tx-editor-heading"><strong>记录通联草稿</strong></div>
@@ -68,17 +60,6 @@
               <label class="qso-wide">eQSL 备注<input id="qso_eqsl_comments" type="text" maxlength="256" autocomplete="off"></label>
             </div>
             <div class="button-row"><button id="radio_qso_cancel" type="button">取消草稿</button><button id="radio_qso_confirm" type="button">确认提交 QSO</button></div>
-          </div>
-          <div class="tx-editor">
-            <div class="tx-editor-heading"><strong>消息序列</strong></div>
-            <div class="tx-rows">
-              <label><input type="radio" name="web_tx_index" value="1"><span>Tx1</span><input id="radio_tx_1" type="text" maxlength="64" autocomplete="off"></label>
-              <label><input type="radio" name="web_tx_index" value="2"><span>Tx2</span><input id="radio_tx_2" type="text" maxlength="64" autocomplete="off"></label>
-              <label><input type="radio" name="web_tx_index" value="3"><span>Tx3</span><input id="radio_tx_3" type="text" maxlength="64" autocomplete="off"></label>
-              <label><input type="radio" name="web_tx_index" value="4"><span>Tx4</span><input id="radio_tx_4" type="text" maxlength="64" autocomplete="off"></label>
-              <label><input type="radio" name="web_tx_index" value="5"><span>Tx5</span><input id="radio_tx_5" type="text" maxlength="64" autocomplete="off"></label>
-              <label><input type="radio" name="web_tx_index" value="6"><span>Tx6</span><input id="radio_tx_6" type="text" maxlength="64" autocomplete="off"></label>
-            </div>
           </div>
         </article>
         <article class="card frequency-control">

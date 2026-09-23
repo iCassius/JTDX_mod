@@ -76,9 +76,16 @@ int main ()
              && web_app_source.contains ("if (action === \"stop-tx\") return \"\";")
              && web_app_source.contains ("radioUnknown = radioRequest.preserveUnknown === true;")
              && web_app_source.contains ("radioAbort) radioAbort.abort();")
-             && web_style_source.contains ("grid-template-columns: 2.7rem 3.2rem 3.7rem 2.4rem minmax(16rem, 1fr) minmax(9rem, max-content) auto")
-             && web_style_source.contains (".decodes { display: block; width: 100%; min-width: 0; max-width: 100%;")
+             && web_style_source.contains ("grid-template-rows: auto auto")
+             && web_style_source.contains ("overflow-y: auto; overflow-x: hidden")
              && web_style_source.contains (".decode-card { min-width: 0; }")
+             && web_style_source.contains (".radio-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));")
+             && web_index_source.contains ("启用发射") && web_index_source.contains ("终止发射")
+             && web_index_source.contains ("记录通联") && web_index_source.contains ("清空窗口")
+             && web_index_source.contains ("多次解码")
+             && !web_index_source.contains ("id=\"radio_agc\"")
+             && !web_index_source.contains ("id=\"radio_cq\"")
+             && !web_index_source.contains ("web_tx_index")
              && !web_style_source.contains (".decode button { display: none")
              && !web_index_source.contains ("MHz")
              && !web_app_source.contains ("Date.now")
@@ -139,7 +146,7 @@ int main ()
              && !web_index_source.contains ("revision")
              && !web_index_source.contains ("开发")
              && web_style_source.contains ("@media (max-width: 850px)")
-             && web_style_source.contains (".workbench { grid-template-columns: 1fr; }")
+             && web_style_source.contains (".workbench-right { grid-template-columns: minmax(0, 1fr); }")
              && web_style_source.contains ("overflow-x: hidden")
              && !web_app_source.contains ("globalThis.confirm"),
          "UI omits Web-specific confirmation/auth/freshness cards and uses the JTDX clock in a responsive Hz layout");
@@ -211,6 +218,24 @@ int main ()
   check (source.contains ("void MainWindow::dispatchWebBusiness")
              && source.contains ("m_webControl->feedback_business"),
          "MainWindow forwards CQ/AutoSeq commands through a separate business-state readback adapter");
+  auto const radio_route = source.indexOf ("void MainWindow::dispatchWebBusiness");
+  auto const radio_adapter = source.indexOf ("void MainWindow::dispatchWebRadio", radio_route);
+  auto const radio_route_body = source.mid (radio_route, radio_adapter - radio_route);
+  check (radio_route >= 0 && radio_adapter > radio_route
+             && radio_route_body.indexOf ("Operation::Radio") >= 0
+             && radio_route_body.indexOf ("dispatchWebRadio")
+                    < radio_route_body.indexOf ("m_webControl->prepare_dispatch")
+             && source.contains ("JtdxWebRadioAdapter::dispatch (*m_webControl, dispatch"),
+         "Radio dispatch reaches its single prepare/begin adapter before the business path");
+  auto const radio_end = source.indexOf ("void MainWindow::on_actionOpenWebUi_triggered", radio_adapter);
+  auto const radio_body = source.mid (radio_adapter, radio_end - radio_adapter);
+  check (radio_body.contains ("enableTx_mode (action.radio_value)")
+             && radio_body.contains ("on_stopTxButton_clicked ()")
+             && radio_body.contains ("on_EraseButton_clicked ()")
+             && radio_body.contains ("ui->syncButton->setChecked (action.radio_value)")
+             && radio_body.contains ("on_swlButton_clicked (action.radio_value)")
+             && radio_body.contains ("commitWebLogQsoDraft (action.radio_qso"),
+         "the six Web radio controls reuse the native desktop entry points");
   auto const cq_apply = source.indexOf ("void MainWindow::applyWebStartCq");
   auto const cq_next = source.indexOf ("void MainWindow::applyWebStartAutoCall", cq_apply);
   auto const cq_body = source.mid (cq_apply, cq_next - cq_apply);

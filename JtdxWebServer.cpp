@@ -493,6 +493,15 @@ QJsonObject JtdxWebServer::operation_result (JtdxWebControl::Result const& resul
                    result.status == JtdxWebControl::Status::Completed);
   readback.insert (QStringLiteral ("state_revision"),
                    static_cast<qint64> (result.snapshot.state_revision));
+  readback.insert (QStringLiteral ("safety_known"), result.snapshot.safety.known);
+  readback.insert (QStringLiteral ("tx_enabled"), result.snapshot.safety.known
+                   ? QJsonValue {result.snapshot.safety.tx_enabled} : QJsonValue {QJsonValue::Null});
+  readback.insert (QStringLiteral ("transmitting"), result.snapshot.safety.known
+                   ? QJsonValue {result.snapshot.safety.transmitting} : QJsonValue {QJsonValue::Null});
+  readback.insert (QStringLiteral ("ptt"), result.snapshot.safety.known
+                   ? QJsonValue {result.snapshot.safety.ptt} : QJsonValue {QJsonValue::Null});
+  readback.insert (QStringLiteral ("tune"), result.snapshot.safety.known
+                   ? QJsonValue {result.snapshot.safety.tune} : QJsonValue {QJsonValue::Null});
   readback.insert (QStringLiteral ("frequency_known"), result.snapshot.frequency_known);
   readback.insert (QStringLiteral ("frequency_hz"), result.snapshot.frequency_known
                    ? QJsonValue {QString::number (result.snapshot.actual_frequency_hz)}

@@ -1,5 +1,6 @@
 #include "JtdxWebServer.hpp"
 #include "JtdxWebDecodeProjection.hpp"
+#include "JtdxWebRadioAdapter.hpp"
 #include "Bands.hpp"
 #include "logbook/callsignlocation.h"
 
@@ -347,16 +348,18 @@ int main (int argc, char ** argv)
           QStringLiteral ("FT8"), QStringLiteral ("All"),
           {{7074000u, QStringLiteral ("40m"), QStringLiteral ("FT8"), QStringLiteral ("All"), true},
            {14074000u, QStringLiteral ("20m"), QStringLiteral ("FT8"), QStringLiteral ("All"), true}});
-      control.set_observation_provider ([&state] {
+      bool fixture_tx_enabled = false;
+      control.set_observation_provider ([&state, &fixture_tx_enabled] {
           QJsonObject const snapshot = state.json_snapshot ();
           JtdxWebControl::ObservedState current;
           current.safety.known = snapshot.value (QStringLiteral ("online")).toBool ()
               && snapshot.value (QStringLiteral ("rig_online")).toBool ();
           current.safety.rig_online = snapshot.value (QStringLiteral ("rig_online")).toBool ();
           current.safety.monitoring = true;
-          current.safety.tx_enabled = snapshot.value (QStringLiteral ("tx_enabled")).toBool ();
+          current.safety.tx_enabled = fixture_tx_enabled;
           current.safety.transmitting = snapshot.value (QStringLiteral ("transmitting")).toBool ();
           current.safety.ptt = snapshot.value (QStringLiteral ("ptt")).toBool ();
+          current.safety.tune = snapshot.value (QStringLiteral ("tune")).toBool ();
           current.safety.watchdog_timeout = snapshot.value (QStringLiteral ("watchdog_timeout")).toBool ();
           current.safety.business_state_known = snapshot.value (QStringLiteral ("auto_sequence_state")).isString ();
           current.state_revision = state.revision ();
@@ -404,9 +407,60 @@ int main (int argc, char ** argv)
                                             prepared.dx_source_decode_id);
               });
           });
-      control.set_business_dispatcher ([&state, &control, browser_automation_p9_fixture,
+      control.set_business_dispatcher ([&state, &control, &fixture_tx_enabled, browser_automation_p9_fixture,
                                         browser_automation_p9_timeout_fixture]
                                        (JtdxWebControl::Dispatch const& dispatch) {
+          if (dispatch.operation == JtdxWebControl::Operation::Radio)
+            {
+              JtdxWebRadioAdapter::dispatch (control, dispatch,
+                [&] (JtdxWebControl::Dispatch const& action, QString *) {
+                  QJsonObject const snapshot = state.json_snapshot ();
+                  QJsonObject const radio = snapshot.value (QStringLiteral ("radio_controls")).toObject ();
+                  bool const multi = action.radio_action == QStringLiteral ("multi-decode")
+                      ? action.radio_value : radio.value (QStringLiteral ("multi_decode")).toBool ();
+                  bool const sync = action.radio_action == QStringLiteral ("sync")
+                      ? action.radio_value : radio.value (QStringLiteral ("sync")).toBool ();
+                  bool const agc = radio.value (QStringLiteral ("agc_compensation")).toBool ();
+                  bool const narrow = radio.value (QStringLiteral ("narrow")).toBool ();
+                  bool const skip = radio.value (QStringLiteral ("skip_tx1")).toBool ();
+                  int const tx_index = radio.value (QStringLiteral ("current_tx_index")).toInt ();
+                  QStringList messages;
+                  for (auto const& value : radio.value (QStringLiteral ("tx_messages")).toArray ())
+                    messages.append (value.toString ());
+                  while (messages.size () < 6) messages.append (QString {});
+                  QJsonObject draft = radio.value (QStringLiteral ("qso_draft")).toObject ();
+                  quint64 generation = radio.value (QStringLiteral ("qso_generation")).toVariant ().toULongLong ();
+                  if (action.radio_action == QStringLiteral ("enable-tx"))
+                    fixture_tx_enabled = action.radio_value;
+                  else if (action.radio_action == QStringLiteral ("stop-tx"))
+                    fixture_tx_enabled = false;
+                  else if (action.radio_action == QStringLiteral ("log-qso"))
+                    {
+                      draft = action.radio_qso;
+                      if (draft.isEmpty ()) draft.insert (QStringLiteral ("call"), QStringLiteral ("K1ABC"));
+                    }
+                  else if (action.radio_action == QStringLiteral ("log-qso-cancel")
+                           || action.radio_action == QStringLiteral ("log-qso-confirm"))
+                    { draft = {}; ++generation; }
+                  else if (action.radio_action != QStringLiteral ("clear-windows")
+                           && action.radio_action != QStringLiteral ("sync")
+                           && action.radio_action != QStringLiteral ("multi-decode")) return false;
+                  state.observe_radio_controls (multi, agc, narrow, sync, skip, tx_index, messages,
+                                                draft.isEmpty (), draft, generation);
+                  return true;
+                },
+                [&] {
+                  QJsonObject const current = state.json_snapshot ();
+                  state.observe_business_state (
+                      current.value (QStringLiteral ("auto_sequence_state")).toString ()
+                          == QStringLiteral ("enabled"),
+                      current.value (QStringLiteral ("qso_stage")).toString (),
+                      current.value (QStringLiteral ("cq_state")).toString (),
+                      current.value (QStringLiteral ("current_tx_text")).toString ());
+                  return control.observed_state ();
+                });
+              return;
+            }
           JtdxWebControl::Dispatch prepared;
           if (!control.prepare_dispatch (dispatch.request_id, dispatch.server_epoch, &prepared)
               || !control.begin_dispatch (prepared)) return;
@@ -863,6 +917,13 @@ int main (int argc, char ** argv)
              && radio_open_completed.value (QStringLiteral ("readback")).toObject ()
                     .value (QStringLiteral ("radio_log_dialog_open")).toBool (),
          "completed radio open exposes the open draft readback");
+  auto const radio_open_readback = radio_open_completed.value (QStringLiteral ("readback")).toObject ();
+  check (radio_open_readback.value (QStringLiteral ("safety_known")).toBool ()
+             && radio_open_readback.value (QStringLiteral ("tx_enabled")).isBool ()
+             && radio_open_readback.value (QStringLiteral ("transmitting")).isBool ()
+             && radio_open_readback.value (QStringLiteral ("ptt")).isBool ()
+             && radio_open_readback.value (QStringLiteral ("tune")).isBool (),
+         "serialized radio result includes every safety field consumed by the browser readback predicate");
 
   QByteArray const radio_confirm_body = QByteArrayLiteral ("{\"request_id\":\"tcp-radio-confirm\",\"server_epoch\":\"")
       + server.server_epoch ().toUtf8 () + QByteArrayLiteral ("\",\"state_revision\":")

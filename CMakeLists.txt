@@ -205,6 +205,7 @@ set (wsjt_qt_CXXSRCS
   JtdxWebFrequencyCandidates.cpp
   JtdxWebDx.cpp
   JtdxWebControl.cpp
+  JtdxWebRadioAdapter.cpp
   JtdxLocalLog.cpp
   JtdxWebState.cpp
   JtdxWebServer.cpp
@@ -1648,12 +1649,22 @@ if (JTDX_BUILD_LOCAL_TESTS)
   add_executable (jtdx_web_control_test
     tests/jtdx_web_control_test.cpp
     JtdxWebControl.cpp
+    JtdxWebRadioAdapter.cpp
     JtdxLocalLog.cpp
     JtdxWebDx.cpp
     Radio.cpp)
   target_include_directories (jtdx_web_control_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   target_link_libraries (jtdx_web_control_test Qt5::Core)
   add_test (NAME jtdx_web_control_test COMMAND jtdx_web_control_test)
+  add_executable (jtdx_web_radio_adapter_test
+    tests/jtdx_web_radio_adapter_test.cpp
+    JtdxWebControl.cpp
+    JtdxWebRadioAdapter.cpp
+    JtdxWebDx.cpp
+    Radio.cpp)
+  target_include_directories (jtdx_web_radio_adapter_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_link_libraries (jtdx_web_radio_adapter_test Qt5::Core)
+  add_test (NAME jtdx_web_radio_adapter_test COMMAND jtdx_web_radio_adapter_test)
   add_executable (jtdx_local_log_test
     tests/jtdx_local_log_test.cpp
     JtdxLocalLog.cpp
@@ -1747,6 +1758,7 @@ if (JTDX_BUILD_LOCAL_TESTS)
     logbook/callsignlocation.cpp
     JtdxWebServer.cpp
     JtdxWebControl.cpp
+    JtdxWebRadioAdapter.cpp
     JtdxWebDx.cpp
     Radio.cpp
     JtdxWebFrequency.cpp

@@ -135,6 +135,16 @@ bool JtdxWebControl::safe_to_dispatch (SafetySnapshot const& safety, Operation o
   return false;
 }
 
+bool JtdxWebControl::requires_unconfirmed_latch (Record const& record)
+{
+  if (record.result.operation != Operation::Radio) return true;
+  // These operations can leave the RF path armed or active if their outcome
+  // is unknown. Local decoder/UI actions must not globally lock unrelated UI.
+  return (record.radio_action == QStringLiteral ("enable-tx") && record.radio_value)
+      || record.radio_action == QStringLiteral ("stop-tx")
+      || record.radio_action == QStringLiteral ("log-qso-confirm");
+}
+
 qint64 JtdxWebControl::now () const
 {
   return clock_ ? clock_ () : (test_clock_ ? test_now_ms_ : elapsed_clock_.elapsed ());
@@ -222,7 +232,8 @@ void JtdxWebControl::invalidate_server_epoch (QString reason)
       auto it = records_.find (pending_request_id_);
       if (it != records_.end ())
         {
-          bool const was_dispatched = it.value ().dispatched;
+          bool const was_dispatched = it.value ().dispatched
+              && requires_unconfirmed_latch (it.value ());
           QString const request_id = it.value ().result.request_id;
           finish (it.value (), Status::Rejected, std::move (reason));
           if (was_dispatched)
@@ -347,21 +358,13 @@ JtdxWebControl::Result JtdxWebControl::submit (Request request)
         QStringLiteral ("enable-tx"), QStringLiteral ("stop-tx"),
         QStringLiteral ("log-qso"), QStringLiteral ("clear-windows"),
         QStringLiteral ("sync"), QStringLiteral ("multi-decode"),
-        QStringLiteral ("agc-compensation"), QStringLiteral ("narrow"),
-        QStringLiteral ("decode"), QStringLiteral ("clear-dx"),
-        QStringLiteral ("generate-message"), QStringLiteral ("cq"),
-        QStringLiteral ("skip-tx1"), QStringLiteral ("select-tx"),
-        QStringLiteral ("set-tx-message"), QStringLiteral ("log-qso-confirm"),
+        QStringLiteral ("log-qso-confirm"),
         QStringLiteral ("log-qso-cancel")};
       if (!actions.contains (request.radio_action))
         return reject (request, QStringLiteral ("invalid_radio_action"), 400);
       if (request.radio_index < 0 || request.radio_index > 6
           || !printable_radio_text (request.radio_text, 64))
         return reject (request, QStringLiteral ("invalid_radio_fields"), 400);
-      if ((request.radio_action == QStringLiteral ("select-tx")
-           || request.radio_action == QStringLiteral ("set-tx-message"))
-          && (request.radio_index < 1 || request.radio_index > 6))
-        return reject (request, QStringLiteral ("invalid_tx_index"), 400);
       if (request.radio_action == QStringLiteral ("log-qso-confirm")
           && request.radio_qso.isEmpty ())
         return reject (request, QStringLiteral ("qso_draft_required"), 400);
@@ -774,7 +777,7 @@ bool JtdxWebControl::feedback_frequency (QString const& request_id, QString cons
     {
       finish (record, Status::Timeout, QStringLiteral ("feedback_timeout"));
       record.timed_out = true;
-      unconfirmed_latch_ = true;
+      if (requires_unconfirmed_latch (record)) unconfirmed_latch_ = true;
       last_timed_out_request_id_ = request_id;
       return false;
     }
@@ -820,7 +823,7 @@ bool JtdxWebControl::feedback_select_dx (QString const& request_id, QString cons
     {
       finish (record, Status::Timeout, QStringLiteral ("feedback_timeout"));
       record.timed_out = true;
-      unconfirmed_latch_ = true;
+      if (requires_unconfirmed_latch (record)) unconfirmed_latch_ = true;
       last_timed_out_request_id_ = request_id;
       return false;
     }
@@ -872,7 +875,7 @@ bool JtdxWebControl::feedback_business (QString const& request_id, QString const
     {
       finish (record, Status::Timeout, QStringLiteral ("feedback_timeout"));
       record.timed_out = true;
-      unconfirmed_latch_ = true;
+      if (requires_unconfirmed_latch (record)) unconfirmed_latch_ = true;
       last_timed_out_request_id_ = request_id;
       return false;
     }
@@ -917,31 +920,26 @@ bool JtdxWebControl::feedback_radio (QString const& request_id, QString const& s
     {
       finish (record, Status::Timeout, QStringLiteral ("feedback_timeout"));
       record.timed_out = true;
-      unconfirmed_latch_ = true;
+      if (requires_unconfirmed_latch (record)) unconfirmed_latch_ = true;
       last_timed_out_request_id_ = request_id;
       return false;
     }
   if (state_revision <= record.baseline_state_revision || !observed.radio_state_known)
     return false;
   bool matched = true;
-  if (record.radio_action == QStringLiteral ("enable-tx")) matched = observed.safety.tx_enabled;
-  else if (record.radio_action == QStringLiteral ("stop-tx")) matched = !observed.safety.tx_enabled;
+  if (record.radio_action == QStringLiteral ("enable-tx"))
+    matched = observed.safety.known && observed.safety.tx_enabled;
+  else if (record.radio_action == QStringLiteral ("stop-tx"))
+    matched = observed.safety.known && !observed.safety.tx_enabled
+      && !observed.safety.transmitting && !observed.safety.ptt && !observed.safety.tune;
   else if (record.radio_action == QStringLiteral ("multi-decode")) matched = observed.radio_multi_decode == record.radio_value;
-  else if (record.radio_action == QStringLiteral ("agc-compensation")) matched = observed.radio_agc_compensation == record.radio_value;
-  else if (record.radio_action == QStringLiteral ("narrow")) matched = observed.radio_narrow == record.radio_value;
   else if (record.radio_action == QStringLiteral ("sync")) matched = observed.radio_sync == record.radio_value;
-  else if (record.radio_action == QStringLiteral ("skip-tx1")) matched = observed.radio_skip_tx1 == record.radio_value;
-  else if (record.radio_action == QStringLiteral ("select-tx")) matched = observed.radio_current_tx_index == record.radio_index;
-  else if (record.radio_action == QStringLiteral ("set-tx-message"))
-    matched = record.radio_index >= 1 && record.radio_index <= observed.radio_tx_messages.size ()
-      && observed.radio_tx_messages.at (record.radio_index - 1) == record.radio_text;
   else if (record.radio_action == QStringLiteral ("log-qso")) matched = !observed.radio_qso_draft.isEmpty ()
       && observed.radio_log_dialog_open;
   else if (record.radio_action == QStringLiteral ("log-qso-cancel")) matched = !observed.radio_log_dialog_open;
   else if (record.radio_action == QStringLiteral ("log-qso-confirm"))
     matched = !observed.radio_log_dialog_open
       && observed.radio_qso_generation > record.result.snapshot.radio_qso_generation;
-  else if (record.radio_action == QStringLiteral ("cq")) matched = observed.cq_state == QStringLiteral ("armed");
   if (!matched) return false;
   record.result.snapshot = observed;
   record.result.snapshot.state_revision = state_revision;
@@ -970,7 +968,7 @@ bool JtdxWebControl::expire ()
   it.value ().timed_out = true;
   if (it.value ().dispatched)
     {
-      unconfirmed_latch_ = true;
+      if (requires_unconfirmed_latch (it.value ())) unconfirmed_latch_ = true;
       last_timed_out_request_id_ = it.value ().result.request_id;
     }
   return true;
