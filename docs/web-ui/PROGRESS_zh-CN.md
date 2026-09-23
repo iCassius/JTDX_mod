@@ -1,6 +1,14 @@
 # JTDX 内置 Web UI：进度与中断恢复日志
 
-# 2026-09-23 P24 根审阅纠偏（待根任务复核）
+# 2026-09-23 P25 解码地理字段与电台安全门纠偏（待根任务复核）
+
+- P25 代码提交：`05ee60d5de8ae1d29b00df6d23badcf12cd435c6`，基线 `2d5ee7b0d75f439b4016a42b0ea69cbd0434c9f8`。更正 24 字符解码投影、DXCC entity/continent/中国省份映射、解码选择关联和动作级门控；停止动作可优先越过未知反馈锁，但不清锁。没有修改 UDP 协议或真实 CAT/PTT/TX 执行机制。
+- 从干净 Release 构建目录完成完整应用及测试目标构建；最终成功日志 `C:\JTDX64\deps-webui\evidence\P25\final-build-retry.log`。首次并行构建因自动生成 UI 头文件时序失败，重跑全部目标成功；全量 CTest `25/25`、100%，最终日志 `C:\JTDX64\deps-webui\evidence\P25\final-ctest.log`。
+- 本地 loopback HTTP/SSE 浏览器夹具在 1280/550/390 宽度分别确认文档无横向溢出；解码列可内部滚动，末端的选择操作可见。测试夹具截图与量测见 [`P25-解码地理字段与电台安全门纠偏_zh-CN.md`](P25-解码地理字段与电台安全门纠偏_zh-CN.md) 及 `C:\JTDX64\deps-webui\evidence\P25\`。
+- 本机候选 ZIP `JTDX-2.2.159.2.10-local-05ee60d-P25.zip`，SHA-256 `9D7A80E9EBDE4DC7A1C77E63A53E7DF0C5C30AA25F3E4E4ECB68CBE7E743C6FC`；141 个文件、根项 `bin/`、`plugins/`、`share/`、`NOTICE_zh-CN.md`；清洁解压后 141/141 文件 SHA-256 与 staging/manifest 一致。只供本机审阅，不是公开发行包。
+- 未启动完整真实 MainWindow 做 GUI 验收，未连接/操作 CAT/PTT/TX、未发射、未做 HIL、LAN/公网验证或部署；第三方许可证及数据文件的法律/再分发义务未核实。阶段已向根任务报告待复核，不在此声称接受。
+
+### 2026-09-23 P24 根审阅纠偏（历史；由 P25 后续覆盖）
 
 - P23 尚未被根任务接受；本节只记录按根审阅意见完成的纠偏，不构成验收、发布或硬件验证结论。P23 的历史说明保留为历史记录，当前候选源码为 `6dbb210f4ef20ff2cc5ffbe1c2788bb9ea2f79c7`。
 - 本批限定于 `resources/web-ui/{index.html,style.css,app.js}` 和 `tests/mainwindow_web_frequency_contract_test.cpp` 的布局、文案、输入保留/校验与周期校准，以及对应文档；没有修改 native 电台业务逻辑、CAT/PTT/TX、UDP 或服务安全门。
