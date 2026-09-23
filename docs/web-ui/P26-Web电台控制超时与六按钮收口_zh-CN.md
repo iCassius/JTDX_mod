@@ -17,14 +17,14 @@
 ## 验证与证据
 
 - Release 应用及全部测试目标由 `C:\JTDX64\build-webui-p25-release` 构建。该目录为此前已配置的本机 Release 构建，重用其 MSYS2/Qt/Hamlib 工具链；未使用失败的全新 P26 配置目录作为证据。
-- 完整 Release 构建所有应用和测试目标通过，日志：`C:\JTDX64\deps-webui\evidence\P26\final-build.log`。全量 CTest 为 26/26、100%，58.92 秒，日志：`C:\JTDX64\deps-webui\evidence\P26\final-ctest.log`。构建/测试重用此前已配置的 `C:\JTDX64\build-webui-p25-release`；未将失败的全新 P26 配置目录作为验证证据。
+- 完整 Release 构建所有应用和测试目标通过，日志：`C:\JTDX64\deps-webui\evidence\P26\final-build.log`。全量 CTest 为 26/26、100%，日志：`C:\JTDX64\deps-webui\evidence\P26\final-ctest.log`。构建/测试重用此前已配置的 `C:\JTDX64\build-webui-p25-release`；未将失败的全新 P26 配置目录作为验证证据。
 - 新增 adapter/控制/服务器/MainWindow 静态契约覆盖单次 dispatch、去重、QSO 草稿、嵌套安全回读及超时锁范围。
 - 浏览器使用 `http://127.0.0.1:49152/#fixture` 本机 loopback 内存夹具及生产 HTTP/Control/adapter/helper/serializer 路径，检查桌面和窄屏布局并操作六个控件、QSO 草稿取消/确认、TX 启用/停止及读回；不是真实 MainWindow、无线电或 ADIF 集成验收。截图只在临时浏览器会话中目视检查，未作为交付截图保存。
 
 ## 本机审阅包
 
 - ZIP：`C:\JTDX64\JTDX-2.2.159.2.10-local-a1eaf35-P26.zip`，直接放在 `C:\JTDX64` 根目录；SHA-256 sidecar 与简短说明同处根目录。
-- 141 文件 manifest：`C:\JTDX64\deps-webui\evidence\P26\manifest-P26-a1eaf35.csv`。逐文件 SHA-256 与 ZIP 清洁解压目录核对结果待最终提交复建归档后补入。本包仅供本机审阅，不是公开发行物。
+- SHA-256 sidecar：`C:\JTDX64\JTDX-2.2.159.2.10-local-a1eaf35-P26.zip.sha256`；141 文件 manifest：`C:\JTDX64\deps-webui\evidence\P26\manifest-P26-a1eaf35.csv`。ZIP 独立解压后 141/141 文件与 manifest 的大小和 SHA-256 一致，0 差异；根项为 `bin/`、`plugins/`、`share/`、`NOTICE_zh-CN.md`。本包仅供本机审阅，不是公开发行物。
 - 回退代码时可在仓库执行 `git revert <P26提交>`；本轮不执行回退、不推送、不打标签。
 
 ## 边界

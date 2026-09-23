@@ -4,8 +4,8 @@
 
 - P26 基线 `26cf365`，实现双重 prepare/begin 导致 Radio 原生处理器不运行的问题，并补齐嵌套安全读回字段；范围、映射、超时锁策略及验证边界见 [`P26-Web电台控制超时与六按钮收口_zh-CN.md`](P26-Web电台控制超时与六按钮收口_zh-CN.md)。
 - 页面电台区收口为六项，保留 QSO 草稿取消/确认；解码卡全宽、内容可换行，DX 选择跨两行，窄屏不横向溢出。浏览器为本机 loopback 内存夹具，不是真实 MainWindow/ADIF/设备验证。
-- 代码提交 `a1eaf35931233f849fb34bbefb5bb4274a15aa0d`；完整 Release 构建成功，全量 CTest 26/26、100%、58.92 秒。日志及 141 文件安装 manifest 位于 `C:\JTDX64\deps-webui\evidence\P26\`。
-- 本机审阅 ZIP `C:\JTDX64\JTDX-2.2.159.2.10-local-a1eaf35-P26.zip` 与 SHA-256 sidecar 已生成；清洁解压逐文件比对待最终提交复建归档后完成。仅本机审阅，不表示根任务接受或公开发行；未做 CAT/PTT/TX/HIL、UDP 服务线程或部署验证。
+- 代码提交 `a1eaf35931233f849fb34bbefb5bb4274a15aa0d`；完整 Release 构建成功，全量 CTest 26/26、100%。最终日志及 141 文件安装 manifest 位于 `C:\JTDX64\deps-webui\evidence\P26\`。
+- 本机审阅 ZIP `C:\JTDX64\JTDX-2.2.159.2.10-local-a1eaf35-P26.zip`、SHA-256 sidecar 已生成；141/141 清洁解压文件与 manifest 完全一致。仅本机审阅，不表示根任务接受或公开发行；未做 CAT/PTT/TX/HIL、UDP 服务线程或部署验证。
 
 # 2026-09-23 P25 解码地理字段与电台安全门纠偏（待根任务复核）
 
