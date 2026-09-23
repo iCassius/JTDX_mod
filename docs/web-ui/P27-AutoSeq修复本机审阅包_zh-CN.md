@@ -14,8 +14,8 @@
 - 全量 CTest：27/27 通过，100%，58.47 秒；日志：`local-support/evidence/P27/final-ctest.log`。
 - ZIP：`C:\JTDX64\JTDX-2.2.159.2.10-local-3c086af-P27.zip`，49,376,951 bytes。
 - SHA-256：`9B0A3AC0D537982320F1F1566439ABC7116DAE9F4B41E8A06D56A181C7B02DD8`；sidecar 位于 ZIP 同目录。
-- 142 个文件；直接根项为 `bin/`、`plugins/`、`share/`、`NOTICE`、`NOTICE_zh-CN.md`。独立解压目录为 `C:\JTDX64\deps-webui\temp\P27-clean-extract-3c086af`；142/142 文件长度与 SHA-256 和安装暂存树一致，差异 0。manifest 与校验记录见 `local-support/evidence/P27/manifest-P27-3c086af.csv`、`package-verify-P27.log`。
-- 安装暂存树：`C:\JTDX64\deps-webui\temp\P27-runtime-stage-3c086af`。P25/P26 旧材料未清理或覆盖。
+- 142 个文件；直接根项为 `bin/`、`plugins/`、`share/`、`NOTICE`、`NOTICE_zh-CN.md`。独立解压目录为 `C:\JTDX64\jtdx_sourcecode\local-support\extract\P27-clean-extract-3c086af`；142/142 文件长度与 SHA-256 和安装暂存树一致，差异 0。manifest 与校验记录见 `local-support/evidence/P27/manifest-P27-3c086af.csv`、`package-verify-P27.log`。
+- 安装暂存树：`C:\JTDX64\jtdx_sourcecode\local-support\staging\P27-runtime-stage-3c086af`。P25/P26 ZIP、依赖和受限临时项未删除或覆盖；P25 清洁解压副本只做了目录归档移动，见根目录整理记录。
 
 ## 对“解码区出现大量 X”的检查
 

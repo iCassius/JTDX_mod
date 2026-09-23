@@ -12,3 +12,9 @@ jtdx_recovery.log*
 *.pro.user*
 *.out
 local-support/evidence/
+/local-support/build/
+/local-support/staging/
+/local-support/extract/
+/local-support/browser-profiles/
+/local-support/logs/
+/local-support/releases/*/clean-extract-*/

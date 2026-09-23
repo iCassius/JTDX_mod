@@ -2,7 +2,7 @@
 
 源码提交：`05ee60d5de8ae1d29b00df6d23badcf12cd435c6`。产品版本沿用 JTDX 2.2.159.2。该构建仅供本机审阅与软件验证，不代表根任务接受、发布批准或第三方清权。
 
-本包 ZIP 与 SHA-256 sidecar 保留在 `C:\JTDX64` 根目录；本说明归档于 `C:\JTDX64\jtdx_sourcecode\local-support\releases\P25\说明_zh-CN-P25.md`。后续所有新 Release ZIP 固定输出至 `C:\JTDX64` 根目录，候选说明和中间材料归档至源码树 `local-support`，历史 ZIP 不擅自删除或搬迁。
+本包 ZIP 与 SHA-256 sidecar 保留在 `C:\JTDX64` 根目录；本说明归档于源码树 `local-support/releases/P25/`。后续所有新 Release ZIP 固定输出至 `C:\JTDX64` 根目录，候选说明和中间材料归档至源码树 `local-support`，历史 ZIP 不擅自删除或搬迁。
 
 此包包含本地审阅所需程序、运行库、插件、数据文件和对应第三方材料。第三方许可证文本副本不证明特定分发方式下的全部义务已完成；Qt LGPL 对应源码、替换/重新链接权利，以及数据文件来源与再分发许可仍须独立核查。
 
