@@ -2,7 +2,7 @@
 
 ## 当前候选：P26 Web 电台控制超时与六按钮收口（2026-09-24；待根任务复核）
 
-P26 基于 `main/26cf365` 修复 Radio dispatch 重复 prepare/begin 导致原生动作未执行的问题，并补齐电台操作嵌套回读字段。六项可见电台控件、QSO 草稿边界、超时安全锁、测试和本机审阅包证据见 [`docs/web-ui/P26-Web电台控制超时与六按钮收口_zh-CN.md`](docs/web-ui/P26-Web电台控制超时与六按钮收口_zh-CN.md)。提交后将从最终提交进行完整 Release 构建/CTest，并将审阅 ZIP、校验和与短说明放到 `C:\JTDX64` 根目录。等待根任务复核，不代表验收或发布批准。
+P26 基于 `main/26cf365`，代码提交 `a1eaf35931233f849fb34bbefb5bb4274a15aa0d`，修复 Radio dispatch 重复 prepare/begin 导致原生动作未执行的问题，并补齐电台操作嵌套回读字段。完整 Release 构建成功、全量 CTest 26/26；六项可见电台控件、QSO 草稿边界、超时安全锁、测试和本机审阅包证据见 [`docs/web-ui/P26-Web电台控制超时与六按钮收口_zh-CN.md`](docs/web-ui/P26-Web电台控制超时与六按钮收口_zh-CN.md)。审阅 ZIP、校验和与短说明位于 `C:\JTDX64` 根目录。等待根任务复核，不代表验收或发布批准。
 
 浏览器验证只使用本机 loopback 内存夹具。未启动真实 MainWindow，未连接/操作 CAT/PTT/TX、未发射、未做 HIL、UDP 服务线程、LAN/公网或部署验证；不得把本机审阅候选解释为公开发行包。
 
