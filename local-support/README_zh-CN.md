@@ -2,11 +2,19 @@
 
 本目录用于存放源码工作树之外生成、但需要长期核查的本地证据和恢复索引。它不属于产品运行数据，也不应提交大型二进制、日志、截图、依赖包或构建产物。
 
+## P27 当前本机审阅候选
+
+- 候选包：`C:\JTDX64\JTDX-2.2.159.2.10-local-3c086af-P27.zip`，SHA-256 `9B0A3AC0D537982320F1F1566439ABC7116DAE9F4B41E8A06D56A181C7B02DD8`；142 文件、49,376,951 bytes，根项 `bin/`、`plugins/`、`share/`、`NOTICE`、`NOTICE_zh-CN.md`。独立解压与 manifest 142/142 文件大小和哈希相同。
+- 源码提交 `3c086af9aa6ff6f9ac57513277740cda5145683e`，包含 P26 Web UI 以及 AutoSeq CQ 冷却来源与筛选覆盖修复。P26 `b0732b9` 包不包含此 AutoSeq 修复。
+- Release 构建/安装和全量 CTest 27/27 证据见 `evidence/P27/`；完整包说明见 `../docs/web-ui/P27-AutoSeq修复本机审阅包_zh-CN.md`。清洁解压 `C:\JTDX64\deps-webui\temp\P27-clean-extract-3c086af` 与暂存树 `C:\JTDX64\deps-webui\temp\P27-runtime-stage-3c086af` 均保留；没有尝试清理 P25/P26 项。
+- “大量 X”显示现象未在最近 `202609_ALL.TXT` 复现；本批不据此改解码器。现场样例和 WAV/截图仍是进一步定因所需证据。
+- 未启动候选程序或连接/操作 CAT/PTT/TX，未发射，未做 HIL、LAN/公网或部署验收；候选包不代表公开发行批准或第三方清权。
+
 ## 归档布局
 
 - `evidence/P26/`：P26 最终 Release 构建、CTest、安装日志，两个阶段的安装清单以及桌面/手机截图。共 11 个文件、366,275 bytes；从 `C:\JTDX64\deps-webui\evidence\P26` 逐文件复制并比对相对路径、长度和 SHA-256，11/11 一致。平台随后拒绝了包含删除操作的命令，故这只是归档副本，旧位置的 11 个原件仍在；不得称为迁移或清理完成。该目录由 `.gitignore` 排除；本 README、P26 报告和索引文档纳入源码版本控制。
 - P26 其余行为、验证结论、证据边界与审阅包校验值见 `../docs/web-ui/P26-Web电台控制超时与六按钮收口_zh-CN.md`。
-- Release ZIP、`.sha256` sidecar 和短说明仍留在 `C:\JTDX64` 根目录。当前 P26 为 `JTDX-2.2.159.2.10-local-b0732b9-P26.zip`；P25 和早期 P26 包保留作回退/历史比对。
+- Release ZIP、`.sha256` sidecar 和短说明仍留在 `C:\JTDX64` 根目录。当前候选见上方 P27；P26、P25 和早期 P26 包保留作回退/历史比对。
 
 ## 构建与测试恢复
 

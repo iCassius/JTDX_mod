@@ -1,0 +1,8 @@
+JTDX 2.2.159.2 local review candidate.
+Source commit: 3c086af9aa6ff6f9ac57513277740cda5145683e
+
+This package is for local review and software verification only. It is not an
+official release and does not establish third-party rights clearance. See
+NOTICE_zh-CN.md and share/doc/ThirdParty for included notices and license texts.
+No real radio, CAT/PTT/TX, HIL, LAN/public-network deployment, or release
+qualification was performed.

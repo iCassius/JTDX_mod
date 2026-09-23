@@ -1,5 +1,14 @@
 # JTDX 内置 Web UI：进度与中断恢复日志
 
+# 2026-09-24 P27 AutoSeq CQ 冷却修复本机审阅候选
+
+- 源码提交 `3c086af9aa6ff6f9ac57513277740cda5145683e`；在 P26 Web UI 基线上包含 AutoSeq CQ 冷却来源与筛选覆盖修复。P26 包 `b0732b9` 不含该修复。
+- 在权威 Release 构建树完成完整构建、CMake install/bundle 核验和全量 CTest 27/27（58.47 秒）。对应证据归档于 `local-support/evidence/P27/`。
+- P27 本机候选 ZIP 位于 `C:\JTDX64\JTDX-2.2.159.2.10-local-3c086af-P27.zip`，SHA-256 `9B0A3AC0D537982320F1F1566439ABC7116DAE9F4B41E8A06D56A181C7B02DD8`；142 个文件，清洁解压与 manifest 142/142 匹配，根项含 `bin/`、`plugins/`、`share/`、`NOTICE` 和中文说明。
+- 用户提到的解码显示大量 X 未能从最近 `202609_ALL.TXT` 中复现，检查时也无活动 JTDX 进程；旧本机安装标识为 `651bf9`，不是本次 P27。当前没有足够证据判定软件缺陷，本批未为此修改解码逻辑；需保留重现时的原始行及 WAV/截图后再诊断。
+- 未启动候选 JTDX，未连接/操作 CAT、PTT、TX，未发射，未做 HIL、LAN/公网或部署验证；候选仅供本机审阅，不代表发布批准或第三方清权。
+- 详细范围、证据路径、哈希与边界见 [`P27-AutoSeq修复本机审阅包_zh-CN.md`](P27-AutoSeq修复本机审阅包_zh-CN.md)。
+
 # 2026-09-24 P26 Web 电台控制超时与六按钮收口（待根任务复核）
 
 - P26 基线 `26cf3655a450c3cf42b30ca57ea556d22bb6f16c`，实现 Radio dispatch 超时修复、嵌套安全回读、启用/停止一致回读和窄屏宽度约束；范围、映射、锁策略及边界见 [`P26-Web电台控制超时与六按钮收口_zh-CN.md`](P26-Web电台控制超时与六按钮收口_zh-CN.md)。最终实现提交 `b0732b9`。
