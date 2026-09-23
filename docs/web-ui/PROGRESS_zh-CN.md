@@ -475,6 +475,14 @@ rg -n "MessageClient|MessageServer|statusUpdate|status_update|decode|handle_tran
 - 下一步：
 - 结束额度：
 ```
+
+### 2026-09-23 阶段 P23：状态紧凑布局与直接操作
+
+- 基线：`main`，初始 `00cba47`，起始工作树干净；仅提交本阶段批准范围。实现提交：`1fcd5830dba4acfd3df091cb00e4c75d9d1488b1`、`70be7d64f67668b6b4b76382bfaaee14d8feb94f`。
+- 完成：最近解码与状态/控制响应式布局；周期进度改用 JTDX 校正时钟和周期长度；默认启用且显式禁用可持久化；移除 Web 专属操作 gate，同时保留原生业务安全、未知状态 fail-closed、幂等/epoch/超时与实际回读；修正每次状态快照对在途操作的 reconciliation。
+- 验证：完整 Release 构建与 CMake install 退出码 0；最终 CTest 24/24、60.65 秒；`node --check resources/web-ui/app.js` 通过。loopback 隔离夹具在 1280×720 与 390×844 检查布局；手动 `K2XYZ/FN20` 显示匹配回读完成。以上不是 MainWindow/CAT/HIL 证据。
+- 包：`C:\JTDX64\deps-webui\release-current\JTDX-2.2.159.2-local-70be7d-P23.zip`；SHA-256 `BCDEC933457F9CEEF706B5FE6A8C4391EDCE15E19202B6950BE3B9260E52BC41`；141 文件，根项 `bin/`、`plugins/`、`share/`、`NOTICE_zh-CN.md`；清洁解压与 staging 文件哈希逐项相同。
+- 未运行/未验证：真实 JTDX GUI、CAT/PTT/TX、无线电行为、HIL、LAN/公网访问、公开部署/分发清权。P22 回退包与材料保持不变。完整范围、指标及许可边界见 `P23-电台状态紧凑布局与直接操作_zh-CN.md`。
 ## 2026-09-20 P4 手动频率表单收尾
 
 - 基线：前端片段基线 `2e378fc`；本轮增加原生手动频率表单、capability 安全状态门、字符串 Hz 请求、POST deadline、响应/SSE 匹配回读和未知结果锁；生产 `MainWindow` gate 保持 `false`。

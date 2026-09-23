@@ -23,11 +23,13 @@
 
 ## 验证结果
 
-- 配置：CMake `MinGW Makefiles`、MSYS2 MinGW-w64 Qt5，Release；完整 `jtdx` 与全部本地测试目标构建退出码为 0。构建目录为 `C:\JTDX64\build-webui-dev-msys2`。最终源码提交、完整 CTest 次数/耗时及安装记录将在末尾补齐。
-- 全量测试：最终提交后重新运行 CTest；覆盖 24 项。以运行记录的最终结果为准。
+- 配置：CMake `MinGW Makefiles`、MSYS2 MinGW-w64 Qt5，Release；完整 `jtdx` 与全部本地测试目标构建退出码为 0。构建目录为 `C:\JTDX64\build-webui-dev-msys2`；最终源码提交为 `70be7d64f67668b6b4b76382bfaaee14d8feb94f`。
+- 全量测试：最终源码提交 `70be7d64f67668b6b4b76382bfaaee14d8feb94f` 后重新运行 CTest，24/24 通过，用时 60.65 秒；完整构建及安装均退出码 0。
 - 前端：`node --check resources/web-ui/app.js` 与 `git diff --check`。
 - 浏览器：使用 `jtdx_web_server_test.exe --serve-browser-automation-p9` 本机 loopback 隔离夹具（只构造 State/Control/Server 内存状态；不创建 MainWindow、CAT、PTT、音频或 UDP）。桌面 1280×720 实测 workbench 1064 px、两栏各 525 px、根横向滚动宽度与 client 宽度均 1265 px；窄屏 390×844 实测可视宽度 390、根宽/scrollWidth 均 375 px，左/右工作区纵向排列，周期条显示 `FT8 · 15 秒` 并更新剩余时间；解码呼号与网格可读。手动 DX `K2XYZ/FN20` 在隔离状态中经匹配 manual 回读完成。夹具时钟只验证周期 API/呈现，不是实机校时或实际主窗口视觉证明；隔离控制不是电台操作。
-- 本地安装树/ZIP 的文件数、SHA-256、根目录和清洁解压校验会在候选包完成后补记。P22 既有 staging、ZIP、来源材料和回退文件均保留，不覆盖。
+- 浏览器最终快照显示手动 DX `K2XYZ/FN20` 已完成，并经匹配回读确认；只来自 loopback 内存夹具。
+- 本地候选：`C:\JTDX64\deps-webui\release-current\JTDX-2.2.159.2-local-70be7d-P23.zip`，SHA-256 `BCDEC933457F9CEEF706B5FE6A8C4391EDCE15E19202B6950BE3B9260E52BC41`。归档含 141 个文件；根项为 `bin/`、`plugins/`、`share/`、`NOTICE_zh-CN.md`。清洁解压后 141 个文件逐项 SHA-256 与 staging 一致（0 差异）。
+- staging：`C:\JTDX64\deps-webui\temp\P23-runtime-stage-00cba47`；清洁解压核验：`C:\JTDX64\deps-webui\temp\P23-clean-extract-70be7d`。P22 既有 staging、ZIP、来源材料和回退文件均保留，不覆盖。
 
 ## 交付与未验事项
 

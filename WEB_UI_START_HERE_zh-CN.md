@@ -195,6 +195,10 @@ C:\msys64\mingw64\bin\ctest.exe --test-dir C:\JTDX64\build-webui-dev --output-on
 - [阶段验收矩阵](docs/web-ui/03_阶段验收矩阵_zh-CN.md)
 - [进度与中断恢复日志](docs/web-ui/PROGRESS_zh-CN.md)
 - [P10 软件交付报告与简短使用说明](docs/web-ui/P10-软件交付报告_zh-CN.md)
-# P18 最新交接
+# P23 最新交接
+
+P23 当前本地候选、响应式布局/周期/DX 回读验证、提交、完整 CTest、ZIP 哈希及未验证边界见 `docs/web-ui/P23-电台状态紧凑布局与直接操作_zh-CN.md`。候选为本机审阅用途，不代表真实电台/HIL 或公开分发清权。
+
+# P18 历史交接
 
 QSO 草稿完整流程、截图差异、受限 radio API、1280/390 视口指标、浏览器操作回读和无 HIL 边界见 `docs/web-ui/P18-WebUI-QSO与视口验收_zh-CN.md`。P17 的历史实现与 RC 交接仍见 `docs/web-ui/P17-WebUI功能扩展与RC交接_zh-CN.md`。
