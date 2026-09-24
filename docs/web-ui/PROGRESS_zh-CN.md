@@ -1,5 +1,16 @@
 # JTDX 内置 Web UI：进度与中断恢复日志
 
+# 2026-09-24 P28 低延迟状态同步本机审阅候选
+
+- 源码提交 `c196a091053eabd1a330a5942c8f2c8a953dedc6`，直接包含 `302b062`，其历史祖先包含 P27 源码提交 `3c086af9aa6ff6f9ac57513277740cda5145683e`。本候选仅供本机审阅，不是公开发行包或法律清权结论。
+- ZIP：`C:\JTDX64\JTDX-2.2.159.2.10-local-c196a09-P28.zip`；SHA-256 `8F95E9F79C993650A703D63C225830E6669891186FAD05BC5ED99D9671337D37`。142 个文件、49,380,321 bytes；直接根项 `bin/`、`plugins/`、`share/`、`NOTICE`、`NOTICE_zh-CN.md`。受约束打包脚本核对暂存与 ZIP 142/142、再核对独立解压与暂存 142/142 的长度及 SHA-256；manifest 与校验日志见 `local-support/evidence/P28/`。
+- 使用已验证的源码内 Release build `local-support/build/dependency-audit-configure`；最终构建日志和全量 CTest 27/27、56.94 秒日志见 `local-support/evidence/dependency-audit/live-state-sync-root-review-final-build.log`、`live-state-sync-root-review-final-ctest.log`。该源码树的最终内容对应 `c196a09`；CTest 在提交写入前运行，提交只固化同一份已验证源码内容。
+- 发布依赖审计：CMake install 明确从当前 `C:\msys64\mingw64` 复制 Qt；包内 7 个 Qt5 DLL 与该目录逐项 SHA-256 相同。`libhamlib-4.dll` 为 Hamlib 4.7.2，SHA-256 `72F09E0BC1118C11AE0652612D58BD04BA620C4DCF2D4181D8DC39D4AF60D28E`，与 P27 已发布暂存 DLL 同哈希；GUI 测试用 `test-runtime` 目录没有进入包，也没有将 P25 整套 Qt runtime 混入。证据为 `local-support/evidence/P28/install.log`、`runtime-provenance.log`、`qt-runtime-manifest.csv`。
+- 状态传播设计为 MainWindow 20ms 单次合并采集、Server 20ms 单次 SSE 合并推送；Server 1 秒周期检查状态/操作 revision、2 秒快照周期兜底、10 秒 SSE heartbeat。浏览器夹具报告的 DOM 实测来自模拟 HTTP/SSE 服务，不能解释为 MainWindow 到浏览器端到端实测或耗时上界。
+- 提交版隔离浏览器夹具最终 6/6 通过：桌面 985×780、手机 375×780/横向溢出 0，两个客户端切换和 SSE→DOM 回读顺序分别约 16.3ms/32.2ms、1.8ms；覆盖旧 HTTP 回读、epoch、断线重连/Last-Event-ID。首轮提交后复跑曾有一次夹具等待超时，随后重跑 6/6 通过；两次运行记录见 `local-support/evidence/P28/browser-fixture-run-history.log`，最终成功报告见 `local-support/evidence/dependency-audit/live-state-browser-fixture-report.json`。
+- 使用/回退：解压到独立目录供静态审阅，保留现有安装和 P27；不得覆盖 P27 或与运行中的 JTDX 并行启动。回退时停止使用该独立解压目录并继续保留 P27，不涉及安装恢复。本轮未启动 P28 `jtdx.exe`、未操作 CAT/PTT/TX，未做真实 MainWindow 端到端、HIL、LAN/公网或部署验证。
+- 未完成项：Qt/LGPL 及其它第三方组件在特定分发方式下的完整义务/对应源码审计；`ALLCALL7.TXT`、`CALL3.TXT`、`JPLEPH` 的精确来源与再分发授权；真实 MainWindow 与硬件/HIL 验收。因此不得公开分发或宣称已完成法律清权。完整包说明见 [`local-support/releases/P28/说明_zh-CN.md`](../../local-support/releases/P28/说明_zh-CN.md)。
+
 # 2026-09-24 Web 电台状态变更低延迟同步（待根任务复核）
 
 - 本地基线 `16dda6494d73061fcbac33d1ff48487e6211702b`。修复桌面控件变化未触发 Web 投影更新的问题：将桌面电台/操作控件的变化合并成单次延迟刷新，从 MainWindow 当前快照生成完整状态，不额外发送 MessageClient UDP；状态与操作回读经 coalesced SSE 推送，原周期检查和心跳保留为兜底。

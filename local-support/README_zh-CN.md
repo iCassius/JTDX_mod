@@ -49,7 +49,15 @@ New-Item -ItemType Directory -Force -Path (Join-Path $support 'evidence\P28') | 
 
 检查每条命令的 `$LASTEXITCODE` 和日志再进入下一阶段。不要把旧 `deps-webui` 或根目录 build tree 当输出目录。打包脚本只从已审查、补齐 NOTICE/许可证材料的 stage 生成 ZIP、sidecar、manifest 和清洁解压校验；不会清理失败产物或覆盖文件。
 
-## P27 当前本机审阅候选
+## P28 当前本机审阅候选
+
+- 候选包：`C:\JTDX64\JTDX-2.2.159.2.10-local-c196a09-P28.zip`，SHA-256 `8F95E9F79C993650A703D63C225830E6669891186FAD05BC5ED99D9671337D37`；142 文件、49,380,321 bytes，直接根项为 `bin/`、`plugins/`、`share/`、`NOTICE`、`NOTICE_zh-CN.md`。ZIP/sidecar 在工作区根目录；独立暂存和解压、manifest、安装及校验日志都在 `local-support`。
+- 源码提交 `c196a091053eabd1a330a5942c8f2c8a953dedc6`，父提交为 `302b062`；P27 的 `3c086af` 是其历史祖先。Release 构建/CTest 复用源码内有效 Release build：`evidence/dependency-audit/live-state-sync-root-review-final-build.log`、`live-state-sync-root-review-final-ctest.log`（27/27，56.94 秒）。
+- 运行依赖来自当前 MSYS2 Qt 和已哈希核验的 Hamlib 4.7.2；只复用单个 P27 Hamlib DLL，不复用 P25 Qt runtime。依赖审计见 `evidence/P28/runtime-provenance.log`、`qt-runtime-manifest.csv`、`P27-P28-tree-comparison.csv` 与 `install.log`；包完整性见 `evidence/P28/manifest-P28.csv`、`package-verify.log`、`package-validate-only.log`。
+- 状态低延迟路径：MainWindow 20ms 合并采集 + Server 20ms 合并 SSE 推送；1 秒周期 revision 检查、2 秒快照兜底、10 秒 heartbeat。浏览器数值来自模拟 HTTP/SSE；首轮提交后有一次夹具等待超时，重跑 6/6 通过，运行记录见 `evidence/P28/browser-fixture-run-history.log`，不能声称真实 MainWindow 端到端或硬件已验证。
+- 仅供本机审阅，不公开分发。不要覆盖或并行运行已有 JTDX；保留 P27 作回退。Qt/LGPL 与间接依赖完整清权、数据文件再分发授权，以及 MainWindow/HIL/部署仍未完成。详见 [`releases/P28/说明_zh-CN.md`](releases/P28/说明_zh-CN.md)。
+
+## P27 历史本机审阅候选
 
 - 候选包：`C:\JTDX64\JTDX-2.2.159.2.10-local-3c086af-P27.zip`，SHA-256 `9B0A3AC0D537982320F1F1566439ABC7116DAE9F4B41E8A06D56A181C7B02DD8`；142 文件、49,376,951 bytes，根项 `bin/`、`plugins/`、`share/`、`NOTICE`、`NOTICE_zh-CN.md`。独立解压与 manifest 142/142 文件大小和哈希相同。
 - 源码提交 `3c086af9aa6ff6f9ac57513277740cda5145683e`，包含 P26 Web UI 以及 AutoSeq CQ 冷却来源与筛选覆盖修复。P26 `b0732b9` 包不包含此 AutoSeq 修复。
@@ -62,6 +70,8 @@ New-Item -ItemType Directory -Force -Path (Join-Path $support 'evidence\P28') | 
 - `releases/P25/`：P25 简要说明与清洁解压候选（141 文件、137,514,589 bytes），从根目录移入；内容逐相对路径、长度、SHA-256 复核一致。这里只是归档位置变更，不释放磁盘空间。
 - `releases/P26/`：两份 P26 根目录简要说明原位归档；对应 ZIP/sidecar 仍留在 `C:\JTDX64` 根目录。
 - `releases/P27/`：P27 根目录简要说明原位归档；ZIP 与 sidecar 仍留在 `C:\JTDX64` 根目录。
+- `releases/P28/`：P28 中文审阅说明；ZIP 与 sidecar 留在 `C:\JTDX64` 根目录。
+- `staging/P28/` 和 `extract/P28/`：P28 复用当前 Release build 安装到隔离暂存树、再由受约束脚本独立解压；与 ZIP 142/142 文件大小及 SHA-256 一致。
 - `staging/P27-runtime-stage-3c086af/` 和 `extract/P27-clean-extract-3c086af/`：本轮新建且可重建的 P27 安装暂存/清洁解压，已从 `deps-webui/temp` 搬入源码支持目录；各 142 文件、137,520,019 bytes，逐项 SHA-256 一致。
 - `scripts/package-local-candidate.ps1`：新的受路径约束打包/校验入口；未来 build、stage、extract、profile 与日志均须放在 `local-support` 子目录。
 
