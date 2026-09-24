@@ -54,6 +54,13 @@ int main (int argc, char ** argv)
                         QStringLiteral ("FT8"), true, false, false, 1200, 1300,
                         QStringLiteral ("N0CALL"), QStringLiteral ("FN31"), QString {},
                         false, QString {}, false, false);
+  auto const initial_status_revision = state.revision ();
+  state.observe_status (14074000u, QStringLiteral ("FT8"), QString {}, QStringLiteral ("-10"),
+                        QStringLiteral ("FT8"), true, false, false, 1200, 1300,
+                        QStringLiteral ("N0CALL"), QStringLiteral ("FN31"), QString {},
+                        false, QString {}, false, false);
+  check (state.revision () == initial_status_revision,
+         "unchanged status refreshes freshness without publishing a new state revision");
   check (state.rig_generation () == 0, "status observation does not create rig generation");
   json = state.json_snapshot ();
   check (!json.contains (QStringLiteral ("freshness")), "status does not add a freshness display field");
@@ -90,6 +97,19 @@ int main (int argc, char ** argv)
   check (json.value (QStringLiteral ("qso_stage")).toString () == QStringLiteral ("calling"), "QSO stage");
   check (json.value (QStringLiteral ("cq_state")).toString () == QStringLiteral ("armed"), "CQ state");
   check (json.value (QStringLiteral ("current_tx_text")).toString () == QStringLiteral ("CQ N0CALL FN31"), "current TX text");
+  auto const business_revision = state.revision ();
+  state.observe_business_state (true, QStringLiteral ("calling"), QStringLiteral ("armed"),
+                                QStringLiteral ("CQ N0CALL FN31"));
+  check (state.revision () == business_revision,
+         "unchanged business observation does not schedule duplicate state publication");
+  QStringList const tx_messages {QStringLiteral ("CQ N0CALL FN31"), QStringLiteral ("TX2"),
+                                 QStringLiteral ("TX3"), QStringLiteral ("TX4"),
+                                 QStringLiteral ("TX5"), QStringLiteral ("TX6")};
+  state.observe_radio_controls (true, false, false, false, false, 1, tx_messages, true, {}, 0);
+  auto const radio_revision = state.revision ();
+  state.observe_radio_controls (true, false, false, false, false, 1, tx_messages, true, {}, 0);
+  check (state.revision () == radio_revision,
+         "unchanged native radio projection does not schedule duplicate state publication");
   JtdxWebState::FrequencyCandidates candidates {
     {14074000u, QStringLiteral ("20m"), QStringLiteral ("FT8"), QStringLiteral ("All"), false},
     {14074000u, QStringLiteral ("20m"), QStringLiteral ("FT8"), QStringLiteral ("All"), true},

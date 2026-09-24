@@ -594,6 +594,16 @@
 
   function render(snapshot) {
     if (!snapshot || typeof snapshot !== "object") return;
+    if (currentSnapshot && snapshot.server_epoch === currentSnapshot.server_epoch) {
+      const incomingStateRevision = integerValue(snapshot.state_revision);
+      const currentStateRevision = integerValue(currentSnapshot.state_revision);
+      const incomingOperationRevision = integerValue(snapshot.operation_revision);
+      const currentOperationRevision = integerValue(currentSnapshot.operation_revision);
+      if ((incomingStateRevision != null && currentStateRevision != null
+            && incomingStateRevision < currentStateRevision)
+          || (incomingOperationRevision != null && currentOperationRevision != null
+            && incomingOperationRevision < currentOperationRevision)) return;
+    }
     currentSnapshot = snapshot;
     reconcileFrequency(snapshot);
     reconcileDx(snapshot);

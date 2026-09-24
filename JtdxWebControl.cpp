@@ -178,6 +178,7 @@ QVector<JtdxWebControl::Result> JtdxWebControl::operation_results () const
 void JtdxWebControl::mark_operations_changed ()
 {
   ++operation_revision_;
+  Q_EMIT operations_changed (operation_revision_);
 }
 
 void JtdxWebControl::set_observed_state (ObservedState state)

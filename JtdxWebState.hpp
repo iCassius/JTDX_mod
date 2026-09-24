@@ -74,6 +74,11 @@ public:
   quint64 dx_generation () const { return dx_generation_; }
   quint64 business_generation () const { return business_generation_; }
 
+Q_SIGNALS:
+  void state_changed (quint64 revision);
+
+public:
+
   void observe_status (Frequency target_frequency, QString const& mode,
                       QString const& dx_call, QString const& report,
                       QString const& tx_mode, bool tx_enabled, bool transmitting,

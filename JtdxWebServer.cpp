@@ -72,11 +72,17 @@ JtdxWebServer::JtdxWebServer (JtdxWebState * state, QObject * parent)
   activity_clock_.start ();
   publish_timer_ = new QTimer {this};
   publish_timer_->setInterval (publish_interval_ms);
+  snapshot_push_timer_ = new QTimer {this};
+  snapshot_push_timer_->setSingleShot (true);
+  snapshot_push_timer_->setInterval (20);
   connect (&server_, &QTcpServer::newConnection, this, &JtdxWebServer::accept_connections);
   connect (publish_timer_, &QTimer::timeout, this, &JtdxWebServer::on_publish_timer);
+  connect (snapshot_push_timer_, &QTimer::timeout, this, [this] { broadcast_snapshot (true); });
   if (state_)
     {
       connect (state_, &QObject::destroyed, this, [this] { stop (); });
+      connect (state_, &JtdxWebState::state_changed, this,
+               [this] (quint64) { schedule_snapshot_push (); });
     }
 }
 
@@ -182,6 +188,7 @@ bool JtdxWebServer::start (Configuration configuration)
 void JtdxWebServer::stop ()
 {
   if (publish_timer_) publish_timer_->stop ();
+  if (snapshot_push_timer_) snapshot_push_timer_->stop ();
   server_.close ();
   while (server_.hasPendingConnections ())
     {
@@ -248,15 +255,21 @@ int JtdxWebServer::active_connection_count () const
 void JtdxWebServer::set_control (JtdxWebControl * control)
 {
   QObject::disconnect (control_destroyed_connection_);
+  QObject::disconnect (control_operations_connection_);
   control_ = control;
   ++control_generation_;
   // 协调器替换也要让现有 SSE 客户端获得一次新的有界投影。
   last_published_operations_revision_ = std::numeric_limits<quint64>::max ();
   if (control_)
-    control_destroyed_connection_ = connect (control_, &QObject::destroyed, this, [this] {
+    {
+      control_destroyed_connection_ = connect (control_, &QObject::destroyed, this, [this] {
         ++control_generation_;
         last_published_operations_revision_ = std::numeric_limits<quint64>::max ();
       });
+      control_operations_connection_ = connect (control_, &JtdxWebControl::operations_changed, this,
+                                                  [this] (quint64) { schedule_snapshot_push (); });
+    }
+  schedule_snapshot_push ();
 }
 
 void JtdxWebServer::accept_connections ()
@@ -1230,6 +1243,12 @@ void JtdxWebServer::broadcast_snapshot (bool force)
   last_published_revision_ = revision;
   last_published_operations_revision_ = control_ ? control_->operation_revision () : 0;
   last_snapshot_ms_ = now;
+}
+
+void JtdxWebServer::schedule_snapshot_push ()
+{
+  if (snapshot_push_timer_ && !snapshot_push_timer_->isActive ())
+    snapshot_push_timer_->start ();
 }
 
 void JtdxWebServer::on_publish_timer ()

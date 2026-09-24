@@ -156,6 +156,11 @@ public:
   void set_business_dispatcher (DispatchHandler handler) { business_dispatcher_ = std::move (handler); }
   void set_diagnostic_logger (DiagnosticLogger logger) { diagnostic_logger_ = std::move (logger); }
 
+Q_SIGNALS:
+  void operations_changed (quint64 revision);
+
+public:
+
   // 将控制请求绑定到当前成功监听的 WebServer epoch。绑定不会重建协调器，
   // 因而不会丢失已 begin 操作的未确认锁；停止期间请求保持 fail-closed。
   void bind_server_epoch (QString server_epoch);

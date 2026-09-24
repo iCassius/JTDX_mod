@@ -414,6 +414,8 @@ private:
   void hideMenus (bool b);
   void applyWebUiConfiguration ();
   void updateWebRadioState ();
+  void scheduleWebStateRefresh ();
+  void refreshWebStateFromMainWindow () const;
   QJsonObject defaultWebLogQsoDraft () const;
   bool openWebLogQsoDraft ();
   bool cancelWebLogQsoDraft ();
@@ -693,6 +695,7 @@ private:
   EQSL *Eqsl;
 
   QTimer m_guiTimer;
+  QTimer m_webStateRefreshTimer;
   QTimer ptt1Timer;                 //StartTx delay
   QTimer ptt0Timer;                 //StopTx delay
   QTimer logQSOTimer;

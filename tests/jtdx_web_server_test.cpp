@@ -1027,12 +1027,26 @@ int main (int argc, char ** argv)
   QTimer operation_sse_timer;
   QByteArray operation_sse_response;
   bool initial_sse_complete = false;
+  quint64 expected_radio_revision = 0;
   operation_sse_timer.setSingleShot (true);
   QObject::connect (&operation_sse, &QTcpSocket::readyRead, [&] {
       operation_sse_response += operation_sse.readAll ();
-      if ((!initial_sse_complete && operation_sse_response.contains (QByteArrayLiteral ("event: snapshot\n")))
-          || (initial_sse_complete && operation_sse_response.contains (QByteArrayLiteral ("sse-frequency"))
-              && operation_sse_response.contains (QByteArrayLiteral ("\"status\":\"completed\""))))
+      bool initial_snapshot = false;
+      bool completed_operation = false;
+      bool radio_snapshot = false;
+      for (ParsedSseEvent const& event : parse_sse_events (operation_sse_response))
+        if (event.name == QByteArrayLiteral ("snapshot"))
+          {
+            initial_snapshot = initial_snapshot || (!initial_sse_complete
+                && event.data.contains (QStringLiteral ("operations")));
+            QByteArray const payload = QJsonDocument {event.data}.toJson (QJsonDocument::Compact);
+            completed_operation = completed_operation || (payload.contains ("sse-frequency")
+                && payload.contains (QByteArrayLiteral ("\"status\":\"completed\"")));
+            radio_snapshot = radio_snapshot || (expected_radio_revision != 0
+                && event.data.value (QStringLiteral ("state_revision")).toVariant ().toULongLong ()
+                     == expected_radio_revision);
+          }
+      if (initial_snapshot || (initial_sse_complete && (completed_operation || radio_snapshot)))
         operation_sse_loop.quit ();
     });
   QObject::connect (&operation_sse_timer, &QTimer::timeout, &operation_sse_loop, &QEventLoop::quit);
@@ -1051,6 +1065,40 @@ int main (int argc, char ** argv)
     if (event.name == QByteArrayLiteral ("snapshot") && event.data.contains (QStringLiteral ("operations")))
       initial_snapshot_id = event.id;
   check (!initial_snapshot_id.isEmpty (), "operation SSE initial snapshot must succeed");
+
+  // Native-equivalent state updates should coalesce and reach an existing SSE
+  // peer promptly, without waiting for the periodic snapshot fallback.
+  QElapsedTimer radio_push_elapsed;
+  radio_push_elapsed.start ();
+  state.observe_radio_controls (true, false, false, false, false, 2,
+                                {QStringLiteral ("CQ TEST"), QStringLiteral ("TX2"),
+                                 QStringLiteral ("TX3"), QStringLiteral ("TX4"),
+                                 QStringLiteral ("TX5"), QStringLiteral ("TX6")},
+                                true, {}, 0);
+  state.observe_radio_controls (true, false, false, false, false, 3,
+                                {QStringLiteral ("CQ TEST"), QStringLiteral ("TX2"),
+                                 QStringLiteral ("TX3"), QStringLiteral ("TX4"),
+                                 QStringLiteral ("TX5"), QStringLiteral ("TX6")},
+                                true, {}, 0);
+  expected_radio_revision = state.revision ();
+  operation_sse_timer.start (250);
+  operation_sse_loop.exec ();
+  operation_sse_timer.stop ();
+  int radio_revision_events = 0;
+  bool radio_latest_snapshot = false;
+  for (ParsedSseEvent const& event : parse_sse_events (operation_sse_response))
+    if (event.name == QByteArrayLiteral ("snapshot")
+        && event.data.value (QStringLiteral ("state_revision")).toVariant ().toULongLong ()
+             == expected_radio_revision)
+      {
+        ++radio_revision_events;
+        QJsonObject const radio = event.data.value (QStringLiteral ("radio_controls")).toObject ();
+        radio_latest_snapshot = radio.value (QStringLiteral ("multi_decode")).toBool ()
+            && radio.value (QStringLiteral ("current_tx_index")).toInt () == 3;
+      }
+  check (radio_latest_snapshot && radio_revision_events == 1 && radio_push_elapsed.elapsed () < 200,
+         "coalesced native-equivalent radio state reaches SSE within 200 ms as one latest snapshot");
+
   QByteArray const sse_body = QByteArrayLiteral ("{\"request_id\":\"sse-frequency\",\"server_epoch\":\"")
       + server.server_epoch ().toUtf8 () + QByteArrayLiteral ("\",\"state_revision\":")
       + QByteArray::number (observed.state_revision) + QByteArrayLiteral (",\"frequency_hz\":\"14076000\"}");
@@ -1059,11 +1107,13 @@ int main (int argc, char ** argv)
   check (status (sse_post) == 202 && control.result (QStringLiteral ("sse-frequency")).status
              == JtdxWebControl::Status::Pending,
          "SSE operation fixture remains pending before feedback");
+  QElapsedTimer operation_push_elapsed;
+  operation_push_elapsed.start ();
   check (control.feedback_frequency (captured_dispatch.request_id, captured_dispatch.server_epoch,
                                      captured_dispatch.expected_generation + 1, 14076000,
                                      observed.state_revision + 2),
          "SSE operation fixture accepts isolated completion feedback");
-  operation_sse_timer.start (3000);
+  operation_sse_timer.start (250);
   operation_sse_loop.exec ();
   QByteArray completed_sse_id;
   bool sse_completed = false;
@@ -1077,8 +1127,9 @@ int main (int argc, char ** argv)
             sse_completed = true;
             completed_sse_id = event.id;
           }
-  check (sse_completed && completed_sse_id != initial_snapshot_id,
-         "SSE snapshot updates with a fresh id when only operation status changes");
+  check (sse_completed && completed_sse_id != initial_snapshot_id
+             && operation_push_elapsed.elapsed () < 200,
+         "operation readback triggers a fresh SSE snapshot within 200 ms");
   operation_sse.disconnectFromHost ();
 
   // Timeout is observable through the same state snapshot and does not call CAT feedback.

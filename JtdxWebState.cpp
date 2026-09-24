@@ -47,7 +47,14 @@ void JtdxWebState::observe_status (Frequency target_frequency, QString const& mo
                                    bool /*force*/)
 {
   Q_ASSERT (QThread::currentThread () == thread ());
-  ++revision_;
+  bool const changed = !has_status_ || target_frequency_ != target_frequency
+      || has_target_frequency_ != (target_frequency != 0) || mode_ != mode || dx_call_ != dx_call
+      || report_ != report || tx_mode_ != tx_mode || tx_enabled_ != tx_enabled
+      || transmitting_ != transmitting || decoding_ != decoding || rx_df_ != rx_df
+      || tx_df_ != tx_df || de_call_ != de_call || de_grid_ != de_grid
+      || dx_grid_ != dx_grid || watchdog_timeout_ != watchdog_timeout
+      || sub_mode_ != sub_mode || fast_mode_ != fast_mode || tx_first_ != tx_first;
+  if (changed) bump_revision ();
   has_status_ = true;
   status_seen_ms_ = monotonic_now ();
   status_wall_ = QDateTime::currentDateTimeUtc ();
@@ -75,7 +82,7 @@ void JtdxWebState::observe_rig (bool online, Frequency reported_frequency,
                                 Frequency reported_tx_frequency, bool ptt)
 {
   Q_ASSERT (QThread::currentThread () == thread ());
-  ++revision_;
+  bump_revision ();
   ++rig_generation_;
   has_rig_ = true;
   rig_online_ = online;
@@ -90,7 +97,7 @@ void JtdxWebState::observe_band (QString const& band)
 {
   Q_ASSERT (QThread::currentThread () == thread ());
   if (band_ == band) return;
-  ++revision_;
+  bump_revision ();
   band_ = band;
 }
 
@@ -105,7 +112,7 @@ void JtdxWebState::observe_decode (bool is_new, QTime time, qint32 snr,
   Q_ASSERT (QThread::currentThread () == thread ());
   // replayDecodes 明确使用 is_new=false；回放数据已在 UI 流中，不能挤占实时条目。
   if (!is_new) return;
-  ++revision_;
+  bump_revision ();
   qint64 const received_ms = monotonic_now ();
   Decode decode;
   decode.id = next_decode_id_++;
@@ -142,7 +149,7 @@ void JtdxWebState::observe_wspr_decode (bool is_new, QTime time, qint32 snr,
 {
   Q_ASSERT (QThread::currentThread () == thread ());
   if (!is_new) return;
-  ++revision_;
+  bump_revision ();
   Decode decode;
   decode.id = next_decode_id_++;
   decode.time = time.toString (Qt::ISODate);
@@ -179,7 +186,7 @@ void JtdxWebState::observe_business_state (bool auto_sequence_enabled,
       || auto_sequence_enabled_ != auto_sequence_enabled
       || qso_stage_ != qso_stage || cq_state_ != cq_state
       || current_tx_text_ != current_tx_text;
-  ++revision_;
+  if (changed) bump_revision ();
   if (changed) ++business_generation_;
   has_business_state_ = true;
   auto_sequence_enabled_ = auto_sequence_enabled;
@@ -206,7 +213,7 @@ void JtdxWebState::observe_radio_controls (bool multi_decode, bool agc_compensat
       || current_tx_index_ != current_tx_index || tx_messages_ != bounded_messages
       || can_log_qso_ != can_log_qso || qso_draft_ != qso_draft
       || qso_generation_ != qso_generation;
-  if (changed) ++revision_;
+  if (changed) bump_revision ();
   has_radio_controls_ = true;
   multi_decode_ = multi_decode;
   agc_compensation_ = agc_compensation;
@@ -243,7 +250,7 @@ void JtdxWebState::observe_web_dx_selection (QString const& call, QString const&
                                              qint32 delta_frequency, QString const& time)
 {
   Q_ASSERT (QThread::currentThread () == thread ());
-  ++revision_;
+  bump_revision ();
   ++dx_generation_;
   dx_call_ = call;
   dx_grid_ = grid;
@@ -310,7 +317,7 @@ void JtdxWebState::set_frequency_candidates (QString const& mode, QString const&
 void JtdxWebState::clear_decodes ()
 {
   Q_ASSERT (QThread::currentThread () == thread ());
-  ++revision_;
+  bump_revision ();
   decodes_.clear ();
 }
 
@@ -341,6 +348,7 @@ qint64 JtdxWebState::monotonic_now () const
 void JtdxWebState::bump_revision ()
 {
   ++revision_;
+  Q_EMIT state_changed (revision_);
 }
 
 void JtdxWebState::trim_decodes ()

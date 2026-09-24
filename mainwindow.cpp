@@ -9,6 +9,9 @@
 
 #include <QProcessEnvironment>
 #include <QLineEdit>
+#include <QAbstractButton>
+#include <QComboBox>
+#include <QSpinBox>
 #include <QRegularExpression>
 #include <QRegularExpressionValidator>
 #include <QDesktopServices>
@@ -486,8 +489,6 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
       appendRecoveryLog (m_dataDir, QStringLiteral ("web-control"), line);
     });
   m_messageClient->set_mirror (m_secondaryMessageClient);
-  connect (m_messageClient, &MessageClient::status_observed,
-           m_webState, &JtdxWebState::observe_status);
   connect (m_messageClient, &MessageClient::decode_observed, this,
            [this] (bool is_new, QTime time, qint32 snr, float delta_time,
                    quint32 delta_frequency, QString const& mode, QString const& message,
@@ -536,6 +537,41 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
     });
   applyWebUiConfiguration ();
   updateWebRadioState ();
+  m_webStateRefreshTimer.setSingleShot (true);
+  m_webStateRefreshTimer.setInterval (20);
+  connect (&m_webStateRefreshTimer, &QTimer::timeout, this, [this] {
+      refreshWebStateFromMainWindow ();
+      tryCompletePendingWebRadio ();
+    });
+  QList<QAbstractButton *> const web_radio_state_buttons {
+    ui->enableTxButton, ui->AutoSeqButton, ui->swlButton, ui->AGCcButton,
+    ui->filterButton, ui->syncButton, ui->skipTx1,
+    ui->txrb1, ui->txrb2, ui->txrb3, ui->txrb4, ui->txrb5, ui->txrb6};
+  for (QAbstractButton * button : web_radio_state_buttons)
+    connect (button, &QAbstractButton::toggled, this,
+             [this] (bool) { scheduleWebStateRefresh (); });
+  QList<QAbstractButton *> const web_tx_message_buttons {
+    ui->stopTxButton, ui->logQSOButton, ui->EraseButton, ui->pbCallCQ,
+    ui->txb1, ui->txb2, ui->txb3, ui->txb4, ui->txb5, ui->txb6};
+  for (QAbstractButton * button : web_tx_message_buttons)
+    connect (button, &QAbstractButton::clicked, this,
+             [this] (bool) { scheduleWebStateRefresh (); });
+  QList<QLineEdit *> const web_tx_message_edits {
+    ui->tx1, ui->tx2, ui->tx3, ui->tx4, ui->tx6};
+  for (QLineEdit * edit : web_tx_message_edits)
+    connect (edit, &QLineEdit::textChanged, this,
+             [this] (QString const&) { scheduleWebStateRefresh (); });
+  QList<QLineEdit *> const web_dx_edits {ui->dxCallEntry, ui->dxGridEntry};
+  for (QLineEdit * edit : web_dx_edits)
+    connect (edit, &QLineEdit::textChanged, this,
+             [this] (QString const&) { scheduleWebStateRefresh (); });
+  QList<QSpinBox *> const web_status_spin_boxes {
+    ui->rptSpinBox, ui->RxFreqSpinBox, ui->TxFreqSpinBox};
+  for (QSpinBox * spin_box : web_status_spin_boxes)
+    connect (spin_box, QOverload<int>::of (&QSpinBox::valueChanged), this,
+             [this] (int) { scheduleWebStateRefresh (); });
+  connect (ui->tx5, &QComboBox::currentTextChanged, this,
+           [this] (QString const&) { scheduleWebStateRefresh (); });
   updateSecondaryUdpTarget ();
   connect (m_secondaryMessageClient, &MessageClient::error, this, [] (QString const& error) {
       qWarning ().noquote () << "Secondary UDP server:" << error;
@@ -2456,6 +2492,43 @@ void MainWindow::updateWebRadioState ()
                                       ui->skipTx1->isChecked (), current_tx_index, messages,
                                       !m_hisCall.trimmed ().isEmpty () && m_webLogQsoDraft.isEmpty (),
                                       m_webLogQsoDraft, m_webLogQsoGeneration);
+}
+
+void MainWindow::scheduleWebStateRefresh ()
+{
+  if (!m_webStateRefreshTimer.isActive ()) m_webStateRefreshTimer.start ();
+}
+
+void MainWindow::refreshWebStateFromMainWindow () const
+{
+  if (!ui || !m_webState) return;
+  m_webState->observe_band (m_config.bands ()->find (m_freqNominal));
+  refreshWebFrequencyCandidates ();
+  QString qso_stage;
+  switch (m_QSOProgress)
+    {
+    case CALLING: qso_stage = QStringLiteral ("calling"); break;
+    case REPLYING: qso_stage = QStringLiteral ("replying"); break;
+    case REPORT: qso_stage = QStringLiteral ("report"); break;
+    case ROGER_REPORT: qso_stage = QStringLiteral ("roger_report"); break;
+    case ROGERS: qso_stage = QStringLiteral ("rogers"); break;
+    case SIGNOFF: qso_stage = QStringLiteral ("signoff"); break;
+    }
+  bool const cq_selected = m_QSOProgress == CALLING
+    && m_curMsgTx.trimmed ().startsWith (QStringLiteral ("CQ "));
+  bool const tx_enabled = ui->enableTxButton->isChecked ();
+  QString const cq_state = JtdxWebState::project_cq_state (cq_selected, tx_enabled, m_transmitting);
+  m_webState->observe_business_state (m_autoseq, qso_stage, cq_state, m_curMsgTx);
+  const_cast<MainWindow *> (this)->updateWebRadioState ();
+  QChar submode {0};
+  m_webState->observe_status (m_freqNominal, m_mode, m_hisCall,
+                              QString::number (ui->rptSpinBox->value ()), m_modeTx,
+                              tx_enabled, m_transmitting, m_decoderBusy,
+                              ui->RxFreqSpinBox->value (), ui->TxFreqSpinBox->value (),
+                              m_config.my_callsign (), m_config.my_grid (), m_hisGrid,
+                              m_txwatchdog,
+                              submode != QChar::Null ? QString {submode} : QString {},
+                              false, m_txFirst, false);
 }
 
 void MainWindow::dispatchWebFrequency (JtdxWebControl::Dispatch dispatch)
@@ -8817,6 +8890,7 @@ void MainWindow::replyToUDP (QTime time, qint32 snr, float delta_time, quint32 d
       if (position >= 0) {
 // provide JTAlert->Log4OM interaction in scenario where the call is in DX Call window:
           if(message_text.contains(" " + m_hisCall + " ")) {
+            refreshWebStateFromMainWindow ();
             QChar submode {0};
             m_messageClient->status_update (m_freqNominal, m_mode, m_hisCall, QString::number (ui->rptSpinBox->value ()),
                                             m_modeTx, ui->enableTxButton->isChecked (), m_transmitting, m_decoderBusy,
@@ -9198,25 +9272,7 @@ void MainWindow::toggle_skipTx1 ()
 void MainWindow::statusUpdate () const
 {
   if (!ui) return;
-  m_webState->observe_band (m_config.bands ()->find (m_freqNominal));
-  refreshWebFrequencyCandidates ();
-  QString qso_stage;
-  switch (m_QSOProgress)
-    {
-    case CALLING: qso_stage = QStringLiteral ("calling"); break;
-    case REPLYING: qso_stage = QStringLiteral ("replying"); break;
-    case REPORT: qso_stage = QStringLiteral ("report"); break;
-    case ROGER_REPORT: qso_stage = QStringLiteral ("roger_report"); break;
-    case ROGERS: qso_stage = QStringLiteral ("rogers"); break;
-    case SIGNOFF: qso_stage = QStringLiteral ("signoff"); break;
-    }
-  // These are internal business fields.  The AutoSeq flag means enabled/disabled;
-  // it is not evidence that a CQ has started or that a transmission is active.
-  bool const cq_selected = m_QSOProgress == CALLING
-    && m_curMsgTx.trimmed ().startsWith (QStringLiteral ("CQ "));
-  QString const cq_state = JtdxWebState::project_cq_state (cq_selected, m_enableTx, m_transmitting);
-  m_webState->observe_business_state (m_autoseq, qso_stage, cq_state, m_curMsgTx);
-  const_cast<MainWindow *> (this)->updateWebRadioState ();
+  refreshWebStateFromMainWindow ();
   QChar submode {0};
   m_messageClient->status_update (m_freqNominal, m_mode, m_hisCall,
                                   QString::number (ui->rptSpinBox->value ()),

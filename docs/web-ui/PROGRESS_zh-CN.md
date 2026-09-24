@@ -1,5 +1,12 @@
 # JTDX 内置 Web UI：进度与中断恢复日志
 
+# 2026-09-24 Web 电台状态变更低延迟同步（待根任务复核）
+
+- 本地基线 `16dda6494d73061fcbac33d1ff48487e6211702b`。修复桌面控件变化未触发 Web 投影更新的问题：将桌面电台/操作控件的变化合并成单次延迟刷新，从 MainWindow 当前快照生成完整状态，不额外发送 MessageClient UDP；状态与操作回读经 coalesced SSE 推送，原周期检查和心跳保留为兜底。
+- 投影字段未变化时不推进 revision；浏览器只接受同一 server epoch 中不旧于当前状态及操作 revision 的快照，避免重复推送及迟到结果回滚。
+- 全量应用与测试目标串行构建通过，含 `jtdx.exe`。首次并行构建因 AutoUic 生成头文件竞态失败，串行重跑通过。全部 27 个 CTest 均在匹配运行环境下通过：原生 MinGW 全套首跑 25/27（另两项因 DLL 搜索路径未配置而无法启动）；缺 Qt DLL 的两项使用既有 P25 runtime 单独复测通过。最终变更关联的状态/控件契约测试通过，Web Server SSE 测试在最终代码上连续通过 2 次。未将 P25 DLL 混用于状态服务测试。状态及操作 SSE 延迟断言均小于 200ms，桌面状态连续变化合并为单个最新快照；SSE 测试改为只处理完整事件帧，消除分块读取造成的误报。证据：`local-support/evidence/dependency-audit/live-state-sync-final-build.log`、`live-state-sync-full-ctest.log`、`live-state-sync-server-final-ctest.log`、`live-state-sync-state-contract-final-ctest.log`、`live-state-sync-qt-runtime-tests.log`。
+- 覆盖状态 revision 去重、桌面等价状态 SSE 合并、操作回读 SSE、MainWindow 控件连接约束与浏览器乱序保护；未启动真实 JTDX，未做 CAT/PTT/TX/HIL、浏览器/部署验证。此次不涉及已跳过的 `XXXXXXXXX` 解码问题，不打包或发布。
+
 # 2026-09-24 P27 AutoSeq CQ 冷却修复本机审阅候选
 
 - 源码提交 `3c086af9aa6ff6f9ac57513277740cda5145683e`；在 P26 Web UI 基线上包含 AutoSeq CQ 冷却来源与筛选覆盖修复。P26 包 `b0732b9` 不含该修复。

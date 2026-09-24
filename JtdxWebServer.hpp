@@ -74,6 +74,7 @@ private:
   void on_disconnected (QTcpSocket * socket);
   void on_header_timeout (QTcpSocket * socket);
   void on_publish_timer ();
+  void schedule_snapshot_push ();
   void remove_client (QTcpSocket * socket);
   void close_client (QTcpSocket * socket);
   void reject_connection (QTcpSocket * socket, int status, QByteArray const& reason);
@@ -105,9 +106,11 @@ private:
   QPointer<JtdxWebState> state_;
   QPointer<JtdxWebControl> control_;
   QMetaObject::Connection control_destroyed_connection_;
+  QMetaObject::Connection control_operations_connection_;
   FrequencyValidator frequency_validator_;
   QTcpServer server_;
   QTimer * publish_timer_ {nullptr};
+  QTimer * snapshot_push_timer_ {nullptr};
   QHash<QTcpSocket *, Client *> clients_;
   Configuration configuration_;
   QHostAddress actual_address_;

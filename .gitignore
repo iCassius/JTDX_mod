@@ -13,6 +13,7 @@ jtdx_recovery.log*
 *.out
 local-support/evidence/
 /local-support/build/
+/local-support/dependencies/
 /local-support/staging/
 /local-support/extract/
 /local-support/browser-profiles/

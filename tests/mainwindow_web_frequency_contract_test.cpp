@@ -250,6 +250,26 @@ int main ()
              && radio_body.contains ("JtdxWebRadioAdapter::observe")
              && radio_body.contains ("tryCompletePendingWebRadio ()"),
          "a nonterminal radio action is later reconciled by state publication without replaying dispatch");
+  auto const state_refresh = source.indexOf ("void MainWindow::refreshWebStateFromMainWindow () const");
+  auto const state_refresh_end = source.indexOf ("void MainWindow::dispatchWebFrequency", state_refresh);
+  QByteArray const state_refresh_body = source.mid (state_refresh, state_refresh_end - state_refresh);
+  check (state_refresh >= 0 && state_refresh_end > state_refresh
+             && source.contains ("m_webStateRefreshTimer.setSingleShot (true)")
+             && source.contains ("m_webStateRefreshTimer.setInterval (20)")
+             && source.contains ("QAbstractButton::toggled")
+             && source.contains ("QLineEdit::textChanged")
+             && source.contains ("QOverload<int>::of (&QSpinBox::valueChanged)")
+             && source.contains ("QComboBox::currentTextChanged")
+             && state_refresh_body.contains ("m_webState->observe_status")
+             && state_refresh_body.contains ("observe_business_state")
+             && state_refresh_body.contains ("updateWebRadioState ()")
+             && !state_refresh_body.contains ("m_messageClient->status_update"),
+         "native UI signals coalesce into one authoritative Web projection without extra UDP status sends");
+  check (web_app_source.contains ("incomingStateRevision < currentStateRevision")
+             && web_app_source.contains ("incomingOperationRevision < currentOperationRevision")
+             && web_app_source.contains ("render(JSON.parse(line.slice(6)))")
+             && !web_app_source.contains ("render(payload.current_state)"),
+         "SSE revision ordering rejects stale snapshots and HTTP readbacks do not overwrite them");
   auto const rig_update = source.indexOf ("void MainWindow::handle_transceiver_update");
   auto const rig_failure = source.indexOf ("void MainWindow::handle_transceiver_failure", rig_update);
   auto const rig_update_body = source.mid (rig_update, rig_failure - rig_update);

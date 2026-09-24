@@ -2,6 +2,8 @@
 
 本目录位于源码工作树内，用于归档需长期核查的本地证据、恢复索引和分阶段候选材料。它不是产品运行数据；大型二进制、日志、截图、依赖包、生成树和解压材料通过 `.gitignore` 排除，不纳入 Git。
 
+`dependencies/` 是本机依赖与来源材料的隔离副本，不属于源码提交：`source-archives/P22/` 保存源码/构建来源归档及其 SHA-256 清单，`hamlib-4.7.2/` 保存本机构建所需的 Hamlib 头文件和 import library。它们用于本地构建及来源追溯；保留原件，不纳入 Git。变更依赖前应先对照目录 README/清单核验来源和哈希。
+
 ## 后续目录规范与恢复入口
 
 - 本 README 是本机恢复入口；打包入口为 `scripts/package-local-candidate.ps1`。从现在起，新构建树放 `build/<候选ID>/`，安装暂存树放 `staging/<候选ID>/`，独立解压放 `extract/<候选ID>/`，浏览器 profile 放 `browser-profiles/<候选ID>/`，日志/manifest 放 `evidence/<候选ID>/`（或 `logs/<候选ID>/`）。这些生成目录由 `.gitignore` 排除。
