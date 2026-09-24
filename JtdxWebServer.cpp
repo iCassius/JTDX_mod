@@ -681,14 +681,13 @@ QByteArray JtdxWebServer::sse_event (QByteArray const& name, QByteArray const& i
 void JtdxWebServer::send_sse (Client * client, QByteArray const& payload)
 {
   if (!client || !client->socket || !clients_.contains (client->socket)) return;
-  // The OS send buffer is intentionally 16 KiB.  If a peer has already left
-  // data queued there while our application queue is non-empty, it is a
-  // non-reading peer; evict it before another snapshot can grow the queue.
-  constexpr qint64 unread_socket_limit = 16 * 1024;
+  // Bound the combined Qt send queue and application queue. Do not treat a
+  // temporarily populated socket queue as proof of a stalled reader: a
+  // second snapshot can arrive before the receiver's readyRead is dispatched.
+  // The drain deadline below evicts peers that stop making progress.
   if (payload.size () > max_sse_event_bytes
       || client->pending.size () + payload.size () > max_sse_pending_bytes
-      || client->socket->bytesToWrite () + client->pending.size () + payload.size () > max_sse_pending_bytes
-      || (!client->pending.isEmpty () && client->socket->bytesToWrite () >= unread_socket_limit))
+      || client->socket->bytesToWrite () + client->pending.size () + payload.size () > max_sse_pending_bytes)
     {
       close_client (client->socket);
       return;
