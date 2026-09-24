@@ -250,6 +250,23 @@ int main ()
              && radio_body.contains ("JtdxWebRadioAdapter::observe")
              && radio_body.contains ("tryCompletePendingWebRadio ()"),
          "a nonterminal radio action is later reconciled by state publication without replaying dispatch");
+  auto const native_state_signals = source.indexOf ("QList<QAbstractButton *> const web_radio_state_buttons");
+  auto const native_state_signals_end = source.indexOf ("updateSecondaryUdpTarget ();", native_state_signals);
+  QByteArray const native_state_signals_body = source.mid (native_state_signals,
+                                                           native_state_signals_end - native_state_signals);
+  bool native_projection_inputs_covered = native_state_signals >= 0
+      && native_state_signals_end > native_state_signals;
+  for (char const * control : {"ui->enableTxButton", "ui->AutoSeqButton", "ui->swlButton", "ui->AGCcButton",
+                               "ui->filterButton", "ui->syncButton", "ui->skipTx1",
+                               "ui->txrb1", "ui->txrb2", "ui->txrb3", "ui->txrb4", "ui->txrb5", "ui->txrb6",
+                               "ui->stopTxButton", "ui->logQSOButton", "ui->EraseButton", "ui->pbCallCQ",
+                               "ui->txb1", "ui->txb2", "ui->txb3", "ui->txb4", "ui->txb5", "ui->txb6",
+                               "ui->dxCallEntry", "ui->dxGridEntry", "ui->rptSpinBox",
+                               "ui->RxFreqSpinBox", "ui->TxFreqSpinBox"})
+    native_projection_inputs_covered = native_projection_inputs_covered
+        && native_state_signals_body.contains (QByteArray {control});
+  check (native_projection_inputs_covered,
+         "native radio actions, six TX slots, and all projected DX/status inputs schedule the coalesced refresh");
   auto const state_refresh = source.indexOf ("void MainWindow::refreshWebStateFromMainWindow () const");
   auto const state_refresh_end = source.indexOf ("void MainWindow::dispatchWebFrequency", state_refresh);
   QByteArray const state_refresh_body = source.mid (state_refresh, state_refresh_end - state_refresh);
@@ -263,10 +280,12 @@ int main ()
              && state_refresh_body.contains ("m_webState->observe_status")
              && state_refresh_body.contains ("observe_business_state")
              && state_refresh_body.contains ("updateWebRadioState ()")
-             && !state_refresh_body.contains ("m_messageClient->status_update"),
+             && !state_refresh_body.contains ("m_messageClient"),
          "native UI signals coalesce into one authoritative Web projection without extra UDP status sends");
   check (web_app_source.contains ("incomingStateRevision < currentStateRevision")
              && web_app_source.contains ("incomingOperationRevision < currentOperationRevision")
+             && web_app_source.contains ("readbackRevision === currentRevision")
+             && web_app_source.contains ("currentSnapshot.server_epoch === request.epoch")
              && web_app_source.contains ("render(JSON.parse(line.slice(6)))")
              && !web_app_source.contains ("render(payload.current_state)"),
          "SSE revision ordering rejects stale snapshots and HTTP readbacks do not overwrite them");

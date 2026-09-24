@@ -1064,6 +1064,9 @@ int main (int argc, char ** argv)
   for (ParsedSseEvent const& event : initial_events)
     if (event.name == QByteArrayLiteral ("snapshot") && event.data.contains (QStringLiteral ("operations")))
       initial_snapshot_id = event.id;
+  if (initial_snapshot_id.isEmpty ())
+    qWarning ().noquote () << "Incomplete initial SSE response" << initial_operation_sse.size ()
+                           << QString::fromUtf8 (initial_operation_sse);
   check (!initial_snapshot_id.isEmpty (), "operation SSE initial snapshot must succeed");
 
   // Native-equivalent state updates should coalesce and reach an existing SSE

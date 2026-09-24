@@ -4,8 +4,9 @@
 
 - 本地基线 `16dda6494d73061fcbac33d1ff48487e6211702b`。修复桌面控件变化未触发 Web 投影更新的问题：将桌面电台/操作控件的变化合并成单次延迟刷新，从 MainWindow 当前快照生成完整状态，不额外发送 MessageClient UDP；状态与操作回读经 coalesced SSE 推送，原周期检查和心跳保留为兜底。
 - 投影字段未变化时不推进 revision；浏览器只接受同一 server epoch 中不旧于当前状态及操作 revision 的快照，避免重复推送及迟到结果回滚。
-- 全量应用与测试目标串行构建通过，含 `jtdx.exe`。首次并行构建因 AutoUic 生成头文件竞态失败，串行重跑通过。全部 27 个 CTest 均在匹配运行环境下通过：原生 MinGW 全套首跑 25/27（另两项因 DLL 搜索路径未配置而无法启动）；缺 Qt DLL 的两项使用既有 P25 runtime 单独复测通过。最终变更关联的状态/控件契约测试通过，Web Server SSE 测试在最终代码上连续通过 2 次。未将 P25 DLL 混用于状态服务测试。状态及操作 SSE 延迟断言均小于 200ms，桌面状态连续变化合并为单个最新快照；SSE 测试改为只处理完整事件帧，消除分块读取造成的误报。证据：`local-support/evidence/dependency-audit/live-state-sync-final-build.log`、`live-state-sync-full-ctest.log`、`live-state-sync-server-final-ctest.log`、`live-state-sync-state-contract-final-ctest.log`、`live-state-sync-qt-runtime-tests.log`。
-- 覆盖状态 revision 去重、桌面等价状态 SSE 合并、操作回读 SSE、MainWindow 控件连接约束与浏览器乱序保护；未启动真实 JTDX，未做 CAT/PTT/TX/HIL、浏览器/部署验证。此次不涉及已跳过的 `XXXXXXXXX` 解码问题，不打包或发布。
+- 全量应用与测试目标串行构建通过，含 `jtdx.exe`。两个 CTest 无法启动的精确依赖是 `libhamlib-4.dll`；只把与 Hamlib 4.7.2 import library 同哈希的该 DLL 放入 `local-support/build/.../test-runtime/`，Qt/MSYS2/GCC 均从当前 `C:\msys64\mingw64` 解析，没有将另一整套 runtime 放到 PATH 前面。统一环境下全量 CTest 27/27、56.94 秒通过；实际依赖解析见 `live-state-sync-runtime-resolution.log`，全量结果见 `live-state-sync-unified-ctest.log`。旧式 SSE 测试偶发把 TCP 半帧当完整事件，已改为仅解析完整 SSE 帧。
+- 浏览器实测直接加载仓库 Web UI 资源，由隔离的本地模拟 HTTP/SSE 服务供数（非 MainWindow）。1440x1000 浏览器中桌面视口 985x780、手机窄屏 375x780，手机横向溢出 0；双客户端先后 toggle 均收敛，首次点击至两端 DOM 约 17.2ms、两次切换约 34.2ms；模拟 SSE 写入到浏览器 DOM 约 1.1ms。覆盖“新 SSE 先到、旧 HTTP 后到”、epoch 切换、断线后 Last-Event-ID/resync、双客户端切换，6 项通过；数据见 `live-state-browser-fixture-report.json`，可复跑夹具为 `tests/web_ui_live_state_fixture.html` 与 `local-support/scripts/web-ui-live-state-fixture.mjs`。
+- 边界：20ms MainWindow 合并采集 + 20ms Server 合并推送是定时器配置，不等同实际端到端耗时；上述毫秒数只来自模拟服务和真实浏览器渲染，MainWindow 采集到浏览器呈现的实测仍未取得。因本机已有旧 P26 JTDX 实例运行且本轮禁止触碰设备，没有启动第二个真实 JTDX，也未操作 CAT/PTT/TX 或做 HIL/部署。未涉及已跳过的 `XXXXXXXXX` 解码问题，不打包或发布。
 
 # 2026-09-24 P27 AutoSeq CQ 冷却修复本机审阅候选
 

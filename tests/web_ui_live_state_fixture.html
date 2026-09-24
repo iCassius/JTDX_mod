@@ -1,0 +1,181 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>JTDX Web 状态同步浏览器夹具</title>
+  <style>
+    :root { color-scheme: dark; font: 14px system-ui, sans-serif; background: #101722; color: #e8eef8; }
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 12px; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    h1 { margin: 0; font-size: 18px; }
+    #summary { color: #9ec4f4; font-variant-numeric: tabular-nums; }
+    #results { display: flex; flex-wrap: wrap; gap: 7px; padding: 8px 0 10px; }
+    .result { border: 1px solid #42536c; border-radius: 6px; padding: 5px 8px; }
+    .pass { color: #8be0bd; border-color: #347761; }
+    .fail { color: #ffaaaa; border-color: #984d58; }
+    #views { display: grid; grid-template-columns: minmax(0, 1fr) 402px; gap: 12px; }
+    .view { min-width: 0; border: 1px solid #35465f; border-radius: 9px; overflow: hidden; background: #171f2c; }
+    .view h2 { margin: 0; padding: 7px 10px; font-size: 13px; color: #acc5e4; }
+    iframe { display: block; width: 100%; height: min(78vh, 790px); border: 0; background: #0e1118; }
+    #mobile { width: 390px; max-width: 100%; margin: 0 auto; }
+    #note { margin: 7px 0 0; color: #91a0b5; font-size: 12px; }
+    @media (max-width: 850px) { #views { grid-template-columns: minmax(0,1fr); } #mobile { width: 390px; } }
+  </style>
+</head>
+<body>
+  <header><h1>Web 状态同步浏览器验证（模拟服务，未连接电台）</h1><span id="summary">准备中</span></header>
+  <div id="results" aria-live="polite"></div>
+  <div id="views">
+    <section class="view"><h2>桌面视口</h2><iframe id="desktop" title="桌面视口"></iframe></section>
+    <section class="view"><h2>窄屏 / 手机视口</h2><iframe id="mobile" title="窄屏视口"></iframe></section>
+  </div>
+  <p id="note">测试页面直接加载仓库 Web UI；测试状态由同进程本地模拟 HTTP/SSE 服务提供，不是 MainWindow、CAT 或真实电台。</p>
+  <script>
+    (() => {
+      const results = document.getElementById("results");
+      const summary = document.getElementById("summary");
+      const desktop = document.getElementById("desktop");
+      const mobile = document.getElementById("mobile");
+      const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const measurements = {};
+      const api = async (path, body) => {
+        const response = await fetch("/__fixture/" + path, {
+          method: body === undefined ? "GET" : "POST",
+          headers: body === undefined ? {} : {"Content-Type": "application/json"},
+          body: body === undefined ? undefined : JSON.stringify(body), cache: "no-store"
+        });
+        if (!response.ok) throw new Error(path + " HTTP " + response.status);
+        return response.json();
+      };
+      const check = (label, ok, detail) => {
+        const node = document.createElement("span");
+        node.className = "result " + (ok ? "pass" : "fail");
+        node.textContent = (ok ? "通过 · " : "失败 · ") + label + (detail ? " · " + detail : "");
+        results.appendChild(node);
+        measurements[label] = {passed: !!ok, detail: detail || ""};
+        if (!ok) throw new Error(label + (detail ? ": " + detail : ""));
+      };
+      const until = async (predicate, timeout = 6000) => {
+        const end = performance.now() + timeout;
+        while (performance.now() < end) {
+          if (predicate()) return;
+          await wait(15);
+        }
+        throw new Error("等待浏览器 UI 状态超时");
+      };
+      const doc = (frame) => frame.contentDocument;
+      const click = (frame, id) => doc(frame).getElementById(id).click();
+      const active = (frame, id) => doc(frame).getElementById(id).classList.contains("active");
+      const connected = (frame) => doc(frame).getElementById("connection").textContent === "已连接";
+      const setSummary = () => {
+        const passed = results.querySelectorAll(".pass").length;
+        const failed = results.querySelectorAll(".fail").length;
+        summary.textContent = failed ? `${passed} 项通过 / ${failed} 项失败` : `${passed} 项通过`;
+        document.body.dataset.complete = failed ? "failed" : "passed";
+      };
+
+      async function run() {
+        try {
+          await api("reset", {});
+          const ready = (frame) => new Promise((resolve) => { frame.onload = resolve; });
+          const desktopReady = ready(desktop);
+          const mobileReady = ready(mobile);
+          desktop.src = "/#fixture";
+          mobile.src = "/#fixture";
+          await Promise.all([desktopReady, mobileReady]);
+          await until(() => connected(desktop) && connected(mobile));
+          check("桌面与手机窄屏页面均连接模拟 SSE", true);
+          const mobileWidth = doc(mobile).documentElement.clientWidth;
+          const mobileOverflow = doc(mobile).documentElement.scrollWidth - mobileWidth;
+          measurements.viewports = {
+            desktop: {width: doc(desktop).documentElement.clientWidth, height: doc(desktop).documentElement.clientHeight},
+            mobile: {width: mobileWidth, height: doc(mobile).documentElement.clientHeight},
+            mobileHorizontalOverflow: mobileOverflow
+          };
+          check("窄屏布局无横向溢出", mobileOverflow <= 1, `${mobileWidth}px / 溢出 ${mobileOverflow}px`);
+
+          let started = performance.now();
+          click(desktop, "radio_sync");
+          await until(() => active(desktop, "radio_sync") && active(mobile, "radio_sync"));
+          const firstToggleMs = performance.now() - started;
+          click(mobile, "radio_sync");
+          await until(() => !active(desktop, "radio_sync") && !active(mobile, "radio_sync"));
+          const twoClientMs = performance.now() - started;
+          measurements.toggle = {firstClickToBothDomMs: firstToggleMs, twoClientConvergenceMs: twoClientMs};
+          check("双客户端顺序切换经 SSE 收敛到同一状态", true,
+            `首个客户端→两端渲染 ${firstToggleMs.toFixed(1)}ms；两次切换 ${twoClientMs.toFixed(1)}ms`);
+
+          await api("arm-hold", {});
+          click(desktop, "radio_enable_tx");
+          let pending = await api("pending", {});
+          const pendingDeadline = performance.now() + 4000;
+          while (!pending.items.length && performance.now() < pendingDeadline) {
+            await wait(20);
+            pending = await api("pending", {});
+          }
+          if (!pending.items.length) throw new Error("enable-tx HTTP 请求未到达模拟服务");
+          const held = pending.items[0];
+          const ssePushStarted = performance.now();
+          await api("broadcast", {report: "SSE 新快照", tx_enabled: false});
+          await until(() => doc(desktop).getElementById("report").textContent === "SSE 新快照");
+          const sseArrivedMs = performance.now() - ssePushStarted;
+          await api("release", {state_revision: held.state_revision, tx_enabled: true});
+          await until(() => doc(desktop).getElementById("radio_result").textContent.includes("实际状态回读确认"));
+          await wait(100);
+          const txText = doc(desktop).getElementById("tx_summary").textContent;
+          measurements.staleHttp = {ssePushToDomMs: sseArrivedMs, finalTxSummary: txText};
+          check("新 SSE 先到、旧 HTTP 回读后到时不回滚 TX 投影", txText.startsWith("否 /"),
+            `SSE DOM ${sseArrivedMs.toFixed(1)}ms；最终 TX=${txText}`);
+
+          await api("disconnect", {});
+          await until(() => !connected(desktop) && !connected(mobile), 3000);
+          await until(() => connected(desktop) && connected(mobile), 6000);
+          const recovery = await api("metrics", {});
+          measurements.reconnect = {lastEventIdResyncRequests: recovery.resyncRequests};
+          check("SSE 断线后两客户端自动重连并请求有界 resync", recovery.resyncRequests >= 2,
+            `Last-Event-ID 重连 ${recovery.resyncRequests} 次`);
+
+          await api("arm-hold", {});
+          click(desktop, "radio_enable_tx");
+          pending = await api("pending", {});
+          const epochDeadline = performance.now() + 4000;
+          while (pending.items.length < 1 && performance.now() < epochDeadline) {
+            await wait(20);
+            pending = await api("pending", {});
+          }
+          if (!pending.items.length) throw new Error("epoch 测试请求未到达模拟服务");
+          const oldRequest = pending.items[0];
+          await api("broadcast", {server_epoch: "fixture-epoch-B", report: "新区 Epoch", tx_enabled: false});
+          await until(() => doc(desktop).getElementById("report").textContent === "新区 Epoch");
+          await api("release", {state_revision: oldRequest.state_revision, tx_enabled: true});
+          await wait(150);
+          const epochTx = doc(desktop).getElementById("tx_summary").textContent;
+          measurements.epochTransition = {finalTxSummary: epochTx};
+          check("Epoch 切换后旧 HTTP 响应不能覆盖新会话状态", epochTx.startsWith("否 /"),
+            `最终 TX=${epochTx}`);
+          summary.textContent = `${results.querySelectorAll(".pass").length} 项通过`;
+          document.body.dataset.complete = "passed";
+          measurements.result = "passed";
+          measurements.userAgent = navigator.userAgent;
+          measurements.completed_at = new Date().toISOString();
+          await api("report", measurements);
+        } catch (error) {
+          const node = document.createElement("span");
+          node.className = "result fail";
+          node.textContent = "失败 · " + (error && error.message ? error.message : String(error));
+          results.appendChild(node);
+          summary.textContent = "浏览器验证失败";
+          document.body.dataset.complete = "failed";
+          measurements.result = "failed";
+          measurements.failure = error && error.message ? error.message : String(error);
+          measurements.userAgent = navigator.userAgent;
+          api("report", measurements).catch(() => {});
+        }
+      }
+      run();
+    })();
+  </script>
+</body>
+</html>

@@ -273,14 +273,21 @@
 
   function applyRadioReadback(row, request) {
     const readback = row && row.readback && typeof row.readback === "object" ? row.readback : null;
+    const responseEpoch = row && typeof row.server_epoch === "string" ? row.server_epoch : "";
+    const readbackRevision = integerValue(readback && readback.state_revision);
+    const currentRevision = integerValue(currentSnapshot && currentSnapshot.state_revision);
     if (request.action === "enable-tx" && currentSnapshot && readback
+        && responseEpoch === request.epoch && currentSnapshot.server_epoch === request.epoch
+        && readbackRevision != null && currentRevision != null && readbackRevision === currentRevision
         && typeof readback.tx_enabled === "boolean") {
       currentSnapshot = {...currentSnapshot, tx_enabled: readback.tx_enabled};
       text("tx_summary", bool(readback.tx_enabled) + " / " + bool(currentSnapshot.transmitting));
       text("tx_enabled", bool(readback.tx_enabled));
       updateFrequencyForm();
       updateBusinessControls();
+      return true;
     }
+    return false;
   }
 
   function terminalOperation(row) {
@@ -395,7 +402,6 @@
     const row = operationForRadio(snapshot);
     if (row && terminalOperation(row)) {
       if (row.status === "completed" && readbackMatchesRadio(row, radioRequest)) {
-        applyRadioReadback(row, radioRequest);
         radioUnknown = radioRequest.preserveUnknown === true;
         radioStatus(radioUnknown ? "停止已回读；先前操作结果仍未知。" : "电台操作已由实际状态回读确认。",
           radioUnknown ? "warning" : "success");
