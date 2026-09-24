@@ -62,6 +62,26 @@ int main ()
   QFile mainWindowSource {QStringLiteral (JTDX_SOURCE_DIR "/mainwindow.cpp")};
   expect (mainWindowSource.open (QIODevice::ReadOnly), "open MainWindow source");
   auto const mainWindowCpp = mainWindowSource.readAll ();
+  auto const commonActionsStart = mainWindowCpp.indexOf ("void MainWindow::commonActions ()");
+  auto const commonActionsEnd = mainWindowCpp.indexOf ("\nvoid ", commonActionsStart + 1);
+  expect (commonActionsStart >= 0 && commonActionsEnd > commonActionsStart,
+          "commonActions implementation is present for visibility contract check");
+  auto const commonActions = mainWindowCpp.mid (commonActionsStart, commonActionsEnd - commonActionsStart);
+  expect (!commonActions.contains ("m_wideGraph->show"),
+          "mode/reset bookkeeping does not reopen the WideGraph window");
+  expect (mainWindowCpp.contains ("WideGraph/visible"),
+          "WideGraph visibility has a persisted settings key");
+  expect (mainWindowCpp.contains ("m_settings->value (\"WideGraph/visible\", true)"),
+          "first-run WideGraph visibility remains compatible and startup can restore it");
+  expect (mainWindowCpp.contains ("m_wideGraph->setAttribute (Qt::WA_ShowWithoutActivating)"),
+          "startup restoration does not intentionally activate the WideGraph window");
+  expect (mainWindowCpp.contains ("m_settings->setValue (\"WideGraph/visible\", true)"),
+          "explicit WideGraph menu open remembers visible intent");
+  QFile wideGraphSource {QStringLiteral (JTDX_SOURCE_DIR "/widegraph.cpp")};
+  expect (wideGraphSource.open (QIODevice::ReadOnly), "open WideGraph source");
+  auto const wideGraphCpp = wideGraphSource.readAll ();
+  expect (wideGraphCpp.contains ("Q_EMIT closed ()"),
+          "user close reports hidden intent without relying on destruction/hide events");
   expect (mainWindowCpp.contains ("m_messageClient->set_mirror (m_secondaryMessageClient)"), "primary owns the telemetry mirror");
   expect (mainWindowCpp.count ("set_mirror (") == 1, "secondary is never assigned a mirror");
   expect (!mainWindowCpp.contains ("m_secondaryMessageClient, &MessageClient::reply"), "secondary has no Reply control connection");

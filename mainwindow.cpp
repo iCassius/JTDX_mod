@@ -665,6 +665,11 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
   connect(m_wideGraph.data (), SIGNAL(freezeDecode2(int)),this,SLOT(freezeDecode(int)));
   connect(m_wideGraph.data (), SIGNAL(f11f12(int)),this,SLOT(bumpFqso(int)));
   connect(m_wideGraph.data (), SIGNAL(setXIT2(int)),this,SLOT(setXIT(int)));
+  connect (m_wideGraph.data (), &WideGraph::closed, this, [this] {
+    // The MainWindow shutdown closes WideGraph too; retain the last explicit
+    // visibility choice rather than treating that cleanup as a user close.
+    if (m_valid) m_settings->setValue ("WideGraph/visible", false);
+  });
 
   connect (this, &MainWindow::finished, m_wideGraph.data (), &WideGraph::close);
 
@@ -1232,7 +1237,13 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
   setMinButton();
   morse_(const_cast<char *> (m_config.my_callsign ().toLatin1().constData()),
          const_cast<int *> (icw), &m_ncw, m_config.my_callsign ().length());
-  on_actionWide_Waterfall_triggered();
+  if (m_settings->value ("WideGraph/visible", true).toBool ()) {
+    // Restore the default/remembered visible state without taking focus from
+    // the MainWindow during startup. Explicit menu activation still uses show().
+    m_wideGraph->setAttribute (Qt::WA_ShowWithoutActivating);
+    m_wideGraph->show ();
+    m_wideGraph->setAttribute (Qt::WA_ShowWithoutActivating, false);
+  }
   m_wideGraph->setTol(500);
   m_wideGraph->setLockTxFreq(m_lockTxFreq);
   m_wideGraph->setMode(m_mode);
@@ -3595,7 +3606,11 @@ void MainWindow::on_actionLocal_User_Guide_triggered()
 #endif
 }*/
 
-void MainWindow::on_actionWide_Waterfall_triggered() { m_wideGraph->show(); } //Display Waterfalls
+void MainWindow::on_actionWide_Waterfall_triggered()
+{
+  m_settings->setValue ("WideGraph/visible", true);
+  m_wideGraph->show ();
+} // Display Waterfalls
 
 void MainWindow::on_actionCopyright_Notice_triggered()
 {
@@ -7471,7 +7486,8 @@ void MainWindow::commonActions ()
   m_toneSpacing=0.0;
   m_wideGraph->setMode(m_mode);
   m_wideGraph->setModeTx(m_modeTx);
-  m_wideGraph->show();
+  // Visibility is user-controlled; mode/reset bookkeeping must not reopen or
+  // raise a window the user deliberately closed.
   mode_label->setText(m_mode);
   QString t;
   if (m_mode.startsWith("FT")) t = "UTC     dB   DT "+tr("Freq   Message");

@@ -173,6 +173,7 @@ WideGraph::~WideGraph ()
 void WideGraph::closeEvent (QCloseEvent * e)
 {
   saveSettings ();
+  Q_EMIT closed ();
   QDialog::closeEvent (e);
 }
 
