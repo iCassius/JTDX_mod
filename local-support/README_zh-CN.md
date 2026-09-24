@@ -51,9 +51,11 @@ New-Item -ItemType Directory -Force -Path (Join-Path $support 'evidence\P28') | 
 
 ## P028 当前本机审阅候选
 
-- 候选包：`C:\JTDX64\JTDX-2.2.159.028-local-c545085-P028.zip`，SHA-256 `1D3D517EA704F3047F300A8BBB03C95FE41A3393C4468BC3C502F82A2656A13D`；142 文件、49,380,841 bytes，根项为 `bin/`、`plugins/`、`share/`、`NOTICE`、`NOTICE_zh-CN.md`。打包脚本已逐项验证暂存、ZIP 和独立解压的 142/142 文件大小与 SHA-256 一致，ValidateOnly 复核通过。
-- 源码提交 `c545085da5bf0ed3e249cbcf76aa4f1c5f186394`；保留此前 P28 ZIP、sidecar 和说明不变。本候选显示版本为 `2.2.159.028`，PE 数字版本为 `2.2.159.28`；固定构建标题时间为 `2026-09-24 12:14:12 Asia/Shanghai (UTC+08:00)`。下一次手动发布版本应改为 `.029`，不是自动递增。
-- 全量 Release 构建退出码 0。初始实现提交 `a648c12` 的全量 CTest 为 28/28；最后夹具时序测试修正后的源码提交 `c545085` 做两次全量复跑，均有 `jtdx_web_server_test` 的 SSE 初始快照断言超时，直接复跑该测试退出码 0；该间歇现象保留待后续复核，不表述为最终提交稳定全绿。浏览器夹具 7/7，版本展示和 375px 窄屏/无横溢均通过。证据见 `evidence/P028-version028/`。暂存与 P27 142 文件逐项比较为 138 项同哈希、4 个重建可执行文件不同；65 项 ThirdParty 材料和两份 NOTICE 从既有 P27 暂存复制并保留哈希。
+- 新候选包：`C:\JTDX64\JTDX-2.2.159.028-local-bc45bb4-P028.zip`，SHA-256 `2771BCB2CB898ECC39A1D1B6796579EF220E14CD90D2B5D9534019FA81715F89`；142 文件、49,380,789 bytes。暂存、ZIP、独立解压均逐项 142/142 同长度/哈希，ValidateOnly 通过。
+- 当前源码提交 `bc45bb4d54bbb5729513e5d7763e8f681e320af3`；应用显示版本 `2.2.159.028`，PE 数字版本 `2.2.159.28`；主窗口构建时间 `2026-09-24 12:50:19 Asia/Shanghai (UTC+08:00)`。下一次手动发布版本应改为 `.029`，不自动递增。
+- 根因已修：SSE 服务在 298,124-byte 合法快照仍有待发数据时，误把 65,652-byte 的瞬时 Qt 发送队列认作慢读并提前断开；该快照加待发内容仅约 298KB，低于 1MiB 上限。移除这个 16KiB 瞬时判定，保留单事件/总队列上限和 2 秒 drain deadline。针对性 SSE 测试通过；修复后连续两轮全量 CTest 均 28/28。浏览器夹具 7/7。
+- 旧失败候选 `JTDX-2.2.159.028-local-c545085-P028.zip` 及 sidecar 保留原样，SHA-256 `1D3D517EA704F3047F300A8BBB03C95FE41A3393C4468BC3C502F82A2656A13D`，状态为 **SUPERSEDED**；标记见 [`releases/P028/c545085-SUPERSEDED_zh-CN.md`](releases/P028/c545085-SUPERSEDED_zh-CN.md)。诊断、构建和连续测试证据见 `evidence/P028-final-bc45bb4/`。
+- 仅供本机审阅，不公开分发。未启动候选程序或操作 CAT/PTT/TX，未做硬件/HIL、真实 MainWindow 端到端、LAN/公网或部署验证；Qt/LGPL、间接依赖和数据文件再分发授权仍待审计。完整说明见 [`releases/P028/说明_zh-CN.md`](releases/P028/说明_zh-CN.md)。
 - 仅供本机审阅，不公开分发。未启动候选程序或操作 CAT/PTT/TX，未做硬件/HIL、真实 MainWindow 端到端、LAN/公网或部署验证；Qt/LGPL、间接依赖和数据文件的再分发授权仍待审计。完整记录见 [`releases/P028/说明_zh-CN.md`](releases/P028/说明_zh-CN.md)。
 
 ## P28 历史本机审阅候选
@@ -79,7 +81,8 @@ New-Item -ItemType Directory -Force -Path (Join-Path $support 'evidence\P28') | 
 - `releases/P27/`：P27 根目录简要说明原位归档；ZIP 与 sidecar 仍留在 `C:\JTDX64` 根目录。
 - `releases/P28/`：P28 中文审阅说明；ZIP 与 sidecar 留在 `C:\JTDX64` 根目录。
 - `releases/P028/`：版本 `2.2.159.028` 本机审阅说明；独立 ZIP 与 sidecar 留在 `C:\JTDX64` 根目录，旧 P28 ZIP/sidecar 保持不变。
-- `staging/P028-version028/` 和 `extract/P028-version028/`：P028 的独立暂存及清洁解压树，142/142 文件 SHA-256 一致；证据位于 `evidence/P028-version028/`。
+- `releases/P028/c545085-SUPERSEDED_zh-CN.md`：旧失败候选保留标记；旧 ZIP/sidecar 未覆盖。
+- `staging/P028-final-bc45bb4/` 和 `extract/P028-final-bc45bb4/`：最终 P028 的独立暂存及清洁解压树，142/142 文件 SHA-256 一致；证据位于 `evidence/P028-final-bc45bb4/`。旧暂存/解压 `P028-version028` 保留作为复核证据。
 - `staging/P28/` 和 `extract/P28/`：P28 复用当前 Release build 安装到隔离暂存树、再由受约束脚本独立解压；与 ZIP 142/142 文件大小及 SHA-256 一致。
 - `staging/P27-runtime-stage-3c086af/` 和 `extract/P27-clean-extract-3c086af/`：本轮新建且可重建的 P27 安装暂存/清洁解压，已从 `deps-webui/temp` 搬入源码支持目录；各 142 文件、137,520,019 bytes，逐项 SHA-256 一致。
 - `scripts/package-local-candidate.ps1`：新的受路径约束打包/校验入口；未来 build、stage、extract、profile 与日志均须放在 `local-support` 子目录。
