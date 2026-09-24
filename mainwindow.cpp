@@ -49,6 +49,7 @@
 #include "plotter.h"
 #include "about.h"
 #include "widegraph.h"
+#include "widegraph_visibility.hpp"
 #include "sleep.h"
 #include "logqso.h"
 #include "decodedtext.h"
@@ -668,7 +669,7 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
   connect (m_wideGraph.data (), &WideGraph::closed, this, [this] {
     // The MainWindow shutdown closes WideGraph too; retain the last explicit
     // visibility choice rather than treating that cleanup as a user close.
-    if (m_valid) m_settings->setValue ("WideGraph/visible", false);
+    WideGraphVisibility::recordClosed (*m_settings, m_valid);
   });
 
   connect (this, &MainWindow::finished, m_wideGraph.data (), &WideGraph::close);
@@ -1237,13 +1238,8 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
   setMinButton();
   morse_(const_cast<char *> (m_config.my_callsign ().toLatin1().constData()),
          const_cast<int *> (icw), &m_ncw, m_config.my_callsign ().length());
-  if (m_settings->value ("WideGraph/visible", true).toBool ()) {
-    // Restore the default/remembered visible state without taking focus from
-    // the MainWindow during startup. Explicit menu activation still uses show().
-    m_wideGraph->setAttribute (Qt::WA_ShowWithoutActivating);
-    m_wideGraph->show ();
-    m_wideGraph->setAttribute (Qt::WA_ShowWithoutActivating, false);
-  }
+  // Restore the default/remembered visible state without requesting activation.
+  WideGraphVisibility::restore (*m_wideGraph, *m_settings);
   m_wideGraph->setTol(500);
   m_wideGraph->setLockTxFreq(m_lockTxFreq);
   m_wideGraph->setMode(m_mode);
@@ -3608,8 +3604,7 @@ void MainWindow::on_actionLocal_User_Guide_triggered()
 
 void MainWindow::on_actionWide_Waterfall_triggered()
 {
-  m_settings->setValue ("WideGraph/visible", true);
-  m_wideGraph->show ();
+  WideGraphVisibility::openExplicitly (*m_wideGraph, *m_settings);
 } // Display Waterfalls
 
 void MainWindow::on_actionCopyright_Notice_triggered()

@@ -69,14 +69,24 @@ int main ()
   auto const commonActions = mainWindowCpp.mid (commonActionsStart, commonActionsEnd - commonActionsStart);
   expect (!commonActions.contains ("m_wideGraph->show"),
           "mode/reset bookkeeping does not reopen the WideGraph window");
-  expect (mainWindowCpp.contains ("WideGraph/visible"),
-          "WideGraph visibility has a persisted settings key");
-  expect (mainWindowCpp.contains ("m_settings->value (\"WideGraph/visible\", true)"),
-          "first-run WideGraph visibility remains compatible and startup can restore it");
-  expect (mainWindowCpp.contains ("m_wideGraph->setAttribute (Qt::WA_ShowWithoutActivating)"),
-          "startup restoration does not intentionally activate the WideGraph window");
-  expect (mainWindowCpp.contains ("m_settings->setValue (\"WideGraph/visible\", true)"),
-          "explicit WideGraph menu open remembers visible intent");
+  expect (mainWindowCpp.contains ("WideGraphVisibility::restore (*m_wideGraph, *m_settings)"),
+          "startup restores the persisted WideGraph visibility policy");
+  expect (mainWindowCpp.contains ("WideGraphVisibility::openExplicitly (*m_wideGraph, *m_settings)"),
+          "explicit menu open uses the production visibility policy");
+  expect (mainWindowCpp.contains ("WideGraphVisibility::recordClosed (*m_settings, m_valid)"),
+          "close persistence distinguishes runtime close from owner shutdown");
+  auto const closeEventStart = mainWindowCpp.indexOf ("void MainWindow::closeEvent(QCloseEvent * e)");
+  auto const invalidatesWindow = mainWindowCpp.indexOf ("m_valid = false", closeEventStart);
+  auto const emitsFinished = mainWindowCpp.indexOf ("Q_EMIT finished ()", closeEventStart);
+  expect (closeEventStart >= 0 && invalidatesWindow > closeEventStart && emitsFinished > invalidatesWindow,
+          "normal MainWindow shutdown marks closing before WideGraph cleanup is emitted");
+  QFile visibilityPolicy {QStringLiteral (JTDX_SOURCE_DIR "/widegraph_visibility.hpp")};
+  expect (visibilityPolicy.open (QIODevice::ReadOnly), "open production WideGraph visibility policy");
+  auto const visibilityCpp = visibilityPolicy.readAll ();
+  expect (visibilityCpp.contains ("WideGraph/visible") && visibilityCpp.contains ("settings.value (settingsKey, true)"),
+          "visibility policy persists a first-run-visible default");
+  expect (visibilityCpp.contains ("Qt::WA_ShowWithoutActivating"),
+          "startup restore uses and clears the no-activation attribute");
   QFile wideGraphSource {QStringLiteral (JTDX_SOURCE_DIR "/widegraph.cpp")};
   expect (wideGraphSource.open (QIODevice::ReadOnly), "open WideGraph source");
   auto const wideGraphCpp = wideGraphSource.readAll ();

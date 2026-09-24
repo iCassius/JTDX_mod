@@ -4,7 +4,7 @@
 
 `WideGraph` 是独立的顶层对话框。此前 MainWindow 构造阶段会打开它，且 `MainWindow::commonActions()` 在 JT9、T10、FT4、FT8、JT65 和 JT9+JT65 模式初始化/切换时再次无条件调用 `show()`。因此用户手动关闭频谱窗后，后续模式复位会再次打开它；`show()` 也可能使该窗口进入前台。
 
-现在将显隐意图保存在 `QSettings` 的 `WideGraph/visible`：缺少旧设置时默认为可见，兼容既有首次启动行为；启动恢复可见窗时使用 `WA_ShowWithoutActivating`，避免为恢复窗口抢焦点；用户点击关闭时记为隐藏，MainWindow 退出期间的清理关闭不覆盖该意图；工具菜单的显式“Wide Waterfall”命令仍会显示并激活窗口。`commonActions()` 只更新图表模式/周期，不再改变窗口显隐。频谱窗原有 `geometry` 设置保持不变。
+现在将显隐意图保存在 `QSettings` 的 `WideGraph/visible`：缺少旧设置时默认为可见，兼容既有首次启动行为；启动恢复可见窗时使用 `WA_ShowWithoutActivating`，避免为恢复窗口主动请求焦点；用户点击关闭时记为隐藏，MainWindow 退出期间的清理关闭不覆盖该意图。工具菜单的显式“Wide Waterfall”命令沿用原有 `QWidget::show()` 语义，不额外调用 `raise()`/`activateWindow()`，因此不承诺强制激活或还原最小化窗口。`commonActions()` 只更新图表模式/周期，不再改变窗口显隐。频谱窗原有 `geometry` 设置保持不变。
 
 ## 解码区域对象与实际入口
 
@@ -44,11 +44,11 @@ New DXCC、new grid 等主要驱动 `priority`、标记、颜色/字体、wanted
 
 ### 其他写入右侧的路径
 
-- 手动双击/转抄：`doubleClickOnCall()` 根据消息来源调用 `processMessage()`；从 Band Activity 操作时 `m_decodedText2=false`，从 Rx Frequency 操作时 `doubleClickOnCall2()` 临时设为 true。处理右侧来源的消息时，只有该解码不在 `m_QSOText`、不是 TX 行，并满足“不是本台呼号”或关闭“我的呼号也放入 Rx Frequency”选项，才会再次送入右侧显示函数。Watched calls 的 Alt+Ctrl 路径用于加入 wanted call，不改变以上实时入口门槛。
+- 手动双击/转抄：`doubleClickOnCall2()` 是 Band Activity（左侧）信号的处理入口，会临时令 `m_decodedText2=true`；右侧 `decodedTextBrowser2` 直接连到 `doubleClickOnCall()`，此时该标志为 false。左侧消息经 `processMessage()` 转抄至右侧时，必须是非 TX 行、未已存在于 `m_QSOText`，并且（不是本台呼号，或未启用“我的呼号也放入 Rx Frequency”）。转抄仍调用 `decodedTextBrowser2->displayDecodedText()`，所以会受其行过滤影响。左侧 Alt+Ctrl 路径用于加入 wanted call。
 - 发射回显：两个实际 TX 完成路径调用 `decodedTextBrowser2->displayTransmittedText()`，这是 TX 回显，不经过新解码的频偏门槛。
 
 本说明只描述现有行为；本次未修改消息筛选、优先级或颜色业务规则。
 
 ## 验证范围
 
-本次以源码路径和 UI 合约测试核查显隐决策，不启动真实 JTDX，不操作 CAT/PTT/TX。启动焦点和真实 MainWindow/操作系统窗口管理器的端到端行为尚未由真实应用/HIL 实测；不据此声称硬件或现场验收通过。
+本次以源码路径、UI 合约测试和独立 Qt 窗口夹具核查显隐决策；夹具调用与生产 MainWindow 相同的显隐策略，不启动真实 JTDX，不操作 CAT/PTT/TX。启动焦点和真实 MainWindow/操作系统窗口管理器的端到端行为尚未由真实应用/HIL 实测；不据此声称硬件或现场验收通过。
