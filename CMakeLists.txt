@@ -1399,6 +1399,17 @@ configure_file (
   "${PROJECT_SOURCE_DIR}/wsjtx_config.h.in"
   "${PROJECT_BINARY_DIR}/wsjtx_config.h"
   )
+set (JTDX_BUILD_TIMESTAMP "" CACHE STRING "Fixed build timestamp shown in the JTDX main-window title")
+if (NOT JTDX_BUILD_TIMESTAMP)
+  string (TIMESTAMP JTDX_BUILD_TIMESTAMP_DEFAULT "%Y-%m-%d %H:%M:%S UTC" UTC)
+  set (JTDX_BUILD_TIMESTAMP "${JTDX_BUILD_TIMESTAMP_DEFAULT}" CACHE STRING
+    "Fixed build timestamp shown in the JTDX main-window title" FORCE)
+endif ()
+configure_file (
+  "${PROJECT_SOURCE_DIR}/CMake/Modules/BuildInfo.h.in"
+  "${PROJECT_BINARY_DIR}/build_info.h"
+  @ONLY
+  )
 include_directories (BEFORE "${PROJECT_BINARY_DIR}")
 
 
@@ -1631,6 +1642,9 @@ if (JTDX_BUILD_LOCAL_TESTS)
   target_compile_definitions (ui_contract_test PRIVATE JTDX_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
   target_link_libraries (ui_contract_test Qt5::Core)
   add_test (NAME ui_contract_test COMMAND ui_contract_test)
+  add_executable (version_title_test tests/version_title_test.cpp revision_utils.cpp)
+  target_link_libraries (version_title_test Qt5::Core)
+  add_test (NAME version_title_test COMMAND version_title_test)
   add_executable (udp_mirror_test tests/udp_mirror_test.cpp MessageClient.cpp)
   target_include_directories (udp_mirror_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   target_link_libraries (udp_mirror_test wsjt_qt Qt5::Core Qt5::Network)
@@ -1813,6 +1827,7 @@ set (CPACK_PACKAGE_NAME "${CMAKE_PROJECT_NAME}")
 set (CPACK_PACKAGE_VERSION_MAJOR ${WSJTX_VERSION_MAJOR})
 set (CPACK_PACKAGE_VERSION_MINOR ${WSJTX_VERSION_MINOR})
 set (CPACK_PACKAGE_VERSION_PATCH ${WSJTX_VERSION_PATCH})
+set (CPACK_PACKAGE_VERSION_TWEAK ${WSJTX_VERSION_TWEAK})
 if (WIN32)
   set (CPACK_GENERATOR "NSIS")
 elseif (APPLE)

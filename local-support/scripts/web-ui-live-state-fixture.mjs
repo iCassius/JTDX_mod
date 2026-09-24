@@ -6,6 +6,10 @@ import { fileURLToPath } from "node:url";
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const sourceRoot = path.resolve(scriptDir, "../..");
 const port = Number.parseInt(process.env.JTDX_WEB_FIXTURE_PORT || "18767", 10);
+const defaultReportPath = "local-support/evidence/dependency-audit/live-state-browser-fixture-report.json";
+const reportPath = path.resolve(sourceRoot, process.env.JTDX_WEB_FIXTURE_REPORT_PATH || defaultReportPath);
+const evidencePrefix = path.resolve(sourceRoot, "local-support/evidence") + path.sep;
+if (!reportPath.startsWith(evidencePrefix)) throw new Error("Browser fixture report must stay under local-support/evidence");
 let state;
 let eventId = 0;
 let holdNextRadio = false;
@@ -19,6 +23,7 @@ function initialState(epoch = "fixture-epoch-A") {
     state_revision: 1,
     operation_revision: 1,
     application_name: "JTDX · 浏览器夹具",
+    application_version: "2.2.159.028",
     instance_id: "fixture",
     online: true,
     mode: "FT8",
@@ -251,7 +256,6 @@ async function handle(request, response) {
       return;
     }
     if (action === "report") {
-      const reportPath = path.join(sourceRoot, "local-support/evidence/dependency-audit/live-state-browser-fixture-report.json");
       const report = {
         captured_at: new Date().toISOString(),
         fixture: "mock HTTP/SSE server; no MainWindow, CAT, PTT, TX, or hardware",

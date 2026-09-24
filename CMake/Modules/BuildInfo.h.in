@@ -1,0 +1,6 @@
+#ifndef JTDX_BUILD_INFO_H__
+#define JTDX_BUILD_INFO_H__
+
+#define JTDX_BUILD_TIMESTAMP "@JTDX_BUILD_TIMESTAMP@"
+
+#endif

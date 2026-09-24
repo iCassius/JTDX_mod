@@ -623,7 +623,9 @@
       calibrateCycle("mode");
     }
     setConnected(true);
-    text("application_name", snapshot.application_name);
+    const appVersion = typeof snapshot.application_version === "string" ? snapshot.application_version : "";
+    text("application_name", snapshot.application_name
+      ? snapshot.application_name + (appVersion ? " v" + appVersion : "") : null);
     text("mode_band", [snapshot.mode, snapshot.band].filter(Boolean).join(" / ") || "未知");
     text("instance_id", snapshot.instance_id);
     text("online", snapshot.online == null ? null : snapshot.online ? "在线" : "离线");

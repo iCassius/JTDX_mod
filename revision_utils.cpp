@@ -5,6 +5,7 @@
 #include <QCoreApplication>
 #include <QRegularExpression>
 
+#include "build_info.h"
 #include "scs_version.h"
 
 namespace
@@ -69,12 +70,10 @@ QString version (bool include_patch)
   QString v {WSJTX_STRINGIZE (WSJTX_VERSION_MAJOR) "." WSJTX_STRINGIZE (WSJTX_VERSION_MINOR)};
   if (include_patch)
     {
-      // 将显示版本保留为连续字面量，便于离线验收二进制版本字符串。
 # if defined (WSJTX_VERSION_DISPLAY_SUFFIX)
       v = QStringLiteral (WSJTX_STRINGIZE (WSJTX_VERSION_MAJOR) "."
                           WSJTX_STRINGIZE (WSJTX_VERSION_MINOR) "."
-                          WSJTX_STRINGIZE (WSJTX_VERSION_PATCH) "."
-                          WSJTX_STRINGIZE (WSJTX_VERSION_TWEAK)
+                          WSJTX_STRINGIZE (WSJTX_VERSION_PATCH)
                           WSJTX_VERSION_DISPLAY_SUFFIX);
 # else
       v += "." WSJTX_STRINGIZE (WSJTX_VERSION_PATCH);
@@ -96,5 +95,6 @@ QString program_title (QString const& revision)
 {
   Q_UNUSED (revision);
   return QCoreApplication::applicationName () + " v" + QCoreApplication::applicationVersion ()
-      + QString::fromUtf8(" 自动起呼版 By BI7KGD 自动程序中点击自动起呼即可实现自动发射");
+      + QString::fromUtf8 (" 自动起呼版 By BI7KGD 自动程序中点击自动起呼即可实现自动发射")
+      + QStringLiteral (" — Build ") + QString::fromUtf8 (JTDX_BUILD_TIMESTAMP);
 }
