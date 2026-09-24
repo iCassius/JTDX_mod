@@ -1,5 +1,12 @@
 # JTDX 内置 Web UI：进度与中断恢复日志
 
+# 2026-09-24 P029 频谱窗持久显隐与版本递增本机审阅候选
+
+- 源码提交 `ec26de60fb55ed0044a014fa5e6fdb2b0457d4b4`，显示版本 `2.2.159.029`，PE 数字版本 `2.2.159.29`，构建标题时间 `2026-09-24 15:12:04 UTC`。Release 全量构建成功；全量 CTest 29/29 通过，含频谱窗显隐策略测试。
+- 本候选 ZIP/sidecar 在 `C:\JTDX64` 根目录；SHA-256 `E624A05A404721FF074B9112C04C2C16376605C47B0972D6F4BD6F7C84743D98`，49,381,555 bytes、142 文件；暂存、ZIP、清洁解压逐项一致，ValidateOnly 通过。P028 包保持原样。
+- 频谱窗关闭后模式切换/复位不再重开，意图保存并跨重启恢复；菜单显式打开可显示。Qt attribute 策略测试不等同 Windows 原生焦点行为验证。右侧 Rx Frequency 显示门槛/过滤没有随本候选改变，详见 [`../widegraph-visibility-and-rx-window_zh-CN.md`](../widegraph-visibility-and-rx-window_zh-CN.md)。人工接受步骤及未验证边界见 [`../../local-support/releases/P029/说明_zh-CN.md`](../../local-support/releases/P029/说明_zh-CN.md)。
+- CMake install 的依赖分析器 `objdump` 不在配置 PATH 中；暂存以已审阅 P028 runtime tree 补齐并逐文件审计，仅 4 个预期重建 EXE 哈希变化。未启动真实程序、未操作 CAT/PTT/TX、无 HIL/MainWindow/部署验收；不得公开分发。
+
 # 2026-09-24 P028 版本展示、固定构建标题与 SSE 快照修复本机审阅候选
 
 - 源码提交 `bc45bb4d54bbb5729513e5d7763e8f681e320af3`；最终 ZIP `C:\JTDX64\JTDX-2.2.159.028-local-bc45bb4-P028.zip`，SHA-256 `2771BCB2CB898ECC39A1D1B6796579EF220E14CD90D2B5D9534019FA81715F89`，142 个文件、49,380,789 bytes。暂存、ZIP、独立解压逐项校验 142/142 一致；`-ValidateOnly` 通过。

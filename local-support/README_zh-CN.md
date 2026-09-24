@@ -49,7 +49,14 @@ New-Item -ItemType Directory -Force -Path (Join-Path $support 'evidence\P28') | 
 
 检查每条命令的 `$LASTEXITCODE` 和日志再进入下一阶段。不要把旧 `deps-webui` 或根目录 build tree 当输出目录。打包脚本只从已审查、补齐 NOTICE/许可证材料的 stage 生成 ZIP、sidecar、manifest 和清洁解压校验；不会清理失败产物或覆盖文件。
 
-## P028 当前本机审阅候选
+## P029 当前本机审阅候选
+
+- 版本 `2.2.159.029`，源码提交 `ec26de60fb55ed0044a014fa5e6fdb2b0457d4b4`；Windows PE 数字版本 `2.2.159.29`，构建标题时间 `2026-09-24 15:12:04 UTC`。Release 全量构建成功，全量 CTest 29/29；完整说明见 [`releases/P029/说明_zh-CN.md`](releases/P029/说明_zh-CN.md)。
+- 当前本机候选 ZIP：`C:\JTDX64\JTDX-2.2.159.029-local-ec26de6-P029.zip`；SHA-256 `E624A05A404721FF074B9112C04C2C16376605C47B0972D6F4BD6F7C84743D98`，49,381,555 bytes、142 个文件、manifest 总内容 137,547,744 bytes；暂存↔ZIP↔清洁解压逐项哈希/大小 142/142 一致，ValidateOnly 通过。P028 ZIP/sidecar 未覆盖。
+- 频谱窗关闭后模式切换/复位保持隐藏，显隐意图跨重启保存，菜单显式打开可恢复显示；右侧 Rx Frequency 原有过滤业务未改。用户验收步骤和 Qt/Windows 焦点验证边界见候选说明及 [`../docs/widegraph-visibility-and-rx-window_zh-CN.md`](../docs/widegraph-visibility-and-rx-window_zh-CN.md)。
+- 运行库/插件/授权材料从已审阅 P028 stage 逐文件核对后补齐。CMake install 的 `fixup_bundle` 缺少 `objdump`，不把其依赖扫描当作通过；静态暂存审计见 `evidence/P029/stage-audit.log`。未启动真实 JTDX、未操作 CAT/PTT/TX，未做 MainWindow 焦点、HIL、网络部署或法律清权验证；仅供本机审阅，不公开分发。
+
+## P028 历史本机审阅候选
 
 - 新候选包：`C:\JTDX64\JTDX-2.2.159.028-local-bc45bb4-P028.zip`，SHA-256 `2771BCB2CB898ECC39A1D1B6796579EF220E14CD90D2B5D9534019FA81715F89`；142 文件、49,380,789 bytes。暂存、ZIP、独立解压均逐项 142/142 同长度/哈希，ValidateOnly 通过。
 - 当前源码提交 `bc45bb4d54bbb5729513e5d7763e8f681e320af3`；应用显示版本 `2.2.159.028`，PE 数字版本 `2.2.159.28`；主窗口构建时间 `2026-09-24 12:50:19 Asia/Shanghai (UTC+08:00)`。下一次手动发布版本应改为 `.029`，不自动递增。

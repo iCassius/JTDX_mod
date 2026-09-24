@@ -1,5 +1,11 @@
 # JTDX 内置 Web UI：阶段入口与恢复说明
 
+## 当前候选：P029 频谱窗持久显隐与版本递增（2026-09-24）
+
+P029 源码提交 `ec26de60fb55ed0044a014fa5e6fdb2b0457d4b4`，应用显示版本 `2.2.159.029`、PE 数字版本 `2.2.159.29`；完整 Release 构建成功、全量 CTest 29/29。频谱窗关闭后模式切换/复位保持隐藏，重启记住状态，工具菜单可显式重开；右侧 Rx Frequency 过滤行为未改。ZIP 为 `C:\JTDX64\JTDX-2.2.159.029-local-ec26de6-P029.zip`，SHA-256 `E624A05A404721FF074B9112C04C2C16376605C47B0972D6F4BD6F7C84743D98`，142 文件、49,381,555 bytes；暂存/ZIP/清洁解压逐项校验通过。详细证据见 [`local-support/releases/P029/说明_zh-CN.md`](local-support/releases/P029/说明_zh-CN.md)。
+
+此包只供本机审阅；没有启动真实 JTDX、操作 CAT/PTT/TX、HIL、真实 MainWindow/Windows 焦点验收、网络部署或第三方法律清权。Qt 策略测试不证明 Windows 原生焦点行为。P028 包保留不变。
+
 ## 当前候选：P26 Web 电台控制超时与六按钮收口（2026-09-24；待根任务复核）
 
 P26 基于 `main/26cf365`，最终实现提交 `b0732b9`。除修复 Radio dispatch 重复 prepare/begin 导致原生动作未执行的问题及补齐电台操作嵌套回读外，也覆盖 TX 开关回读一致性和 430px 窄屏宽度约束。完整 Release 构建成功、全量 CTest 26/26；视口量测、截图、六项可见电台控件、QSO 草稿边界、超时安全锁、审阅包及未验证范围见 [`docs/web-ui/P26-Web电台控制超时与六按钮收口_zh-CN.md`](docs/web-ui/P26-Web电台控制超时与六按钮收口_zh-CN.md)。最新审阅 ZIP、校验和与短说明位于 `C:\JTDX64` 根目录。等待根任务复核，不代表验收或发布批准。
