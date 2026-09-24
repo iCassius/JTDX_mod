@@ -49,7 +49,14 @@ New-Item -ItemType Directory -Force -Path (Join-Path $support 'evidence\P28') | 
 
 检查每条命令的 `$LASTEXITCODE` 和日志再进入下一阶段。不要把旧 `deps-webui` 或根目录 build tree 当输出目录。打包脚本只从已审查、补齐 NOTICE/许可证材料的 stage 生成 ZIP、sidecar、manifest 和清洁解压校验；不会清理失败产物或覆盖文件。
 
-## P28 当前本机审阅候选
+## P028 当前本机审阅候选
+
+- 候选包：`C:\JTDX64\JTDX-2.2.159.028-local-c545085-P028.zip`，SHA-256 `1D3D517EA704F3047F300A8BBB03C95FE41A3393C4468BC3C502F82A2656A13D`；142 文件、49,380,841 bytes，根项为 `bin/`、`plugins/`、`share/`、`NOTICE`、`NOTICE_zh-CN.md`。打包脚本已逐项验证暂存、ZIP 和独立解压的 142/142 文件大小与 SHA-256 一致，ValidateOnly 复核通过。
+- 源码提交 `c545085da5bf0ed3e249cbcf76aa4f1c5f186394`；保留此前 P28 ZIP、sidecar 和说明不变。本候选显示版本为 `2.2.159.028`，PE 数字版本为 `2.2.159.28`；固定构建标题时间为 `2026-09-24 12:14:12 Asia/Shanghai (UTC+08:00)`。下一次手动发布版本应改为 `.029`，不是自动递增。
+- 全量 Release 构建退出码 0。一次完整 CTest 28/28；最终源码哈希下的两次复跑均有 `jtdx_web_server_test` 的 SSE 初始快照断言超时，直接复跑该测试退出码 0；该间歇现象保留待后续复核，不表述为稳定全绿。浏览器夹具 7/7，版本展示和 375px 窄屏/无横溢均通过。证据见 `evidence/P028-version028/`。暂存与 P27 142 文件逐项比较为 138 项同哈希、4 个重建可执行文件不同；65 项 ThirdParty 材料和两份 NOTICE 从既有 P27 暂存复制并保留哈希。
+- 仅供本机审阅，不公开分发。未启动候选程序或操作 CAT/PTT/TX，未做硬件/HIL、真实 MainWindow 端到端、LAN/公网或部署验证；Qt/LGPL、间接依赖和数据文件的再分发授权仍待审计。完整记录见 [`releases/P028/说明_zh-CN.md`](releases/P028/说明_zh-CN.md)。
+
+## P28 历史本机审阅候选
 
 - 候选包：`C:\JTDX64\JTDX-2.2.159.2.10-local-c196a09-P28.zip`，SHA-256 `8F95E9F79C993650A703D63C225830E6669891186FAD05BC5ED99D9671337D37`；142 文件、49,380,321 bytes，直接根项为 `bin/`、`plugins/`、`share/`、`NOTICE`、`NOTICE_zh-CN.md`。ZIP/sidecar 在工作区根目录；独立暂存和解压、manifest、安装及校验日志都在 `local-support`。
 - 源码提交 `c196a091053eabd1a330a5942c8f2c8a953dedc6`，父提交为 `302b062`；P27 的 `3c086af` 是其历史祖先。Release 构建/CTest 复用源码内有效 Release build：`evidence/dependency-audit/live-state-sync-root-review-final-build.log`、`live-state-sync-root-review-final-ctest.log`（27/27，56.94 秒）。
@@ -71,13 +78,15 @@ New-Item -ItemType Directory -Force -Path (Join-Path $support 'evidence\P28') | 
 - `releases/P26/`：两份 P26 根目录简要说明原位归档；对应 ZIP/sidecar 仍留在 `C:\JTDX64` 根目录。
 - `releases/P27/`：P27 根目录简要说明原位归档；ZIP 与 sidecar 仍留在 `C:\JTDX64` 根目录。
 - `releases/P28/`：P28 中文审阅说明；ZIP 与 sidecar 留在 `C:\JTDX64` 根目录。
+- `releases/P028/`：版本 `2.2.159.028` 本机审阅说明；独立 ZIP 与 sidecar 留在 `C:\JTDX64` 根目录，旧 P28 ZIP/sidecar 保持不变。
+- `staging/P028-version028/` 和 `extract/P028-version028/`：P028 的独立暂存及清洁解压树，142/142 文件 SHA-256 一致；证据位于 `evidence/P028-version028/`。
 - `staging/P28/` 和 `extract/P28/`：P28 复用当前 Release build 安装到隔离暂存树、再由受约束脚本独立解压；与 ZIP 142/142 文件大小及 SHA-256 一致。
 - `staging/P27-runtime-stage-3c086af/` 和 `extract/P27-clean-extract-3c086af/`：本轮新建且可重建的 P27 安装暂存/清洁解压，已从 `deps-webui/temp` 搬入源码支持目录；各 142 文件、137,520,019 bytes，逐项 SHA-256 一致。
 - `scripts/package-local-candidate.ps1`：新的受路径约束打包/校验入口；未来 build、stage、extract、profile 与日志均须放在 `local-support` 子目录。
 
 - `evidence/P26/`：P26 最终 Release 构建、CTest、安装日志，两个阶段的安装清单以及桌面/手机截图。共 11 个文件、366,275 bytes；从 `C:\JTDX64\deps-webui\evidence\P26` 逐文件复制并比对相对路径、长度和 SHA-256，11/11 一致。平台随后拒绝了包含删除操作的命令，故这只是归档副本，旧位置的 11 个原件仍在；不得称为迁移或清理完成。该目录由 `.gitignore` 排除；本 README、P26 报告和索引文档纳入源码版本控制。
 - P26 其余行为、验证结论、证据边界与审阅包校验值见 `../docs/web-ui/P26-Web电台控制超时与六按钮收口_zh-CN.md`。
-- Release ZIP、`.sha256` sidecar 和短说明仍留在 `C:\JTDX64` 根目录。当前候选见上方 P27；P26、P25 和早期 P26 包保留作回退/历史比对。
+- Release ZIP 与 `.sha256` sidecar 留在 `C:\JTDX64` 根目录。当前候选见上方 P028；P28/P27、P26、P25 和早期 P26 包保留作回退/历史比对。
 
 ## 构建与测试恢复
 
