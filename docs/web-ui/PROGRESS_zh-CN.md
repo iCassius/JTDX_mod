@@ -4,7 +4,7 @@
 
 - 源码提交 `c545085da5bf0ed3e249cbcf76aa4f1c5f186394`；候选 ZIP `C:\JTDX64\JTDX-2.2.159.028-local-c545085-P028.zip`，SHA-256 `1D3D517EA704F3047F300A8BBB03C95FE41A3393C4468BC3C502F82A2656A13D`，142 个文件、49,380,841 bytes。暂存、ZIP、独立解压逐项校验 142/142 一致；`-ValidateOnly` 通过。
 - 应用显示 `2.2.159.028`；PE 数字版本 `2.2.159.28`。主窗口沿用原标题并附固定构建时间 `2026-09-24 12:14:12 Asia/Shanghai (UTC+08:00)`。Web UI 从服务状态的统一 `application_version` 显示版本。将来按人工发布流程改成 `.029`，本次没有自动递增逻辑。
-- Release 完整构建与提交后增量构建均退出码 0。最终提交下的一轮全量 CTest 28/28；其后两次全量复跑在 `jtdx_web_server_test` 遇到 `SSE initial snapshot must succeed`，直接运行该单测退出码 0，属于尚待复核的间歇现象，故不写成稳定全绿。隔离浏览器夹具 7/7，覆盖版本渲染、375px 无横向溢出、双客户端 SSE 同步、旧 HTTP 回读、断线重连/Last-Event-ID 与 epoch 切换。浏览器报告、各轮构建/测试/安装日志均位于 `local-support/evidence/P028-version028/`。
+- Release 完整构建与提交后增量构建均退出码 0。初始实现提交 `a648c12` 的全量 CTest 28/28；最终源码提交 `c545085` 的两次全量复跑在 `jtdx_web_server_test` 遇到 `SSE initial snapshot must succeed`，直接运行该单测退出码 0。该间歇现象仍待复核，因此不写成最终提交稳定全绿。隔离浏览器夹具 7/7，覆盖版本渲染、375px 无横向溢出、双客户端 SSE 同步、旧 HTTP 回读、断线重连/Last-Event-ID 与 epoch 切换。浏览器报告、各轮构建/测试/安装日志均位于 `local-support/evidence/P028-version028/`。
 - P27→P028 暂存树共有 142 文件：138 项同哈希，4 个重建可执行文件不同；65 项 ThirdParty 材料和两份 NOTICE 从 P27 暂存复制并保留哈希。旧 `2.2.159.2.10` P28 ZIP/sidecar/说明均保留未覆盖。
 - 未运行候选程序，未操作 CAT/PTT/TX，未发射；无硬件/HIL、真实 MainWindow 端到端、LAN/公网或部署验收。第三方许可与数据文件再分发审计未完成；候选仅供本机审阅，不得公开分发。详细记录：`local-support/releases/P028/说明_zh-CN.md`。
 

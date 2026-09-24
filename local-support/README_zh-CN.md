@@ -53,7 +53,7 @@ New-Item -ItemType Directory -Force -Path (Join-Path $support 'evidence\P28') | 
 
 - 候选包：`C:\JTDX64\JTDX-2.2.159.028-local-c545085-P028.zip`，SHA-256 `1D3D517EA704F3047F300A8BBB03C95FE41A3393C4468BC3C502F82A2656A13D`；142 文件、49,380,841 bytes，根项为 `bin/`、`plugins/`、`share/`、`NOTICE`、`NOTICE_zh-CN.md`。打包脚本已逐项验证暂存、ZIP 和独立解压的 142/142 文件大小与 SHA-256 一致，ValidateOnly 复核通过。
 - 源码提交 `c545085da5bf0ed3e249cbcf76aa4f1c5f186394`；保留此前 P28 ZIP、sidecar 和说明不变。本候选显示版本为 `2.2.159.028`，PE 数字版本为 `2.2.159.28`；固定构建标题时间为 `2026-09-24 12:14:12 Asia/Shanghai (UTC+08:00)`。下一次手动发布版本应改为 `.029`，不是自动递增。
-- 全量 Release 构建退出码 0。一次完整 CTest 28/28；最终源码哈希下的两次复跑均有 `jtdx_web_server_test` 的 SSE 初始快照断言超时，直接复跑该测试退出码 0；该间歇现象保留待后续复核，不表述为稳定全绿。浏览器夹具 7/7，版本展示和 375px 窄屏/无横溢均通过。证据见 `evidence/P028-version028/`。暂存与 P27 142 文件逐项比较为 138 项同哈希、4 个重建可执行文件不同；65 项 ThirdParty 材料和两份 NOTICE 从既有 P27 暂存复制并保留哈希。
+- 全量 Release 构建退出码 0。初始实现提交 `a648c12` 的全量 CTest 为 28/28；最后夹具时序测试修正后的源码提交 `c545085` 做两次全量复跑，均有 `jtdx_web_server_test` 的 SSE 初始快照断言超时，直接复跑该测试退出码 0；该间歇现象保留待后续复核，不表述为最终提交稳定全绿。浏览器夹具 7/7，版本展示和 375px 窄屏/无横溢均通过。证据见 `evidence/P028-version028/`。暂存与 P27 142 文件逐项比较为 138 项同哈希、4 个重建可执行文件不同；65 项 ThirdParty 材料和两份 NOTICE 从既有 P27 暂存复制并保留哈希。
 - 仅供本机审阅，不公开分发。未启动候选程序或操作 CAT/PTT/TX，未做硬件/HIL、真实 MainWindow 端到端、LAN/公网或部署验证；Qt/LGPL、间接依赖和数据文件的再分发授权仍待审计。完整记录见 [`releases/P028/说明_zh-CN.md`](releases/P028/说明_zh-CN.md)。
 
 ## P28 历史本机审阅候选
