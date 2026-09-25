@@ -49,7 +49,13 @@ New-Item -ItemType Directory -Force -Path (Join-Path $support 'evidence\P28') | 
 
 检查每条命令的 `$LASTEXITCODE` 和日志再进入下一阶段。不要把旧 `deps-webui` 或根目录 build tree 当输出目录。打包脚本只从已审查、补齐 NOTICE/许可证材料的 stage 生成 ZIP、sidecar、manifest 和清洁解压校验；不会清理失败产物或覆盖文件。
 
-## P029 当前本机审阅候选
+## P030 当前源码与软件验证结果（未打包）
+
+- 源码提交 `6283cac280f568c8681c5aa032157c45c63877c0`；显示版本 `2.2.159.030`，Windows PE 数字版本 `2.2.159.30`；完整 Release 构建成功，全量 CTest 30/30（57.47 秒）。本批没有生成 ZIP、安装 stage 或清洁解压。
+- 新/无 `WebUiBindAddress` 配置默认 `0.0.0.0`；现存配置值原样保留，尤其不把旧版本已持久化的 `127.0.0.1` 静默改为 LAN 监听。Windows URL 按默认路由与接口综合 metric 选择有效 IPv4，无可用地址时回退 `127.0.0.1`；具体实现和验收边界见 [`releases/P030/说明_zh-CN.md`](releases/P030/说明_zh-CN.md)。
+- 最终日志在 `evidence/P030/final-build.log` 与 `evidence/P030/final-ctest.log`。没有运行 P030 主程序、真实 CAT/PTT/TX、LAN/浏览器端到端或 HIL；未改 UDP、系统路由或防火墙。
+
+## P029 历史本机审阅候选
 
 - 版本 `2.2.159.029`，源码提交 `ec26de60fb55ed0044a014fa5e6fdb2b0457d4b4`；Windows PE 数字版本 `2.2.159.29`，构建标题时间 `2026-09-24 15:12:04 UTC`。Release 全量构建成功，全量 CTest 29/29；完整说明见 [`releases/P029/说明_zh-CN.md`](releases/P029/说明_zh-CN.md)。
 - 当前本机候选 ZIP：`C:\JTDX64\JTDX-2.2.159.029-local-ec26de6-P029.zip`；SHA-256 `E624A05A404721FF074B9112C04C2C16376605C47B0972D6F4BD6F7C84743D98`，49,381,555 bytes、142 个文件、manifest 总内容 137,547,744 bytes；暂存↔ZIP↔清洁解压逐项哈希/大小 142/142 一致，ValidateOnly 通过。P028 ZIP/sidecar 未覆盖。

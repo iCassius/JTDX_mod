@@ -1,5 +1,13 @@
 # JTDX 内置 Web UI：进度与中断恢复日志
 
+## 2026-09-25 P030 IPv4 默认监听与按默认路由显示访问地址
+
+- 结果提交：`6283cac280f568c8681c5aa032157c45c63877c0`；版本 `2.2.159.030` / PE `2.2.159.30`。新/无绑定配置默认监听所有 IPv4；保留现有设置值，不把历史 `127.0.0.1` 静默迁移。IPv6 通配仍拒绝。
+- Windows 地址解析只读默认路由表，使用 route metric + interface metric，筛选 Up/Running 接口上的有效 IPv4 并确定性处理 metric 并列；无路由结果回退 localhost。设置页/服务 URL/菜单打开复用同一访问地址与实际端口。非 Windows 当前安全回退 localhost。
+- 验证：提交版完整 Release 构建成功；最终 CTest 30/30、57.47 秒。日志 `../local-support/evidence/P030/final-build.log`、`../local-support/evidence/P030/final-ctest.log`；详细记录在 [`../../local-support/releases/P030/说明_zh-CN.md`](../../local-support/releases/P030/说明_zh-CN.md)。
+- 现场只读快照显示旧进程 PID 26100（`C:\JTDX64\159\bin\jtdx.exe`）仍只监听 `127.0.0.1:49152`；它不是新版本，未触碰。该时刻默认路由为以太网接口 20 / `192.168.50.105` / route metric 0 + interface metric 15。不能把该快照说成 P030 的真实启动/网络验收。
+- 边界：未运行 P030 `jtdx.exe`、未触碰 CAT/PTT/TX、未做真实 GUI 保存/重载、LAN/公网/防火墙/HIL/部署测试；没有改 UDP、路由或防火墙，没有打包。`XXXXXXXXX` 解码显示问题依用户最新指示跳过，未检查或修复。
+
 # 2026-09-24 P029 频谱窗持久显隐与版本递增本机审阅候选
 
 - 源码提交 `ec26de60fb55ed0044a014fa5e6fdb2b0457d4b4`，显示版本 `2.2.159.029`，PE 数字版本 `2.2.159.29`，构建标题时间 `2026-09-24 15:12:04 UTC`。Release 全量构建成功；全量 CTest 29/29 通过，含频谱窗显隐策略测试。
