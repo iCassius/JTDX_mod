@@ -6,6 +6,8 @@
 #include <QCheckBox>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QLabel>
+#include <QLineEdit>
 #include <QPushButton>
 #include <QSettings>
 #include <QStandardPaths>
@@ -104,10 +106,14 @@ namespace
 
   void configure_and_accept (Configuration& configuration, QSettings& settings)
   {
-    auto result = run_dialog (configuration, [&settings] (QDialog * dialog) {
+    auto result = run_dialog (configuration, [&settings, &configuration] (QDialog * dialog) {
       dialog->findChild<QCheckBox *> ("web_ui_enabled_check_box")->setChecked (true);
       dialog->findChild<QCheckBox *> ("web_ui_automatic_port_check_box")->setChecked (false);
       dialog->findChild<QSpinBox *> ("web_ui_port_spin_box")->setValue (49201);
+      configuration.set_web_ui_url (QStringLiteral ("http://192.168.40.8:49201"));
+      check (dialog->findChild<QLabel *> ("web_ui_url_label")->text ()
+                 == QStringLiteral ("访问 URL：http://192.168.40.8:49201"),
+             "Settings displays the selected access URL rather than the wildcard bind address");
       dialog->findChild<QDialogButtonBox *> ("configuration_dialog_button_box")
         ->button (QDialogButtonBox::Ok)->click ();
     });
@@ -115,7 +121,7 @@ namespace
     check (configuration.web_ui_enabled (), "accepted Web UI enabled state is live");
     check (!configuration.web_ui_automatic_port (), "accepted manual port mode is live");
     check (configuration.web_ui_port () == 49201, "accepted Web UI port is live");
-    check (configuration.web_ui_bind_address () == QStringLiteral ("127.0.0.1"), "default bind stays loopback");
+    check (configuration.web_ui_bind_address () == QStringLiteral ("127.0.0.1"), "legacy explicit loopback binding is preserved");
     check (configuration_dialog () == nullptr
                || configuration_dialog ()->findChild<QWidget *> ("web_ui_token_line_edit") == nullptr,
            "Web UI settings no longer expose a token editor");
@@ -149,7 +155,7 @@ int main (int argc, char ** argv)
 
     check (!configuration.web_ui_enabled (), "explicitly disabled preference is honored");
     check (configuration.web_ui_automatic_port (), "automatic port is enabled by default");
-    check (configuration.web_ui_bind_address () == QStringLiteral ("127.0.0.1"), "default bind is loopback");
+    check (configuration.web_ui_bind_address () == QStringLiteral ("127.0.0.1"), "legacy loopback value is preserved");
     check (configuration.rig_name () == QStringLiteral ("None"), "isolated configuration uses Rig=None");
     check (!configuration.is_transceiver_online (), "Rig=None starts without CAT online");
 
@@ -174,6 +180,15 @@ int main (int argc, char ** argv)
            "Cancel does not write temporary configuration settings");
 
     configure_and_accept (configuration, settings);
+
+    result = run_dialog (configuration, [] (QDialog * dialog) {
+      dialog->findChild<QLineEdit *> ("web_ui_bind_address_line_edit")->setText (QStringLiteral ("0.0.0.0"));
+      dialog->findChild<QDialogButtonBox *> ("configuration_dialog_button_box")
+        ->button (QDialogButtonBox::Ok)->click ();
+    });
+    check (result == QDialog::Accepted
+               && configuration.web_ui_bind_address () == QStringLiteral ("0.0.0.0"),
+           "Settings accepts an explicit IPv4 wildcard listener");
 
     result = run_dialog (configuration, [] (QDialog * dialog) {
       dialog->findChild<QCheckBox *> ("web_ui_enabled_check_box")->setChecked (false);
@@ -222,6 +237,16 @@ int main (int argc, char ** argv)
   absent.sync ();
   check (!absent.value (QStringLiteral ("WebUiEnabled"), true).toBool (),
          "explicitly disabled preference is written to settings");
+
+  QSettings fresh {temporary.filePath (QStringLiteral ("fresh.ini")), QSettings::IniFormat};
+  set_safe_rig_defaults (fresh);
+  fresh.beginGroup (QStringLiteral ("Configuration"));
+  fresh.remove ("WebUiBindAddress");
+  fresh.endGroup ();
+  fresh.sync ();
+  Configuration fresh_configuration {&fresh};
+  check (fresh_configuration.web_ui_bind_address () == QStringLiteral ("0.0.0.0"),
+         "new configuration defaults to all IPv4 interfaces when no prior bind choice exists");
 
   return failures ? 1 : 0;
 }

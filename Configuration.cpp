@@ -961,8 +961,8 @@ void Configuration::set_web_ui_status (QString const& state, QString const& deta
 void Configuration::set_web_ui_url (QString const& url)
 {
   if (m_->ui_)
-    m_->ui_->web_ui_url_label->setText (url.isEmpty () ? QStringLiteral ("实际 URL：—")
-                                                        : QStringLiteral ("实际 URL：") + url);
+    m_->ui_->web_ui_url_label->setText (url.isEmpty () ? QStringLiteral ("访问 URL：—")
+                                                        : QStringLiteral ("访问 URL：") + url);
 }
 
 QAudioDeviceInfo const& Configuration::audio_input_device () const {return m_->audio_input_device_;}
@@ -2783,7 +2783,10 @@ void Configuration::impl::read_settings ()
       // 同时关闭 Web UI，避免已启用的实例意外启动。
       web_ui_port_ = 49200;
     }
-  web_ui_bind_address_ = settings_->value ("WebUiBindAddress", "127.0.0.1").toString ();
+  // Historical 127.0.0.1 values are ambiguous: older versions persisted this
+  // default on every save, so preserve any existing value to avoid overriding
+  // an explicit local-only choice. New configurations default to all IPv4 NICs.
+  web_ui_bind_address_ = settings_->value ("WebUiBindAddress", "0.0.0.0").toString ();
 
   write_decoded_ = settings_->value ("WriteDecodedALLTXT", true).toBool ();
   write_decoded_debug_ = settings_->value ("WriteDecodedDebugALLTXT", false).toBool ();
@@ -3259,10 +3262,10 @@ bool Configuration::impl::validate ()
       QString const bind = ui_->web_ui_bind_address_line_edit->text ().trimmed ();
       QHostAddress address;
       if (!address.setAddress (bind) || address.isNull ()
-          || address == QHostAddress::Any || address == QHostAddress::AnyIPv4
+          || address == QHostAddress::Any
           || address == QHostAddress::AnyIPv6)
         {
-          message_box_critical (tr ("Web UI 绑定地址无效；请填写具体地址。"));
+          message_box_critical (tr ("Web UI 绑定地址无效；请填写 0.0.0.0、127.0.0.1 或具体 IP 地址。"));
           return false;
         }
     }

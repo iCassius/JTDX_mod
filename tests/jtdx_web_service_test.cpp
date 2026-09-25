@@ -71,6 +71,26 @@ int main (int argc, char ** argv)
   QObject::connect (&open_action, &QAction::triggered, &service, &JtdxWebService::open);
 
   JtdxWebServer::Configuration configuration;
+  check (configuration.bind_address == QHostAddress::AnyIPv4,
+         "service configuration defaults to the IPv4 wildcard listener");
+
+  {
+    JtdxWebState wildcard_state {QStringLiteral ("JTDX"), QStringLiteral ("test"),
+                                 QStringLiteral ("wildcard-url")};
+    JtdxWebService wildcard_service {&wildcard_state};
+    QUrl opened_url;
+    wildcard_service.set_url_opener ([&opened_url] (QUrl const& url) {
+      opened_url = url;
+      return true;
+    });
+    check (wildcard_service.apply (true, configuration), "short wildcard URL fixture starts");
+    check (wildcard_service.open () && opened_url.toString () == wildcard_service.url ()
+               && !wildcard_service.url ().contains (QStringLiteral ("0.0.0.0"))
+               && opened_url.port () == wildcard_service.actual_port (),
+           "menu opener and service expose the same non-wildcard URL with the actual port");
+    wildcard_service.stop ();
+  }
+  configuration.bind_address = QHostAddress::LocalHost; // Control lifecycle tests stay loopback-only.
 
   check (service.apply (false, configuration), "disabled configuration is accepted");
   check (!service.is_listening (), "disabled configuration keeps the server stopped");
@@ -92,6 +112,9 @@ int main (int argc, char ** argv)
   QString const first_epoch = service.server_epoch ();
   quint16 const first_port = service.actual_port ();
   check (!first_epoch.isEmpty () && first_port != 0, "started service exposes epoch and port");
+  check (!service.url ().contains (QStringLiteral ("0.0.0.0"))
+             && service.url ().endsWith (QLatin1Char (':') + QString::number (first_port)),
+         "service URL advertises a selected access address and actual port");
   check (control.server_epoch () == first_epoch && control.server_epoch_bound (),
          "control binds to the successful server epoch");
 
@@ -121,6 +144,9 @@ int main (int argc, char ** argv)
   open_action.trigger ();
   check (handler.calls == 2, "real QAction path opens the production service twice");
   check (handler.last_url.toString () == service.url (), "URL handler receives the service URL");
+  check (handler.last_url.port () == running_port
+             && handler.last_url.host () == QUrl {service.url ()}.host (),
+         "menu opener uses the same access URL and actual port exposed to settings");
   check (service.server_epoch () == running_epoch && service.actual_port () == running_port,
          "repeated open keeps the same epoch and port");
 

@@ -274,6 +274,16 @@ int main (int argc, char ** argv)
                         QStringLiteral ("K1ABC"), QStringLiteral ("FN31"));
   JtdxWebServer server {&state};
   JtdxWebServer::Configuration config;
+  JtdxWebServer wildcard_server {&state};
+  check (config.bind_address == QHostAddress::AnyIPv4,
+         "server configuration defaults to an IPv4 wildcard");
+  check (wildcard_server.start (config), "short wildcard listener fixture should start");
+  check (wildcard_server.actual_address () == QHostAddress::AnyIPv4
+             && !wildcard_server.url ().contains (QStringLiteral ("0.0.0.0"))
+             && wildcard_server.url ().endsWith (QLatin1Char (':') + QString::number (wildcard_server.actual_port ())),
+         "wildcard bind advertises the selected access IPv4 and actual port");
+  wildcard_server.stop ();
+  config.bind_address = QHostAddress::LocalHost; // Keep the long control fixture loopback-only.
   QByteArray const token = QByteArrayLiteral ("legacy-token-ignored-by-web-ui");
   bool const browser_automation_p9_timeout_fixture = app.arguments ().contains (
       QStringLiteral ("--serve-browser-automation-p9-timeout"));
@@ -759,7 +769,7 @@ int main (int argc, char ** argv)
       return app.exec ();
     }
   check (!server.is_listening (), "server must be lazy and stopped by default");
-  check (server.start (config), "automatic loopback server should start");
+  check (server.start (config), "loopback server integration fixture should start");
   control.bind_server_epoch (server.server_epoch ());
   check (server.is_listening () && server.actual_port () >= JtdxWebServer::automatic_port_first
              && server.actual_port () <= JtdxWebServer::automatic_port_last,
@@ -1425,6 +1435,21 @@ int main (int argc, char ** argv)
          "manual TCP port should start on the requested port");
   manual_server.stop ();
 
+  JtdxWebServer local_only_server {&state};
+  JtdxWebServer::Configuration local_only;
+  local_only.bind_address = QHostAddress::LocalHost;
+  check (local_only_server.start (local_only)
+             && local_only_server.actual_address () == QHostAddress::LocalHost
+             && QUrl {local_only_server.url ()}.host () == QStringLiteral ("127.0.0.1"),
+         "explicit localhost configuration remains loopback-only and advertises localhost");
+  local_only_server.stop ();
+
+  JtdxWebServer ipv6_wildcard_server {&state};
+  JtdxWebServer::Configuration ipv6_wildcard;
+  ipv6_wildcard.bind_address = QHostAddress::AnyIPv6;
+  check (!ipv6_wildcard_server.start (ipv6_wildcard),
+         "IPv6 wildcard remains rejected unless separately requested");
+
   QTcpServer auto_occupied;
   if (auto_occupied.listen (QHostAddress::LocalHost, JtdxWebServer::automatic_port_first))
     {
@@ -1448,7 +1473,7 @@ int main (int argc, char ** argv)
          "destroyed state must stop the server before callbacks can use it");
 
   QTcpServer occupied;
-  check (occupied.listen (QHostAddress::LocalHost, 0), "test occupied TCP port should bind");
+  check (occupied.listen (QHostAddress::AnyIPv4, 0), "test occupied TCP port should bind on IPv4 wildcard");
   JtdxWebServer conflict {&state};
   JtdxWebServer::Configuration manual;
   manual.automatic_port = false;

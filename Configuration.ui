@@ -7591,10 +7591,10 @@ AA1AAA,BB1BB,CC1CC&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
           <item row="0" column="0"><widget class="QCheckBox" name="web_ui_enabled_check_box"><property name="text"><string>允许 Web UI（启动时运行）</string></property></widget></item>
           <item row="0" column="1" colspan="3"><widget class="QLabel" name="web_ui_status_label"><property name="text"><string>已停止</string></property></widget></item>
           <item row="1" column="0"><widget class="QLabel" name="web_ui_bind_label"><property name="text"><string>监听地址：</string></property></widget></item>
-          <item row="1" column="1" colspan="3"><widget class="QLineEdit" name="web_ui_bind_address_line_edit"><property name="placeholderText"><string>127.0.0.1</string></property></widget></item>
+          <item row="1" column="1" colspan="3"><widget class="QLineEdit" name="web_ui_bind_address_line_edit"><property name="toolTip"><string>默认 0.0.0.0 监听所有 IPv4 网卡；填写 127.0.0.1 可限制为仅本机。已有配置会保留，不会静默迁移。</string></property><property name="placeholderText"><string>0.0.0.0（全部 IPv4 网卡；127.0.0.1 仅本机）</string></property></widget></item>
           <item row="2" column="0"><widget class="QCheckBox" name="web_ui_automatic_port_check_box"><property name="text"><string>自动 TCP 端口</string></property></widget></item>
           <item row="2" column="1"><widget class="QSpinBox" name="web_ui_port_spin_box"><property name="minimum"><number>1024</number></property><property name="maximum"><number>65535</number></property><property name="value"><number>49200</number></property></widget></item>
-          <item row="2" column="2" colspan="2"><widget class="QLabel" name="web_ui_url_label"><property name="text"><string>URL：—</string></property><property name="textInteractionFlags"><set>Qt::TextSelectableByMouse</set></property></widget></item>
+          <item row="2" column="2" colspan="2"><widget class="QLabel" name="web_ui_url_label"><property name="text"><string>访问 URL：—</string></property><property name="textInteractionFlags"><set>Qt::TextSelectableByMouse</set></property></widget></item>
           <item row="2" column="4"><widget class="QPushButton" name="web_ui_open_push_button"><property name="text"><string>打开 URL</string></property></widget></item>
           <item row="2" column="5"><widget class="QPushButton" name="web_ui_restart_push_button"><property name="text"><string>重启服务</string></property></widget></item>
          </layout>

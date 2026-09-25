@@ -29,7 +29,7 @@ class JtdxWebServer : public QObject
 public:
   struct Configuration
   {
-    QHostAddress bind_address {QHostAddress::LocalHost};
+    QHostAddress bind_address {QHostAddress::AnyIPv4};
     quint16 port {0};                 // 0 = 自动端口；手动端口必须为 1024..65535
     bool automatic_port {true};
     QSet<quint16> udp_ports;          // 仅排除数字，不执行 UDP bind
@@ -114,6 +114,7 @@ private:
   QHash<QTcpSocket *, Client *> clients_;
   Configuration configuration_;
   QHostAddress actual_address_;
+  QHostAddress url_address_;
   quint16 actual_port_ {0};
   quint64 control_generation_ {0};
   QString server_epoch_;

@@ -13,7 +13,7 @@ int main (int argc, char * argv[])
   application.setApplicationName (QStringLiteral ("JTDX"));
   application.setApplicationVersion (version ());
 
-  QString const expected_version {QStringLiteral ("2.2.159.029")};
+  QString const expected_version {QStringLiteral ("2.2.159.030")};
   QString const build_timestamp {QString::fromUtf8 (JTDX_BUILD_TIMESTAMP)};
   QString const title = program_title ();
   if (version () != expected_version)
@@ -27,7 +27,7 @@ int main (int argc, char * argv[])
       return 1;
     }
   if (PRODUCT_VERSION_MAJOR != 2 || PRODUCT_VERSION_MINOR != 2
-      || PRODUCT_VERSION_PATCH != 159 || PRODUCT_VERSION_TWEAK != 29)
+      || PRODUCT_VERSION_PATCH != 159 || PRODUCT_VERSION_TWEAK != 30)
     {
       qCritical () << "Unexpected numeric Windows PE version components";
       return 1;
@@ -39,7 +39,7 @@ int main (int argc, char * argv[])
       return 1;
     }
   qInfo () << "application_version=" << application.applicationVersion ();
-  qInfo () << "windows_pe_numeric_version=2.2.159.29";
+  qInfo () << "windows_pe_numeric_version=2.2.159.30";
   qInfo () << "window_title=" << title;
   return 0;
 }

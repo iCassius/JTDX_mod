@@ -208,6 +208,7 @@ set (wsjt_qt_CXXSRCS
   JtdxWebRadioAdapter.cpp
   JtdxLocalLog.cpp
   JtdxWebState.cpp
+  JtdxWebAddress.cpp
   JtdxWebServer.cpp
   JtdxWebService.cpp
   LettersSpinBox.cpp
@@ -1091,11 +1092,14 @@ endif (${OPENMP_FOUND} OR APPLE)
 add_library (wsjt_qt STATIC ${wsjt_qt_CXXSRCS} ${wsjt_qt_GENUISRCS} ${GENAXSRCS})
 # set wsjtx_udp exports to static variants
 target_compile_definitions (wsjt_qt PUBLIC UDP_STATIC_DEFINE)
-target_link_libraries (wsjt_qt Hamlib::Hamlib Qt5::Widgets Qt5::Network Qt5::Gui Qt5::WebSockets)
+target_link_libraries (wsjt_qt PUBLIC Hamlib::Hamlib Qt5::Widgets Qt5::Network Qt5::Gui Qt5::WebSockets)
+if (WIN32)
+  target_link_libraries (wsjt_qt PUBLIC iphlpapi)
+endif ()
 #target_include_directories (wsjt_qt BEFORE PRIVATE ${hamlib_INCLUDE_DIRS})
 if (WIN32 AND WSJT_ENABLE_OMNIRIG)
   target_compile_definitions (wsjt_qt PRIVATE WSJT_ENABLE_OMNIRIG)
-  target_link_libraries (wsjt_qt Qt5::AxContainer Qt5::AxBase)
+  target_link_libraries (wsjt_qt PUBLIC Qt5::AxContainer Qt5::AxBase)
 endif (WIN32 AND WSJT_ENABLE_OMNIRIG)
 
 add_library (wsjt_qtmm STATIC ${wsjt_qtmm_CXXSRCS} ${wsjt_qtmm_GENUISRCS})
@@ -1790,9 +1794,13 @@ if (JTDX_BUILD_LOCAL_TESTS)
     JtdxWebFrequency.cpp
     Bands.cpp
     JtdxWebState.cpp
+    JtdxWebAddress.cpp
     ${jtdx_web_server_test_resources})
   target_include_directories (jtdx_web_server_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   target_link_libraries (jtdx_web_server_test Qt5::Core Qt5::Gui Qt5::Network)
+  if (WIN32)
+    target_link_libraries (jtdx_web_server_test iphlpapi)
+  endif ()
   add_test (NAME jtdx_web_server_test COMMAND jtdx_web_server_test)
   add_executable (jtdx_web_service_test
     tests/jtdx_web_service_test.cpp
@@ -1801,16 +1809,29 @@ if (JTDX_BUILD_LOCAL_TESTS)
     Radio.cpp
     JtdxWebService.cpp
     JtdxWebServer.cpp
+    JtdxWebAddress.cpp
     JtdxWebFrequency.cpp
     Bands.cpp
     JtdxWebState.cpp
     ${jtdx_web_server_test_resources})
   target_include_directories (jtdx_web_service_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   target_link_libraries (jtdx_web_service_test Qt5::Core Qt5::Gui Qt5::Widgets Qt5::Network)
+  if (WIN32)
+    target_link_libraries (jtdx_web_service_test iphlpapi)
+  endif ()
   add_test (NAME jtdx_web_service_test COMMAND jtdx_web_service_test)
   set_tests_properties (jtdx_web_service_test PROPERTIES
     TIMEOUT 30
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+  add_executable (jtdx_web_address_test
+    tests/jtdx_web_address_test.cpp
+    JtdxWebAddress.cpp)
+  target_include_directories (jtdx_web_address_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+  target_link_libraries (jtdx_web_address_test Qt5::Core Qt5::Network)
+  if (WIN32)
+    target_link_libraries (jtdx_web_address_test iphlpapi)
+  endif ()
+  add_test (NAME jtdx_web_address_test COMMAND jtdx_web_address_test)
   if (WIN32)
     add_test (NAME omnirig_build_option_test
       COMMAND ${CMAKE_COMMAND}

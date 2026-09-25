@@ -1,4 +1,5 @@
 #include "JtdxWebServer.hpp"
+#include "JtdxWebAddress.hpp"
 
 #include <QDateTime>
 #include <QCryptographicHash>
@@ -96,10 +97,9 @@ bool JtdxWebServer::validate_configuration (Configuration const& configuration,
 {
   if (configuration.bind_address.isNull ()
       || configuration.bind_address == QHostAddress::Any
-      || configuration.bind_address == QHostAddress::AnyIPv4
       || configuration.bind_address == QHostAddress::AnyIPv6)
     {
-      if (error) *error = QStringLiteral ("a concrete listen address is required");
+      if (error) *error = QStringLiteral ("an IPv4 wildcard or concrete listen address is required");
       return false;
     }
   if (configuration.automatic_port)
@@ -127,6 +127,7 @@ bool JtdxWebServer::listen_on (QHostAddress const& address, quint16 port)
 {
   if (!server_.listen (address, port)) return false;
   actual_address_ = server_.serverAddress ();
+  url_address_ = JtdxWebAddress::accessible_address (address, JtdxWebAddress::default_route_ipv4 ());
   actual_port_ = server_.serverPort ();
   web_server_state_ = QStringLiteral ("listening");
   last_error_.clear ();
@@ -180,6 +181,7 @@ bool JtdxWebServer::start (Configuration configuration)
   web_server_state_ = QStringLiteral ("error");
   server_.close ();
   actual_address_ = QHostAddress {};
+  url_address_ = QHostAddress {};
   actual_port_ = 0;
   Q_EMIT lifecycle_changed (server_epoch_, false);
   return false;
@@ -202,6 +204,7 @@ void JtdxWebServer::stop ()
   QList<QTcpSocket *> sockets = clients_.keys ();
   for (QTcpSocket * socket : sockets) close_client (socket);
   actual_address_ = QHostAddress {};
+  url_address_ = QHostAddress {};
   actual_port_ = 0;
   web_server_state_ = QStringLiteral ("stopped");
   Q_EMIT lifecycle_changed (server_epoch_, false);
@@ -225,8 +228,8 @@ QHostAddress JtdxWebServer::actual_address () const
 QString JtdxWebServer::url () const
 {
   if (!is_listening ()) return {};
-  QString address = actual_address_.toString ();
-  if (actual_address_.protocol () == QAbstractSocket::IPv6Protocol)
+  QString address = url_address_.toString ();
+  if (url_address_.protocol () == QAbstractSocket::IPv6Protocol)
     address = QStringLiteral ("[") + address + QStringLiteral ("]");
   return QStringLiteral ("http://") + address + QStringLiteral (":")
        + QString::number (actual_port_);
