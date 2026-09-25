@@ -4,9 +4,10 @@
 
 - 结果提交：`6283cac280f568c8681c5aa032157c45c63877c0`；版本 `2.2.159.030` / PE `2.2.159.30`。新/无绑定配置默认监听所有 IPv4；保留现有设置值，不把历史 `127.0.0.1` 静默迁移。IPv6 通配仍拒绝。
 - Windows 地址解析只读默认路由表，使用 route metric + interface metric，筛选 Up/Running 接口上的有效 IPv4 并确定性处理 metric 并列；无路由结果回退 localhost。设置页/服务 URL/菜单打开复用同一访问地址与实际端口。非 Windows 当前安全回退 localhost。
-- 验证：提交版完整 Release 构建成功；最终 CTest 30/30、57.47 秒。日志 `../local-support/evidence/P030/final-build.log`、`../local-support/evidence/P030/final-ctest.log`；详细记录在 [`../../local-support/releases/P030/说明_zh-CN.md`](../../local-support/releases/P030/说明_zh-CN.md)。
+- 验证/候选：完整 Release 构建成功；最终 CTest 30/30、57.47 秒。P030 本机审阅 ZIP `C:\JTDX64\JTDX-2.2.159.030-local-6283cac-P030.zip`，142 文件、未压缩 137,574,291 bytes、SHA-256 `74F2085ADC3E269974D24604343C1D186F150AF883B47B8F5BE4F2806010B454`，ZIP/暂存/清洁解压 142/142 一致；交付根本批只新增 ZIP，无 sidecar。构建、测试、依赖与包校验日志位于 `../local-support/evidence/P030/`；详细记录见 [`../../local-support/releases/P030/说明_zh-CN.md`](../../local-support/releases/P030/说明_zh-CN.md)。
 - 现场只读快照显示旧进程 PID 26100（`C:\JTDX64\159\bin\jtdx.exe`）仍只监听 `127.0.0.1:49152`；它不是新版本，未触碰。该时刻默认路由为以太网接口 20 / `192.168.50.105` / route metric 0 + interface metric 15。不能把该快照说成 P030 的真实启动/网络验收。
-- 边界：未运行 P030 `jtdx.exe`、未触碰 CAT/PTT/TX、未做真实 GUI 保存/重载、LAN/公网/防火墙/HIL/部署测试；没有改 UDP、路由或防火墙，没有打包。`XXXXXXXXX` 解码显示问题依用户最新指示跳过，未检查或修复。
+- 升级用户若需要 LAN 监听，必须自行把 `WebUiBindAddress` 设为 `0.0.0.0` 并重启 Web 服务；已有 `127.0.0.1` 保存值刻意保留。现场 `192.168.50.105` 只是当时路由快照，不是永久地址。
+- 边界：未运行包内 P030 `jtdx.exe`、未触碰 CAT/PTT/TX、未做真实 GUI 保存/重载、LAN/公网/防火墙/HIL/部署测试；没有改 UDP、路由或防火墙。候选不代表发布批准；`XXXXXXXXX` 解码显示问题依用户最新指示跳过，未检查或修复。
 
 # 2026-09-24 P029 频谱窗持久显隐与版本递增本机审阅候选
 

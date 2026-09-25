@@ -7,10 +7,10 @@
 ## 后续目录规范与恢复入口
 
 - 本 README 是本机恢复入口；打包入口为 `scripts/package-local-candidate.ps1`。从现在起，新构建树放 `build/<候选ID>/`，安装暂存树放 `staging/<候选ID>/`，独立解压放 `extract/<候选ID>/`，浏览器 profile 放 `browser-profiles/<候选ID>/`，日志/manifest 放 `evidence/<候选ID>/`（或 `logs/<候选ID>/`）。这些生成目录由 `.gitignore` 排除。
-- 最终 ZIP 及 `.sha256` sidecar 仍按既定要求直接放在 `C:\JTDX64`；候选说明与长篇报告归档于 `releases/<阶段>/` 和 `docs/`，不得在根目录生成 staging、解压、日志、profile 或临时 build。
+- 最终 ZIP 直接放在 `C:\JTDX64`；不得在交付根目录新建 `.sha256` sidecar。SHA-256、manifest、验证日志与候选说明均保存于源码树 `local-support`。不得在根目录生成 staging、解压、日志、profile 或临时 build。
 - 旧 build tree 包含绝对源码/工具链路径，不可直接 Move 后假装仍可用。本次权威 Release build `C:\JTDX64\build-webui-p25-release`、开发树 `C:\JTDX64\build-webui-dev-msys2` 和失败/待退役缓存 `C:\JTDX64\build-webui-p26-release` 均留原位；前两者仍供历史复核，P26 缓存待另行授权处理。以后新配置例：`cmake -S C:\JTDX64\jtdx_sourcecode -B C:\JTDX64\jtdx_sourcecode\local-support\build\P28-release`，使用独立生成树，不复制 CMakeCache。
 - `deps-webui` 留在根目录原位：它包含有效工具链依赖、历史证据和此前被策略拒绝清理的项目；不得整目录搬迁，也不得通过改名、搬父目录或别的方式绕过既有拒绝。
-- 打包脚本只从 `local-support/staging/<候选ID>` 读完整安装树；输出只会把 ZIP 和 sidecar 写到 `C:\JTDX64`，独立解压和证据均在 `local-support`。默认拒绝覆盖既有 ZIP、sidecar 或解压目录。运行前可用 `-ValidateOnly` 对既有 ZIP 做只读核验。
+- 打包脚本只从 `local-support/staging/<候选ID>` 读完整安装树；先验证 ZIP 绝对路径为 `C:\JTDX64` 的直接子项，再只向该根目录写 ZIP，不写 sidecar；独立解压和证据均在 `local-support`。默认拒绝覆盖既有 ZIP、同名遗留 sidecar 或解压目录。运行前可用 `-ValidateOnly` 对 ZIP 与暂存树作只读核验，并在仓库内记录 ZIP 哈希。
 
 新候选的推荐执行顺序（示例 ID 为 P28；不复用旧 build tree）：
 
@@ -30,7 +30,7 @@ $env:QT_QPA_PLATFORM_PLUGIN_PATH = 'C:\msys64\mingw64\share\qt5\plugins\platform
 & (Join-Path $support 'scripts\package-local-candidate.ps1') -CandidateId 'P28' -PackageName 'JTDX-2.2.159.2.10-local-<commit>-P28'
 ```
 
-检查每条命令的 `$LASTEXITCODE` 和日志再进入下一阶段。不要把旧 `deps-webui` 或根目录 build tree 当输出目录。打包脚本只从已审查、补齐 NOTICE/许可证材料的 stage 生成 ZIP、sidecar、manifest 和清洁解压校验；不会清理失败产物或覆盖文件。
+检查每条命令的 `$LASTEXITCODE` 和日志再进入下一阶段。不要把旧 `deps-webui` 或根目录 build tree 当输出目录。打包脚本只从已审查、补齐 NOTICE/许可证材料的 stage 生成 ZIP、manifest 和清洁解压校验；ZIP 哈希与报告写在仓库内，不产生根目录 sidecar；不会清理失败产物或覆盖文件。
 
 新候选的推荐执行顺序（示例 ID 为 P28；不复用旧 build tree）：
 
@@ -47,13 +47,14 @@ New-Item -ItemType Directory -Force -Path (Join-Path $support 'evidence\P28') | 
 & (Join-Path $support 'scripts\package-local-candidate.ps1') -CandidateId 'P28' -PackageName 'JTDX-2.2.159.2.10-local-<commit>-P28'
 ```
 
-检查每条命令的 `$LASTEXITCODE` 和日志再进入下一阶段。不要把旧 `deps-webui` 或根目录 build tree 当输出目录。打包脚本只从已审查、补齐 NOTICE/许可证材料的 stage 生成 ZIP、sidecar、manifest 和清洁解压校验；不会清理失败产物或覆盖文件。
+检查每条命令的 `$LASTEXITCODE` 和日志再进入下一阶段。不要把旧 `deps-webui` 或根目录 build tree 当输出目录。打包脚本只从已审查、补齐 NOTICE/许可证材料的 stage 生成 ZIP、manifest 和清洁解压校验；ZIP 哈希与报告写在仓库内，不产生根目录 sidecar；不会清理失败产物或覆盖文件。
 
-## P030 当前源码与软件验证结果（未打包）
+## P030 当前本机候选打包结果
 
-- 源码提交 `6283cac280f568c8681c5aa032157c45c63877c0`；显示版本 `2.2.159.030`，Windows PE 数字版本 `2.2.159.30`；完整 Release 构建成功，全量 CTest 30/30（57.47 秒）。本批没有生成 ZIP、安装 stage 或清洁解压。
-- 新/无 `WebUiBindAddress` 配置默认 `0.0.0.0`；现存配置值原样保留，尤其不把旧版本已持久化的 `127.0.0.1` 静默改为 LAN 监听。Windows URL 按默认路由与接口综合 metric 选择有效 IPv4，无可用地址时回退 `127.0.0.1`；具体实现和验收边界见 [`releases/P030/说明_zh-CN.md`](releases/P030/说明_zh-CN.md)。
-- 最终日志在 `evidence/P030/final-build.log` 与 `evidence/P030/final-ctest.log`。没有运行 P030 主程序、真实 CAT/PTT/TX、LAN/浏览器端到端或 HIL；未改 UDP、系统路由或防火墙。
+- 源码提交 `6283cac280f568c8681c5aa032157c45c63877c0`；显示版本 `2.2.159.030`，Windows PE 数字版本 `2.2.159.30`；完整 Release 构建成功，全量 CTest 30/30（57.47 秒）。本机审阅 ZIP：`C:\JTDX64\JTDX-2.2.159.030-local-6283cac-P030.zip`，49,373,063 bytes，SHA-256 `74F2085ADC3E269974D24604343C1D186F150AF883B47B8F5BE4F2806010B454`，142 文件、未压缩 137,574,291 bytes；ZIP/暂存/清洁解压逐项一致。manifest、依赖审计、清洁解压与验证日志见 `evidence/P030/` 及 [`releases/P030/说明_zh-CN.md`](releases/P030/说明_zh-CN.md)。
+- 新/无 `WebUiBindAddress` 配置默认 `0.0.0.0`；现存值原样保留。升级用户若要 LAN 监听，必须自行将 `WebUiBindAddress` 设为 `0.0.0.0` 并重启 Web 服务；旧版已持久化的 `127.0.0.1` 不会自动迁移。Windows URL 按默认路由与接口综合 metric 选择有效 IPv4，无可用地址时回退 `127.0.0.1`。
+- 本机 `192.168.50.105` 只是当时路由快照，不是永久地址。
+- 不运行候选主程序、不操作真实 CAT/PTT/TX，不做 LAN/浏览器端到端、HIL 或部署；未改 UDP、系统路由或防火墙，不公开分发。根目录本批仅新增 ZIP，不创建 sidecar。
 
 ## P029 历史本机审阅候选
 
@@ -102,7 +103,7 @@ New-Item -ItemType Directory -Force -Path (Join-Path $support 'evidence\P28') | 
 
 - `evidence/P26/`：P26 最终 Release 构建、CTest、安装日志，两个阶段的安装清单以及桌面/手机截图。共 11 个文件、366,275 bytes；从 `C:\JTDX64\deps-webui\evidence\P26` 逐文件复制并比对相对路径、长度和 SHA-256，11/11 一致。平台随后拒绝了包含删除操作的命令，故这只是归档副本，旧位置的 11 个原件仍在；不得称为迁移或清理完成。该目录由 `.gitignore` 排除；本 README、P26 报告和索引文档纳入源码版本控制。
 - P26 其余行为、验证结论、证据边界与审阅包校验值见 `../docs/web-ui/P26-Web电台控制超时与六按钮收口_zh-CN.md`。
-- Release ZIP 与 `.sha256` sidecar 留在 `C:\JTDX64` 根目录。当前候选见上方 P028；P28/P27、P26、P25 和早期 P26 包保留作回退/历史比对。
+- 上述 P028/P28、P27、P26、P25 及早期历史候选 ZIP 与其当时的 `.sha256` sidecar 保留在各自原位置，供回退/历史比对；这是历史归档状态，不代表 P030 的打包规则。P030 仅在交付根目录生成 ZIP，SHA-256 记在本仓库。
 
 ## 构建与测试恢复
 

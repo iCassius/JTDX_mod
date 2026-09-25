@@ -23,9 +23,17 @@ $stageRoot = Join-Path $supportRoot "staging\$StageDirectoryName"
 $extractRoot = Join-Path $supportRoot "extract\$CandidateId"
 $evidenceRoot = Join-Path $supportRoot "evidence\$CandidateId"
 $zipPath = Join-Path $workspaceRoot "$PackageName.zip"
-$sidecarPath = "$zipPath.sha256"
+$legacySidecarPath = "$zipPath.sha256"
 $manifestPath = Join-Path $evidenceRoot "manifest-$CandidateId.csv"
 $verifyLogPath = Join-Path $evidenceRoot 'package-verify.log'
+
+$resolvedWorkspaceRoot = [IO.Path]::GetFullPath($workspaceRoot)
+$resolvedZipPath = [IO.Path]::GetFullPath($zipPath)
+if (-not [String]::Equals([IO.Path]::GetDirectoryName($resolvedZipPath),
+                           $resolvedWorkspaceRoot,
+                           [StringComparison]::OrdinalIgnoreCase)) {
+  throw "Release ZIP must be a direct child of $resolvedWorkspaceRoot"
+}
 
 $resolvedStage = (Resolve-Path -LiteralPath $stageRoot).Path
 $allowedStagePrefix = (Join-Path $supportRoot 'staging') + [IO.Path]::DirectorySeparatorChar
@@ -84,12 +92,7 @@ function Test-ZipAgainstStage([string] $ArchivePath, [string] $RootPath) {
 
 if ($ValidateOnly) {
   if (-not (Test-Path -LiteralPath $zipPath)) { throw "ZIP not found: $zipPath" }
-  if (-not (Test-Path -LiteralPath $sidecarPath)) { throw "SHA-256 sidecar not found: $sidecarPath" }
   $actualZipHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash
-  $sidecarText = [IO.File]::ReadAllText($sidecarPath).Trim()
-  if ($sidecarText -notmatch "^$actualZipHash\s+$([Regex]::Escape((Split-Path -Leaf $zipPath)))$") {
-    throw 'ZIP SHA-256 sidecar does not match the package'
-  }
   $result = Test-ZipAgainstStage $zipPath $resolvedStage
   "VALIDATED=$($result.Count) files"
   "ROOTS=$($result.Roots -join ',')"
@@ -98,7 +101,9 @@ if ($ValidateOnly) {
 }
 
 if (Test-Path -LiteralPath $zipPath) { throw "Refusing to overwrite existing ZIP: $zipPath" }
-if (Test-Path -LiteralPath $sidecarPath) { throw "Refusing to overwrite existing sidecar: $sidecarPath" }
+if (Test-Path -LiteralPath $legacySidecarPath) {
+  throw "Refusing to proceed because a same-name sidecar already exists: $legacySidecarPath"
+}
 if (Test-Path -LiteralPath $extractRoot) { throw "Refusing to overwrite existing extract directory: $extractRoot" }
 New-Item -ItemType Directory -Path $evidenceRoot -Force | Out-Null
 
@@ -123,10 +128,10 @@ for ($i = 0; $i -lt $result.Rows.Count; $i++) {
 
 $result.Rows | Export-Csv -LiteralPath $manifestPath -NoTypeInformation -Encoding utf8NoBOM
 $zipHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash
-[IO.File]::WriteAllText($sidecarPath, "$zipHash  $(Split-Path -Leaf $zipPath)`r`n", [Text.UTF8Encoding]::new($false))
 $summary = @(
   "ZIP=$zipPath",
   "ZIP_SHA256=$zipHash",
+  "ZIP_BYTES=$((Get-Item -LiteralPath $zipPath).Length)",
   "ROOTS=$($result.Roots -join ',')",
   "MATCHED_SIZE_AND_SHA256=$($result.Count)/$($result.Count)",
   "MANIFEST=$manifestPath",
