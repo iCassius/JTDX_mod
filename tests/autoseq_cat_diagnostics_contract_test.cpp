@@ -37,6 +37,7 @@ int main ()
   auto const transceiver = source (QStringLiteral ("TransceiverBase.cpp"));
   auto const configuration = source (QStringLiteral ("Configuration.cpp"));
   auto const mainwindow = source (QStringLiteral ("mainwindow.cpp"));
+  auto const localLog = source (QStringLiteral ("JtdxLocalLog.cpp"));
 
   require (hamlib.contains (QStringLiteral ("throws_to_offline=%14"))
                && hamlib.contains (QStringLiteral (
@@ -47,15 +48,29 @@ int main ()
                     QStringLiteral ("offline (message);")),
            "poll exception diagnostic precedes the existing offline transition");
   require (ordered (transceiver,
-                    QStringLiteral ("transceiver_offline failure_signal=emit"),
-                    QStringLiteral ("Q_EMIT failure (reason);")),
-           "offline diagnostic precedes the existing failure signal emission");
+                    QStringLiteral ("stage=entered failure_signal=not_yet_emitted"),
+                    QStringLiteral ("Q_EMIT failure (reason);"))
+               && ordered (transceiver,
+                           QStringLiteral ("Q_EMIT failure (reason);"),
+                           QStringLiteral ("stage=after_emit failure_signal=emitted")),
+           "offline entry and completed signal emission are marked at the correct stages");
 
-  require (configuration.contains (QStringLiteral (
-               "configuration_failure received=true configuration_visible=%1 forward_to_main_window=%2"))
-               && configuration.contains (QStringLiteral ("if (configuration_visible)"))
+  auto const configurationFailureStart = configuration.indexOf (
+    QStringLiteral ("void Configuration::impl::handle_transceiver_failure"));
+  auto const configurationFailure = configuration.mid (configurationFailureStart, 2400);
+  require (configurationFailure.contains (QStringLiteral (
+               "append_configuration_failure_diagnostic (\"entered\");"))
+               && ordered (configurationFailure,
+                           QStringLiteral ("append_configuration_failure_diagnostic (\"entered\");"),
+                           QStringLiteral ("close_rig ();"))
+               && ordered (configurationFailure,
+                           QStringLiteral ("close_rig ();"),
+                           QStringLiteral ("append_configuration_failure_diagnostic (\"after_close_rig\");"))
+               && configurationFailure.contains (QStringLiteral (
+                    "append_configuration_failure_decision (configuration_visible, forward_to_main_window);"))
+               && configurationFailure.contains (QStringLiteral ("if (configuration_visible)"))
                && configuration.contains (QStringLiteral ("Q_EMIT self_->transceiver_failure (reason);")),
-           "Configuration records visible/forwarding state while preserving its branch");
+           "Configuration records entry, post-close, and forwarding decision around the original branch");
   require (configuration.contains (QStringLiteral (
                "connect (rig.get (), &Transceiver::failure, this, &Configuration::impl::handle_transceiver_failure);")),
            "Configuration failure connection remains unchanged");
@@ -73,13 +88,12 @@ int main ()
                && mainwindow.contains (QStringLiteral ("target_missing_after_disconnect")),
            "ticket decision log includes target/status/count/intent and rejection reasons");
   require (mainwindow.contains (QStringLiteral (
-               "recovery_online_update online=true ptt_known=true ptt_on=false"))
+               "recovery_online_update online=true ptt_known=true ptt_on=%1"))
+               && mainwindow.contains (QStringLiteral ("release_dx_wait_fresh_decode"))
+               && mainwindow.contains (QStringLiteral ("retain_ticket_and_dx"))
+               && mainwindow.contains (QStringLiteral ("cancel_ticket_context_changed"))
                && mainwindow.contains (QStringLiteral (
-                    "decision=release_dx_wait_fresh_decode"))
-               && mainwindow.contains (QStringLiteral (
-                    "decision=retain_ticket_and_dx"))
-               && mainwindow.contains (QStringLiteral (
-                    "decision=cancel_ticket_context_changed")),
+                    "decision=%6")),
            "online recovery logs PTT readback and release/retain/cancel decisions");
   require (ordered (mainwindow,
                     QStringLiteral ("m_autoSeqRecovery.reconnected_ptt_off (recoveredAt);"),
@@ -87,8 +101,23 @@ int main ()
            "existing PTT-off gate still precedes DX release");
   require (mainwindow.count (QStringLiteral ("m_autoSeqRecovery.cancel ();")) == 1,
            "all recovery ticket cancellations pass through the diagnostic wrapper");
+  auto const cancelStart = mainwindow.indexOf (
+    QStringLiteral ("void MainWindow::cancelAutoSeqRecovery"));
+  auto const cancelMethod = mainwindow.mid (cancelStart, 1800);
+  require (ordered (cancelMethod, QStringLiteral ("try"),
+                    QStringLiteral ("m_qsoHistory.diagnosticSnapshot"))
+               && ordered (cancelMethod, QStringLiteral ("catch (...)"),
+                           QStringLiteral ("m_autoSeqRecovery.cancel ();")),
+           "diagnostic preparation is caught and the original cancel always executes");
+  require (mainwindow.contains (QStringLiteral ("void appendRecoveryLogLazy"))
+               && mainwindow.contains (QStringLiteral (
+                    "Formatting and diagnostic writes must not affect MainWindow control flow.")),
+           "new MainWindow diagnostic formatting is inside a no-throw wrapper");
   require (mainwindow.contains (QStringLiteral ("reason_present=true"))
                && !mainwindow.contains (QStringLiteral ("failure=%1; online=%2")),
            "failure diagnostics record reason presence without logging CAT error text");
+  require (localLog.contains (QStringLiteral ("catch (...)"))
+               && localLog.contains (QStringLiteral ("Diagnostics must never escape into CAT, AutoSeq, or TX control paths.")),
+           "shared diagnostic append catches formatting, lock, and filesystem exceptions");
   return 0;
 }

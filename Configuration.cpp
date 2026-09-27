@@ -188,6 +188,40 @@
 
 namespace
 {
+  void append_configuration_failure_diagnostic (char const * stage) noexcept
+  {
+    try
+      {
+        JtdxLocalLog::append (
+          QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)},
+          QStringLiteral ("jtdx_recovery.log"), QStringLiteral ("rig-control"),
+          QStringLiteral ("configuration_failure stage=%1 received=true reason_present=true")
+            .arg (QString::fromLatin1 (stage)));
+      }
+    catch (...)
+      {
+        // Failure diagnostics must not interrupt rig failure handling.
+      }
+  }
+
+  void append_configuration_failure_decision (bool configuration_visible,
+                                                bool forward_to_main_window) noexcept
+  {
+    try
+      {
+        JtdxLocalLog::append (
+          QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)},
+          QStringLiteral ("jtdx_recovery.log"), QStringLiteral ("rig-control"),
+          QStringLiteral ("configuration_failure stage=decision received=true configuration_visible=%1 forward_to_main_window=%2 reason_present=true")
+            .arg (configuration_visible ? "true" : "false")
+            .arg (forward_to_main_window ? "true" : "false"));
+      }
+    catch (...)
+      {
+        // Failure diagnostics must not interrupt rig failure handling.
+      }
+  }
+
   // these undocumented flag values when stored in (Qt::UserRole - 1)
   // of a ComboBox item model index allow the item to be enabled or
   // disabled
@@ -6352,28 +6386,18 @@ void Configuration::impl::handle_transceiver_update (TransceiverState const& sta
 
 void Configuration::impl::handle_transceiver_failure (QString const& reason)
 {
+  append_configuration_failure_diagnostic ("entered");
 #if WSJT_TRACE_CAT
   qDebug () << "Configuration::handle_transceiver_failure: reason:" << reason;
 #endif
 
   close_rig ();
+  append_configuration_failure_diagnostic ("after_close_rig");
   ui_->test_PTT_push_button->setChecked (false);
 
   auto const configuration_visible = isVisible ();
   auto const forward_to_main_window = !configuration_visible;
-  try
-    {
-      JtdxLocalLog::append (
-        QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)},
-        QStringLiteral ("jtdx_recovery.log"), QStringLiteral ("rig-control"),
-        QStringLiteral ("configuration_failure received=true configuration_visible=%1 forward_to_main_window=%2 reason_present=true")
-          .arg (configuration_visible ? "true" : "false")
-          .arg (forward_to_main_window ? "true" : "false"));
-    }
-  catch (...)
-    {
-      // A diagnostic write must not affect CAT failure handling.
-    }
+  append_configuration_failure_decision (configuration_visible, forward_to_main_window);
   if (configuration_visible)
     {
       message_box_critical (tr ("Rig failure"), reason);

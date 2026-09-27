@@ -14,14 +14,15 @@ namespace
 {
   auto const unexpected = TransceiverBase::tr ("Unexpected rig error");
 
-  void append_failure_diagnostic () noexcept
+  void append_failure_diagnostic (char const * stage) noexcept
   {
     try
       {
         JtdxLocalLog::append (
           QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)},
           QStringLiteral ("jtdx_recovery.log"), QStringLiteral ("rig-control"),
-          QStringLiteral ("transceiver_offline failure_signal=emit reason_present=true"));
+          QStringLiteral ("transceiver_offline %1 reason_present=true")
+            .arg (QString::fromLatin1 (stage)));
       }
     catch (...)
       {
@@ -665,7 +666,7 @@ void TransceiverBase::update_complete (bool force_signal)
 
 void TransceiverBase::offline (QString const& reason)
 {
-  append_failure_diagnostic ();
+  append_failure_diagnostic ("stage=entered failure_signal=not_yet_emitted");
 #if JTDX_DEBUG_TO_FILE
   FILE * pFile = fopen (debug_file_.c_str(),"a");
   if (jtdxtime_ == nullptr)
@@ -675,6 +676,7 @@ void TransceiverBase::offline (QString const& reason)
   fclose (pFile);
 #endif
   Q_EMIT failure (reason);
+  append_failure_diagnostic ("stage=after_emit failure_signal=emitted");
   try
     {
       shutdown ();

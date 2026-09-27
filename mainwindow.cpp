@@ -150,6 +150,21 @@ namespace
       }
   }
 
+  template<typename MessageFactory>
+  void appendRecoveryLogLazy (QDir const& dataDirectory, char const * area,
+                              MessageFactory&& makeMessage) noexcept
+  {
+    try
+      {
+        JtdxLocalLog::append (dataDirectory, QStringLiteral ("jtdx_recovery.log"),
+                             QString::fromLatin1 (area), makeMessage ());
+      }
+    catch (...)
+      {
+        // Formatting and diagnostic writes must not affect MainWindow control flow.
+      }
+  }
+
   Radio::Frequency constexpr default_frequency {14076000};
   QRegularExpression message_alphabet {"[- @A-Za-z0-9+./?#<>]*"};
   QRegularExpression messagespec_alphabet {"[- @A-Za-z0-9+./?#<>;]*"};
@@ -8320,33 +8335,39 @@ void MainWindow::handle_transceiver_update (Transceiver::TransceiverState const&
       bool const changedContext = m_autoSeqRecoveryMode != m_mode
         || (s.frequency () != 0 && !m_autoSeqRecoveryBand.isEmpty ()
             && m_autoSeqRecoveryBand != m_config.bands ()->find (s.frequency ()));
-      auto const ticketTarget = QString::fromStdString (m_autoSeqRecovery.target ());
-      auto const diagnosticTarget = !ticketTarget.isEmpty () ? ticketTarget : m_hisCall;
-      QsoHistory::Status historyStatus = QsoHistory::NONE;
-      int retryCount = -1;
-      bool const historyKnown = m_qsoHistory.diagnosticSnapshot (
-        diagnosticTarget, historyStatus, retryCount);
+      auto log_online_recovery = [this, &s] (char const * decision) noexcept {
+        try
+          {
+            auto const ticketTarget = QString::fromStdString (m_autoSeqRecovery.target ());
+            auto const diagnosticTarget = !ticketTarget.isEmpty () ? ticketTarget : m_hisCall;
+            QsoHistory::Status historyStatus = QsoHistory::NONE;
+            int retryCount = -1;
+            bool const historyKnown = m_qsoHistory.diagnosticSnapshot (
+              diagnosticTarget, historyStatus, retryCount);
+            appendRecoveryLogLazy (
+              m_dataDir, "auto-call", [&] {
+                return QString {"recovery_online_update online=true ptt_known=true ptt_on=%1 "
+                                "target=%2 history_known=%3 history_status=%4 retry_count=%5 "
+                                "decision=%6"}
+                  .arg (s.ptt () ? "true" : "false").arg (diagnosticTarget)
+                  .arg (historyKnown ? "true" : "false")
+                  .arg (static_cast<int> (historyStatus)).arg (retryCount)
+                  .arg (QString::fromLatin1 (decision));
+              });
+          }
+        catch (...)
+          {
+            // An unavailable diagnostic must not alter ticket or DX handling.
+          }
+      };
       if (changedContext)
         {
-          appendRecoveryLog (
-            m_dataDir, "auto-call",
-            QString {"recovery_online_update online=true ptt_known=true ptt_on=%1 "
-                     "target=%2 history_known=%3 history_status=%4 retry_count=%5 "
-                     "decision=cancel_ticket_context_changed dx_release=false"}
-              .arg (s.ptt () ? "true" : "false").arg (diagnosticTarget)
-              .arg (historyKnown ? "true" : "false")
-              .arg (static_cast<int> (historyStatus)).arg (retryCount));
+          log_online_recovery ("cancel_ticket_context_changed");
           cancelAutoSeqRecovery (QStringLiteral ("band_or_mode_changed_while_cat_offline"));
         }
       else if (!s.ptt ())
         {
-          appendRecoveryLog (
-            m_dataDir, "auto-call",
-            QString {"recovery_online_update online=true ptt_known=true ptt_on=false "
-                     "target=%1 history_known=%2 history_status=%3 retry_count=%4 "
-                     "decision=release_dx_wait_fresh_decode"}
-              .arg (diagnosticTarget).arg (historyKnown ? "true" : "false")
-              .arg (static_cast<int> (historyStatus)).arg (retryCount));
+          log_online_recovery ("release_dx_wait_fresh_decode");
           auto const recoveredAt = m_jtdxtime->currentMSecsSinceEpoch2 ();
           m_autoSeqRecovery.reconnected_ptt_off (recoveredAt);
           m_autoSeqRecoveryInternalUiChange = true;
@@ -8357,13 +8378,7 @@ void MainWindow::handle_transceiver_update (Transceiver::TransceiverState const&
                              .arg (recoveredAt));
         }
       else
-        appendRecoveryLog (
-          m_dataDir, "auto-call",
-          QString {"recovery_online_update online=true ptt_known=true ptt_on=true "
-                   "target=%1 history_known=%2 history_status=%3 retry_count=%4 "
-                   "decision=retain_ticket_and_dx"}
-            .arg (diagnosticTarget).arg (historyKnown ? "true" : "false")
-            .arg (static_cast<int> (historyStatus)).arg (retryCount));
+        log_online_recovery ("retain_ticket_and_dx");
     }
 
   if (s.online () && m_rigRecovery.attempts ())
@@ -8511,23 +8526,37 @@ void MainWindow::handle_transceiver_update (Transceiver::TransceiverState const&
 
 void MainWindow::cancelAutoSeqRecovery (QString const& reason)
 {
-  auto const ticket_target = QString::fromStdString (m_autoSeqRecovery.target ());
-  auto const diagnostic_target = !ticket_target.isEmpty () ? ticket_target : m_hisCall;
+  bool logCancellation = false;
+  QString diagnosticTarget;
   QsoHistory::Status history_status = QsoHistory::NONE;
   int retry_count = -1;
-  bool const history_known = m_qsoHistory.diagnosticSnapshot (
-    diagnostic_target, history_status, retry_count);
-  if (m_autoSeqRecovery.pending ())
+  int main_status = static_cast<int> (m_status);
+  int tx_sequence = m_ntx;
+  bool history_known = false;
+  try
     {
-      appendRecoveryLog (
-        m_dataDir, "auto-call",
-        QString {"recovery_ticket=cancelled reason=%1 target=%2 main_status=%3 "
-                 "history_known=%4 history_status=%5 retry_count=%6 tx_sequence=%7"}
-          .arg (reason).arg (diagnostic_target).arg (static_cast<int> (m_status))
-          .arg (history_known ? "true" : "false")
-          .arg (static_cast<int> (history_status)).arg (retry_count).arg (m_ntx));
+      auto const ticket_target = QString::fromStdString (m_autoSeqRecovery.target ());
+      diagnosticTarget = !ticket_target.isEmpty () ? ticket_target : m_hisCall;
+      logCancellation = m_autoSeqRecovery.pending ();
+      history_known = m_qsoHistory.diagnosticSnapshot (
+        diagnosticTarget, history_status, retry_count);
+    }
+  catch (...)
+    {
+      // The original cancellation must run even if diagnostic preparation fails.
     }
   m_autoSeqRecovery.cancel ();
+  if (logCancellation)
+    {
+      appendRecoveryLogLazy (
+        m_dataDir, "auto-call", [&] {
+          return QString {"recovery_ticket=cancelled reason=%1 target=%2 main_status=%3 "
+                          "history_known=%4 history_status=%5 retry_count=%6 tx_sequence=%7"}
+            .arg (reason).arg (diagnosticTarget).arg (main_status)
+            .arg (history_known ? "true" : "false")
+            .arg (static_cast<int> (history_status)).arg (retry_count).arg (tx_sequence);
+        });
+    }
 }
 
 void MainWindow::handle_transceiver_failure (QString const& reason)
@@ -8543,13 +8572,12 @@ void MainWindow::handle_transceiver_failure (QString const& reason)
   bool const signoffTxInterrupted = recoverySupported
     && (m_QSOProgress == SIGNOFF || m_transmittedQSOProgress == SIGNOFF)
     && (m_transmitting || m_tx_when_ready || g_iptt != 0 || m_btxok);
-  QString ticketDecision;
-  QString ticketReason;
+  char const * ticketDecision = nullptr;
+  char const * ticketReason = nullptr;
   if (!recoverySupported) {
-    ticketDecision = ticketWasPending ? QStringLiteral ("cancelled")
-                                      : QStringLiteral ("rejected");
-    ticketReason = QStringLiteral ("auto_sequence_unsupported");
-    if (ticketWasPending) cancelAutoSeqRecovery (ticketReason);
+    ticketDecision = ticketWasPending ? "cancelled" : "rejected";
+    ticketReason = "auto_sequence_unsupported";
+    if (ticketWasPending) cancelAutoSeqRecovery (QStringLiteral ("auto_sequence_unsupported"));
   } else if (preserveAutoSeqIntent || ticketWasPending) {
     if (!ticketWasPending && preserveAutoSeqIntent) {
       m_autoSeqRecoveryBand = m_config.bands ()->find (m_freqNominal);
@@ -8559,56 +8587,65 @@ void MainWindow::handle_transceiver_failure (QString const& reason)
       true, m_hisCall.toStdString (),
       Radio::base_callsign (m_hisCall).toStdString (), signoffTxInterrupted);
     ticketDecision = m_autoSeqRecovery.pending ()
-      ? (ticketWasPending ? QStringLiteral ("retained") : QStringLiteral ("created"))
-      : QStringLiteral ("rejected");
+      ? (ticketWasPending ? "retained" : "created")
+      : "rejected";
     ticketReason = m_autoSeqRecovery.pending ()
-      ? (preserveAutoSeqIntent ? QStringLiteral ("active_tx_intent")
-                               : QStringLiteral ("existing_ticket"))
-      : QStringLiteral ("target_missing_after_disconnect");
-    appendRecoveryLog (m_dataDir, "auto-call",
-                       QString {"recovery disconnected preserveIntent=%1 signoffTxInterrupted=%2"}
-                       .arg (preserveAutoSeqIntent ? "true" : "false")
-                       .arg (signoffTxInterrupted ? "true" : "false"));
+      ? (preserveAutoSeqIntent ? "active_tx_intent" : "existing_ticket")
+      : "target_missing_after_disconnect";
+    appendRecoveryLogLazy (m_dataDir, "auto-call", [&] {
+      return QString {"recovery disconnected preserveIntent=%1 signoffTxInterrupted=%2"}
+        .arg (preserveAutoSeqIntent ? "true" : "false")
+        .arg (signoffTxInterrupted ? "true" : "false");
+    });
   } else {
-    ticketDecision = QStringLiteral ("rejected");
+    ticketDecision = "rejected";
     ticketReason = m_hisCall.isEmpty ()
-      ? QStringLiteral ("no_target")
-      : QStringLiteral ("no_active_tx_intent");
+      ? "no_target"
+      : "no_active_tx_intent";
   }
-  auto const ticket_target = QString::fromStdString (m_autoSeqRecovery.target ());
-  auto const diagnostic_target = !ticket_target.isEmpty () ? ticket_target : m_hisCall;
-  QsoHistory::Status historyStatus = QsoHistory::NONE;
-  int retryCount = -1;
-  bool const historyKnown = m_qsoHistory.diagnosticSnapshot (
-    diagnostic_target, historyStatus, retryCount);
-  appendRecoveryLog (
-    m_dataDir, "auto-call",
-    QString {"recovery_ticket decision=%1 reason=%2 was_pending=%3 pending=%4 "
-             "target=%5 main_status=%6 history_known=%7 history_status=%8 "
-             "retry_count=%9 tx_sequence=%10 enable_tx=%11 transmitting=%12 "
-             "tx_when_ready=%13 g_iptt=%14 signoff_tx_interrupted=%15"}
-      .arg (ticketDecision).arg (ticketReason)
-      .arg (ticketWasPending ? "true" : "false")
-      .arg (m_autoSeqRecovery.pending () ? "true" : "false")
-      .arg (diagnostic_target).arg (static_cast<int> (m_status))
-      .arg (historyKnown ? "true" : "false")
-      .arg (static_cast<int> (historyStatus)).arg (retryCount).arg (m_ntx)
-      .arg (m_enableTx ? "true" : "false")
-      .arg (m_transmitting ? "true" : "false")
-      .arg (m_tx_when_ready ? "true" : "false").arg (g_iptt)
-      .arg (signoffTxInterrupted ? "true" : "false"));
-  appendRecoveryLog (m_dataDir, "rig-control",
-                     QString {"failure_received=true; reason_present=true; online=%1; ptt=%2; split=%3; "
-                              "frequency=%4; tx_frequency=%5; g_iptt=%6; "
-                              "transmitting=%7; enable_tx=%8"}
-                     .arg (m_rigState.online () ? "true" : "false")
-                     .arg (m_rigState.ptt () ? "true" : "false")
-                     .arg (m_rigState.split () ? "true" : "false")
-                     .arg (QString::number (m_rigState.frequency ()))
-                     .arg (QString::number (m_rigState.tx_frequency ()))
-                     .arg (g_iptt)
-                     .arg (m_transmitting ? "true" : "false")
-                     .arg (m_enableTx ? "true" : "false"));
+  try
+    {
+      auto const ticket_target = QString::fromStdString (m_autoSeqRecovery.target ());
+      auto const diagnostic_target = !ticket_target.isEmpty () ? ticket_target : m_hisCall;
+      QsoHistory::Status historyStatus = QsoHistory::NONE;
+      int retryCount = -1;
+      bool const historyKnown = m_qsoHistory.diagnosticSnapshot (
+        diagnostic_target, historyStatus, retryCount);
+      appendRecoveryLogLazy (m_dataDir, "auto-call", [&] {
+        return QString {"recovery_ticket decision=%1 reason=%2 was_pending=%3 pending=%4 "
+                        "target=%5 main_status=%6 history_known=%7 history_status=%8 "
+                        "retry_count=%9 tx_sequence=%10 enable_tx=%11 transmitting=%12 "
+                        "tx_when_ready=%13 g_iptt=%14 signoff_tx_interrupted=%15"}
+          .arg (QString::fromLatin1 (ticketDecision))
+          .arg (QString::fromLatin1 (ticketReason))
+          .arg (ticketWasPending ? "true" : "false")
+          .arg (m_autoSeqRecovery.pending () ? "true" : "false")
+          .arg (diagnostic_target).arg (static_cast<int> (m_status))
+          .arg (historyKnown ? "true" : "false")
+          .arg (static_cast<int> (historyStatus)).arg (retryCount).arg (m_ntx)
+          .arg (m_enableTx ? "true" : "false")
+          .arg (m_transmitting ? "true" : "false")
+          .arg (m_tx_when_ready ? "true" : "false").arg (g_iptt)
+          .arg (signoffTxInterrupted ? "true" : "false");
+      });
+      appendRecoveryLogLazy (m_dataDir, "rig-control", [&] {
+        return QString {"failure_received=true; reason_present=true; online=%1; ptt=%2; split=%3; "
+                        "frequency=%4; tx_frequency=%5; g_iptt=%6; "
+                        "transmitting=%7; enable_tx=%8"}
+          .arg (m_rigState.online () ? "true" : "false")
+          .arg (m_rigState.ptt () ? "true" : "false")
+          .arg (m_rigState.split () ? "true" : "false")
+          .arg (QString::number (m_rigState.frequency ()))
+          .arg (QString::number (m_rigState.tx_frequency ()))
+          .arg (g_iptt)
+          .arg (m_transmitting ? "true" : "false")
+          .arg (m_enableTx ? "true" : "false");
+      });
+    }
+  catch (...)
+    {
+      // Snapshot and formatting failures must not interrupt CAT recovery.
+    }
   ui->readFreq->setStyleSheet(ui->readFreq->styleSheet().left(230)+QString("background: %1;\n color: %2;\n}").arg(Radio::convert_dark("#ff0000",m_useDarkStyle),Radio::convert_dark("#000000",m_useDarkStyle)));
   m_rigOk=false;
   ui->readFreq->setEnabled (true);
@@ -8656,11 +8693,11 @@ void MainWindow::retryRigOpen ()
 
 void MainWindow::rigFailure (QString const& reason, QString const& detail)
 {
-  appendRecoveryLog (
-    m_dataDir, "rig-control",
-    QString {"reconnect_failure reason_present=%1 detail_present=%2"}
+  appendRecoveryLogLazy (m_dataDir, "rig-control", [&] {
+    return QString {"reconnect_failure reason_present=%1 detail_present=%2"}
       .arg (!reason.isEmpty () ? "true" : "false")
-      .arg (!detail.isEmpty () ? "true" : "false"));
+      .arg (!detail.isEmpty () ? "true" : "false");
+  });
   if (m_rigRecoveryTimer.isActive () || m_rigErrorMessageBox.isVisible ())
     {
       return;
