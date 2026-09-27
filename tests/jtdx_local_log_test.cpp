@@ -60,6 +60,20 @@ int main ()
              && current.count ('\n') == 1 && !current.contains ("\r\n"),
          "Unicode is retained and newline injection stays on one line");
 
+  QString const diagnosticLine {
+    "failure_received=true ticket_decision=created target=TEST1 "
+    "history_known=true history_status=5 retry_count=2 tx_when_ready=true"};
+  check (JtdxLocalLog::append (directory, QStringLiteral ("recovery.log"),
+                               QStringLiteral ("rig-control"), diagnosticLine, limits),
+         "synthetic failure-chain diagnostic writes");
+  QByteArray const diagnostic = read (
+    directory.absoluteFilePath (QStringLiteral ("recovery.log")));
+  check (diagnostic.contains ("ticket_decision=created")
+             && diagnostic.contains ("retry_count=2")
+             && diagnostic.count ('\n') == 1
+             && diagnostic.size () <= limits.max_bytes,
+         "diagnostic fields stay on one bounded JtdxLocalLog line");
+
   JtdxLocalLog::Limits short_limits;
   short_limits.max_bytes = 64;
   check (JtdxLocalLog::append (directory, QStringLiteral ("oversize.log"),
@@ -157,6 +171,20 @@ int main ()
   check (not_directory.open (QIODevice::WriteOnly), "write failure fixture file is created");
   not_directory.close ();
   QString const failure_path = not_directory.fileName ();
+  bool write_threw = false;
+  bool write_succeeded = true;
+  try
+    {
+      write_succeeded = JtdxLocalLog::append (
+        QDir {failure_path}, QStringLiteral ("recovery.log"),
+        QStringLiteral ("rig-control"), QStringLiteral ("synthetic failure"));
+    }
+  catch (...)
+    {
+      write_threw = true;
+    }
+  check (!write_threw && !write_succeeded,
+         "failed diagnostic write returns false without throwing");
   write_failure.set_diagnostic_logger ([&failure_path] (QString const& line) {
       JtdxLocalLog::append (QDir {failure_path}, QStringLiteral ("control.log"),
                             QStringLiteral ("web-control"), line);

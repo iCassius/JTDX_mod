@@ -462,6 +462,16 @@ QsoHistory::Status QsoHistory::status(QString const& callsign, QString &grid)
     } else return NONE;
 }
 
+bool QsoHistory::diagnosticSnapshot (QString const& callsign, Status& status, int& count) const
+{
+    if (!_working || callsign.isEmpty ()) return false;
+    auto const it = _data.constFind (Radio::base_callsign (callsign));
+    if (it == _data.cend ()) return false;
+    status = it->status;
+    count = it->count;
+    return true;
+}
+
 void QsoHistory::owndata(QString const& mycontinent, QString const& myprefix, QString const& mygrid, bool strictdirCQ)
 {
     if (_working)

@@ -74,6 +74,32 @@ namespace
 
 int main ()
 {
+  QsoHistory snapshot;
+  setup (snapshot);
+  addCandidate (snapshot, QStringLiteral ("W1ABC"), QsoHistory::RCQ, 17,
+                1000, QStringLiteral ("-10"));
+  QsoHistory::Status snapshotStatus = QsoHistory::NONE;
+  int snapshotCount = -1;
+  require (snapshot.diagnosticSnapshot (QStringLiteral ("W1ABC"),
+                                        snapshotStatus, snapshotCount)
+               && snapshotStatus == QsoHistory::RCQ && snapshotCount == 0,
+           "diagnostic snapshot reads the current QSO status and retry count");
+  for (unsigned time : {1016u, 1032u})
+    snapshot.message (QStringLiteral ("W1ABC"), QsoHistory::SCALL, 17,
+                      QString {}, QString {}, QStringLiteral ("NA"),
+                      QStringLiteral ("W"), time, QStringLiteral ("-10"),
+                      700, QStringLiteral ("FT8"));
+  require (snapshot.diagnosticSnapshot (QStringLiteral ("W1ABC"),
+                                        snapshotStatus, snapshotCount)
+               && snapshotStatus == QsoHistory::SCALL && snapshotCount == 2,
+           "diagnostic snapshot reports accumulated outgoing attempts");
+  snapshotStatus = QsoHistory::FIN;
+  snapshotCount = 99;
+  require (!snapshot.diagnosticSnapshot (QStringLiteral ("K1MISSING"),
+                                         snapshotStatus, snapshotCount)
+               && snapshotStatus == QsoHistory::FIN && snapshotCount == 99,
+           "missing snapshot leaves output values unchanged");
+
   // The current-batch mixed candidate path must honor a special-target
   // failure even with rare-target options disabled, without broadening the
   // old no-rare behavior for ordinary calllist records.

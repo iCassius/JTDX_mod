@@ -117,14 +117,15 @@ namespace
                                          "consecutive=%4 overall_consecutive=%5 ftx1=true "
                                          "ptt_intent=%6 ptt_actual=%7 ptt_known=%8 ptt_pending=%9 "
                                          "ptt_transition=%10 safe_idle=%11 protocol_sync_mismatches=%12 "
-                                         "decision=%13")
+                                         "decision=%13 throws_to_offline=%14")
                            .arg (poll_operation_name (operation)).arg (rc)
                            .arg (hamlib_error_category (rc)).arg (consecutive)
                            .arg (overall_consecutive).arg (ptt_intent ? "true" : "false")
                            .arg (ptt_actual ? "true" : "false").arg (ptt_known ? "true" : "false")
                            .arg (ptt_pending ? "true" : "false").arg (ptt_transition ? "true" : "false")
                            .arg (safe_idle ? "true" : "false").arg (protocol_sync_mismatches)
-                           .arg (poll_decision_name (decision)));
+                           .arg (poll_decision_name (decision))
+                           .arg (Ftx1CatPollPolicy::Decision::soft_ignore != decision ? "true" : "false"));
   }
 
   void append_hamlib_error_log (QString diagnostic)

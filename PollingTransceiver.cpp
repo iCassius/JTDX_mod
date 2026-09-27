@@ -9,11 +9,27 @@
 #include <QThread>
 #include <QDir>
 #include <QStandardPaths>
+#include "JtdxLocalLog.hpp"
 #include "moc_PollingTransceiver.cpp"
 
 namespace
 {
   unsigned const polls_to_stabilize {3};
+
+  void append_poll_failure_diagnostic () noexcept
+  {
+    try
+      {
+        JtdxLocalLog::append (
+          QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)},
+          QStringLiteral ("jtdx_recovery.log"), QStringLiteral ("rig-control"),
+          QStringLiteral ("poll_exception offline_transition=begin reason_present=true"));
+      }
+    catch (...)
+      {
+        // A diagnostic write must not escape into transceiver control flow.
+      }
+  }
 }
 
 PollingTransceiver::PollingTransceiver (int poll_interval, QObject * parent)
@@ -297,6 +313,7 @@ void PollingTransceiver::handle_timeout ()
     }
   if (!message.isEmpty ())
     {
+      append_poll_failure_diagnostic ();
       offline (message);
     }
   }

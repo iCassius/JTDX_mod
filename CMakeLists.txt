@@ -1704,6 +1704,13 @@ if (JTDX_BUILD_LOCAL_TESTS)
   target_include_directories (jtdx_local_log_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   target_link_libraries (jtdx_local_log_test Qt5::Core)
   add_test (NAME jtdx_local_log_test COMMAND jtdx_local_log_test)
+  add_executable (autoseq_cat_diagnostics_contract_test
+    tests/autoseq_cat_diagnostics_contract_test.cpp)
+  target_compile_definitions (autoseq_cat_diagnostics_contract_test PRIVATE
+    JTDX_SOURCE_DIR=\"${CMAKE_CURRENT_SOURCE_DIR}\")
+  target_link_libraries (autoseq_cat_diagnostics_contract_test Qt5::Core)
+  add_test (NAME autoseq_cat_diagnostics_contract_test
+    COMMAND autoseq_cat_diagnostics_contract_test)
   add_executable (mainwindow_web_frequency_contract_test
     tests/mainwindow_web_frequency_contract_test.cpp
     JtdxWebControl.cpp

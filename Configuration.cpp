@@ -179,6 +179,7 @@
 #include "StationList.hpp"
 #include "NetworkServerLookup.hpp"
 #include "JTDXMessageBox.hpp"
+#include "JtdxLocalLog.hpp"
 
 #include "pimpl_impl.hpp"
 
@@ -6355,11 +6356,25 @@ void Configuration::impl::handle_transceiver_failure (QString const& reason)
   qDebug () << "Configuration::handle_transceiver_failure: reason:" << reason;
 #endif
 
-//  printf("%s(%0.1f) Configuration transceiver_failure close rig\n",jtdxtime_->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),jtdxtime_->GetOffset());
   close_rig ();
   ui_->test_PTT_push_button->setChecked (false);
 
-  if (isVisible ())
+  auto const configuration_visible = isVisible ();
+  auto const forward_to_main_window = !configuration_visible;
+  try
+    {
+      JtdxLocalLog::append (
+        QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)},
+        QStringLiteral ("jtdx_recovery.log"), QStringLiteral ("rig-control"),
+        QStringLiteral ("configuration_failure received=true configuration_visible=%1 forward_to_main_window=%2 reason_present=true")
+          .arg (configuration_visible ? "true" : "false")
+          .arg (forward_to_main_window ? "true" : "false"));
+    }
+  catch (...)
+    {
+      // A diagnostic write must not affect CAT failure handling.
+    }
+  if (configuration_visible)
     {
       message_box_critical (tr ("Rig failure"), reason);
     }

@@ -139,8 +139,15 @@ namespace
 {
   void appendRecoveryLog (QDir const& dataDirectory, QString area, QString message)
   {
-    JtdxLocalLog::append (dataDirectory, QStringLiteral ("jtdx_recovery.log"),
-                         std::move (area), std::move (message));
+    try
+      {
+        JtdxLocalLog::append (dataDirectory, QStringLiteral ("jtdx_recovery.log"),
+                             std::move (area), std::move (message));
+      }
+    catch (...)
+      {
+        // A diagnostic write must not escape into MainWindow control flow.
+      }
   }
 
   Radio::Frequency constexpr default_frequency {14076000};
@@ -2914,7 +2921,7 @@ void MainWindow::on_AutoSeqButton_clicked (bool checked)
   m_autoseq = checked;
   if (!checked) {
     m_autoDirectedAnswerActive = false;
-    m_autoSeqRecovery.cancel ();
+    cancelAutoSeqRecovery (QStringLiteral ("auto_sequence_disabled"));
   }
   if (checked) {
     m_wasAutoSeq=false; //in case of toggling AutoSeq button by user
@@ -3000,7 +3007,7 @@ void MainWindow::on_enableTxButton_clicked (bool checked)
 {
   if (!checked && m_autoSeqRecovery.pending () && !m_autoSeqRecoveryInternalHalt
       && !m_autoSeqRecoveryInternalUiChange)
-    m_autoSeqRecovery.cancel ();
+    cancelAutoSeqRecovery (QStringLiteral ("enable_tx_disabled"));
   ui->pbBandHopping->setChecked(false); // disable band hopping when Tx is enabled
   if(m_enableTx && !checked && m_curMsgTx.startsWith(m_hisCall+" ")) m_lasthint=true;
   if(checked && m_lasthint) m_lasthint=false;
@@ -3078,14 +3085,14 @@ void MainWindow::keyPressEvent( QKeyEvent *e )                //keyPressEvent
       return;
     case Qt::Key_E:
       if(e->modifiers() & Qt::ShiftModifier) {
-        if (m_autoSeqRecovery.pending ()) m_autoSeqRecovery.cancel ();
+        if (m_autoSeqRecovery.pending ()) cancelAutoSeqRecovery (QStringLiteral ("manual_tx_period_key"));
         m_txFirst=false;
         ui->TxMinuteButton->setChecked(m_txFirst);
         setMinButton();
         return;
       }
       if(e->modifiers() & Qt::ControlModifier) {
-        if (m_autoSeqRecovery.pending ()) m_autoSeqRecovery.cancel ();
+        if (m_autoSeqRecovery.pending ()) cancelAutoSeqRecovery (QStringLiteral ("manual_tx_period_key"));
         m_txFirst=true;
         ui->TxMinuteButton->setChecked(m_txFirst);
         setMinButton();
@@ -4252,9 +4259,7 @@ void MainWindow::process_Auto(bool forceCandidate)
       (m_autoSeqRecoveryMode != m_mode
        || (!m_autoSeqRecoveryBand.isEmpty ()
            && m_autoSeqRecoveryBand != m_config.bands ()->find (m_freqNominal)))) {
-    appendRecoveryLog (m_dataDir, "auto-call",
-                       QStringLiteral ("recovery canceled after manual band or mode change"));
-    m_autoSeqRecovery.cancel ();
+    cancelAutoSeqRecovery (QStringLiteral ("manual_band_or_mode_change"));
   }
   bool const recoveryFreshBatch = !m_manualDecode && !m_diskData
     && m_autoSeqRecovery.is_fresh_batch (m_msDecStarted);
@@ -6008,7 +6013,7 @@ void MainWindow::ba2msg(QByteArray ba, char message[])             //ba2msg()
 
 void MainWindow::on_TxMinuteButton_clicked(bool checked)        //TxFirst
 {
-  if (m_autoSeqRecovery.pending ()) m_autoSeqRecovery.cancel ();
+  if (m_autoSeqRecovery.pending ()) cancelAutoSeqRecovery (QStringLiteral ("manual_tx_period_button"));
   m_txFirst=checked;
   if(m_transmitting && m_config.write_decoded_debug()) writeToALLTXT("Tx halted: period changed via TX period button");
   if (m_txGenerated != checked && m_enableTx && m_autoseq)  clearDX (" cleared, Tx Minute button clicked");
@@ -6745,7 +6750,7 @@ void MainWindow::TxAgain() { enableTx_mode(true); }
 void MainWindow::clearDX (QString reason)
 {
   if (m_autoSeqRecovery.pending () && !m_autoSeqRecoveryInternalUiChange)
-    m_autoSeqRecovery.cancel ();
+    cancelAutoSeqRecovery (QStringLiteral ("dx_cleared"));
   QString dxcallclr=m_hisCall;
   clearDXfields("");
   genStdMsgs(QString {});
@@ -7120,7 +7125,7 @@ void MainWindow::on_propLineEdit_textChanged(const QString &text) {
 void MainWindow::on_dxCallEntry_textChanged(const QString &t) //dxCall changed
 {
   if (m_autoSeqRecovery.pending () && !m_autoSeqRecoveryInternalUiChange)
-    m_autoSeqRecovery.cancel ();
+    cancelAutoSeqRecovery (QStringLiteral ("dx_target_edited"));
   if (!m_hisCall.isEmpty () && t.toUpper ().trimmed () != m_hisCall)
     m_autoDirectedAnswerActive = false;
   int n=t.length();
@@ -7446,7 +7451,7 @@ void MainWindow::switch_mode (Mode mode)
 {
 // m_lastMode value is deliberately not assigned in constructor to let qsohistory init at SW startup 
   if (m_autoSeqRecovery.pending () && m_autoSeqRecoveryMode != m_mode)
-    m_autoSeqRecovery.cancel ();
+    cancelAutoSeqRecovery (QStringLiteral ("mode_changed"));
   if(m_lastMode!=m_mode) {
      m_autoDirectedAnswerActive = false;
      if (m_lastMode == "FT4") Q_EMIT m_config.transceiver_ft4_mode (false);
@@ -7749,7 +7754,7 @@ void MainWindow::band_changed (Frequency f)
 {
   if (m_autoSeqRecovery.pending () && !m_autoSeqRecoveryBand.isEmpty ()
       && m_autoSeqRecoveryBand != m_config.bands ()->find (f))
-    m_autoSeqRecovery.cancel ();
+    cancelAutoSeqRecovery (QStringLiteral ("band_changed"));
   if (m_bandEdited) {
     if (!m_mode.startsWith ("WSPR")) { // band hopping preserves auto Tx
       if (f + m_wideGraph->nStartFreq () > m_freqNominal + ui->TxFreqSpinBox->value ()
@@ -8104,7 +8109,7 @@ void MainWindow::stopTuneATU() { on_tuneButton_clicked(false); m_bTxTime=false; 
 void MainWindow::on_stopTxButton_clicked()                    //Stop Tx
 {
   if (m_autoSeqRecovery.pending () && !m_autoSeqRecoveryInternalHalt)
-    m_autoSeqRecovery.cancel ();
+    cancelAutoSeqRecovery (QStringLiteral ("stop_tx"));
   m_autoDirectedAnswerActive = false;
   if (m_transmitting || m_tune) m_addtx = -1;
   if (m_tune) stop_tuning ();
@@ -8308,19 +8313,40 @@ void MainWindow::handle_transceiver_update (Transceiver::TransceiverState const&
 
   // CAT 重连后仍须看到实际 PTT 关闭；首次在线状态可能只反映初始化，
   // 因此重连计数复位后仍保留票据等待随后的 PTT-off 更新。
+  // TransceiverState has no separate PTT-validity bit; ptt_known below means
+  // an online state update carrying the current PTT value was received.
   if (s.online () && m_autoSeqRecovery.awaiting_reconnect ())
     {
       bool const changedContext = m_autoSeqRecoveryMode != m_mode
         || (s.frequency () != 0 && !m_autoSeqRecoveryBand.isEmpty ()
             && m_autoSeqRecoveryBand != m_config.bands ()->find (s.frequency ()));
+      auto const ticketTarget = QString::fromStdString (m_autoSeqRecovery.target ());
+      auto const diagnosticTarget = !ticketTarget.isEmpty () ? ticketTarget : m_hisCall;
+      QsoHistory::Status historyStatus = QsoHistory::NONE;
+      int retryCount = -1;
+      bool const historyKnown = m_qsoHistory.diagnosticSnapshot (
+        diagnosticTarget, historyStatus, retryCount);
       if (changedContext)
         {
-          appendRecoveryLog (m_dataDir, "auto-call",
-                             QStringLiteral ("recovery canceled after band or mode changed while CAT was offline"));
-          m_autoSeqRecovery.cancel ();
+          appendRecoveryLog (
+            m_dataDir, "auto-call",
+            QString {"recovery_online_update online=true ptt_known=true ptt_on=%1 "
+                     "target=%2 history_known=%3 history_status=%4 retry_count=%5 "
+                     "decision=cancel_ticket_context_changed dx_release=false"}
+              .arg (s.ptt () ? "true" : "false").arg (diagnosticTarget)
+              .arg (historyKnown ? "true" : "false")
+              .arg (static_cast<int> (historyStatus)).arg (retryCount));
+          cancelAutoSeqRecovery (QStringLiteral ("band_or_mode_changed_while_cat_offline"));
         }
       else if (!s.ptt ())
         {
+          appendRecoveryLog (
+            m_dataDir, "auto-call",
+            QString {"recovery_online_update online=true ptt_known=true ptt_on=false "
+                     "target=%1 history_known=%2 history_status=%3 retry_count=%4 "
+                     "decision=release_dx_wait_fresh_decode"}
+              .arg (diagnosticTarget).arg (historyKnown ? "true" : "false")
+              .arg (static_cast<int> (historyStatus)).arg (retryCount));
           auto const recoveredAt = m_jtdxtime->currentMSecsSinceEpoch2 ();
           m_autoSeqRecovery.reconnected_ptt_off (recoveredAt);
           m_autoSeqRecoveryInternalUiChange = true;
@@ -8331,8 +8357,13 @@ void MainWindow::handle_transceiver_update (Transceiver::TransceiverState const&
                              .arg (recoveredAt));
         }
       else
-        appendRecoveryLog (m_dataDir, "auto-call",
-                           QStringLiteral ("recovery online but PTT on; DX remains occupied"));
+        appendRecoveryLog (
+          m_dataDir, "auto-call",
+          QString {"recovery_online_update online=true ptt_known=true ptt_on=true "
+                   "target=%1 history_known=%2 history_status=%3 retry_count=%4 "
+                   "decision=retain_ticket_and_dx"}
+            .arg (diagnosticTarget).arg (historyKnown ? "true" : "false")
+            .arg (static_cast<int> (historyStatus)).arg (retryCount));
     }
 
   if (s.online () && m_rigRecovery.attempts ())
@@ -8478,11 +8509,33 @@ void MainWindow::handle_transceiver_update (Transceiver::TransceiverState const&
   tryCompletePendingWebRadio ();
 }
 
+void MainWindow::cancelAutoSeqRecovery (QString const& reason)
+{
+  auto const ticket_target = QString::fromStdString (m_autoSeqRecovery.target ());
+  auto const diagnostic_target = !ticket_target.isEmpty () ? ticket_target : m_hisCall;
+  QsoHistory::Status history_status = QsoHistory::NONE;
+  int retry_count = -1;
+  bool const history_known = m_qsoHistory.diagnosticSnapshot (
+    diagnostic_target, history_status, retry_count);
+  if (m_autoSeqRecovery.pending ())
+    {
+      appendRecoveryLog (
+        m_dataDir, "auto-call",
+        QString {"recovery_ticket=cancelled reason=%1 target=%2 main_status=%3 "
+                 "history_known=%4 history_status=%5 retry_count=%6 tx_sequence=%7"}
+          .arg (reason).arg (diagnostic_target).arg (static_cast<int> (m_status))
+          .arg (history_known ? "true" : "false")
+          .arg (static_cast<int> (history_status)).arg (retry_count).arg (m_ntx));
+    }
+  m_autoSeqRecovery.cancel ();
+}
+
 void MainWindow::handle_transceiver_failure (QString const& reason)
 {
   m_webState->observe_rig (false, 0, 0, false);
   bool const recoverySupported = m_autoseq && !m_houndMode
     && !m_mode.startsWith ("WSPR");
+  bool const ticketWasPending = m_autoSeqRecovery.pending ();
   bool const preserveAutoSeqIntent = recoverySupported && !m_hisCall.isEmpty ()
     && (m_enableTx || m_transmitting || m_tx_when_ready || g_iptt != 0);
   // transmittedQSOProgress 在 Tx 开始时更新，不能单独证明首个 73 已完成。
@@ -8490,26 +8543,64 @@ void MainWindow::handle_transceiver_failure (QString const& reason)
   bool const signoffTxInterrupted = recoverySupported
     && (m_QSOProgress == SIGNOFF || m_transmittedQSOProgress == SIGNOFF)
     && (m_transmitting || m_tx_when_ready || g_iptt != 0 || m_btxok);
-  if (!recoverySupported && m_autoSeqRecovery.pending ()) {
-    m_autoSeqRecovery.cancel ();
-  } else if (preserveAutoSeqIntent || m_autoSeqRecovery.pending ()) {
-    if (!m_autoSeqRecovery.pending () && preserveAutoSeqIntent) {
+  QString ticketDecision;
+  QString ticketReason;
+  if (!recoverySupported) {
+    ticketDecision = ticketWasPending ? QStringLiteral ("cancelled")
+                                      : QStringLiteral ("rejected");
+    ticketReason = QStringLiteral ("auto_sequence_unsupported");
+    if (ticketWasPending) cancelAutoSeqRecovery (ticketReason);
+  } else if (preserveAutoSeqIntent || ticketWasPending) {
+    if (!ticketWasPending && preserveAutoSeqIntent) {
       m_autoSeqRecoveryBand = m_config.bands ()->find (m_freqNominal);
       m_autoSeqRecoveryMode = m_mode;
     }
     m_autoSeqRecovery.disconnected (
       true, m_hisCall.toStdString (),
       Radio::base_callsign (m_hisCall).toStdString (), signoffTxInterrupted);
+    ticketDecision = m_autoSeqRecovery.pending ()
+      ? (ticketWasPending ? QStringLiteral ("retained") : QStringLiteral ("created"))
+      : QStringLiteral ("rejected");
+    ticketReason = m_autoSeqRecovery.pending ()
+      ? (preserveAutoSeqIntent ? QStringLiteral ("active_tx_intent")
+                               : QStringLiteral ("existing_ticket"))
+      : QStringLiteral ("target_missing_after_disconnect");
     appendRecoveryLog (m_dataDir, "auto-call",
                        QString {"recovery disconnected preserveIntent=%1 signoffTxInterrupted=%2"}
                        .arg (preserveAutoSeqIntent ? "true" : "false")
                        .arg (signoffTxInterrupted ? "true" : "false"));
+  } else {
+    ticketDecision = QStringLiteral ("rejected");
+    ticketReason = m_hisCall.isEmpty ()
+      ? QStringLiteral ("no_target")
+      : QStringLiteral ("no_active_tx_intent");
   }
+  auto const ticket_target = QString::fromStdString (m_autoSeqRecovery.target ());
+  auto const diagnostic_target = !ticket_target.isEmpty () ? ticket_target : m_hisCall;
+  QsoHistory::Status historyStatus = QsoHistory::NONE;
+  int retryCount = -1;
+  bool const historyKnown = m_qsoHistory.diagnosticSnapshot (
+    diagnostic_target, historyStatus, retryCount);
+  appendRecoveryLog (
+    m_dataDir, "auto-call",
+    QString {"recovery_ticket decision=%1 reason=%2 was_pending=%3 pending=%4 "
+             "target=%5 main_status=%6 history_known=%7 history_status=%8 "
+             "retry_count=%9 tx_sequence=%10 enable_tx=%11 transmitting=%12 "
+             "tx_when_ready=%13 g_iptt=%14 signoff_tx_interrupted=%15"}
+      .arg (ticketDecision).arg (ticketReason)
+      .arg (ticketWasPending ? "true" : "false")
+      .arg (m_autoSeqRecovery.pending () ? "true" : "false")
+      .arg (diagnostic_target).arg (static_cast<int> (m_status))
+      .arg (historyKnown ? "true" : "false")
+      .arg (static_cast<int> (historyStatus)).arg (retryCount).arg (m_ntx)
+      .arg (m_enableTx ? "true" : "false")
+      .arg (m_transmitting ? "true" : "false")
+      .arg (m_tx_when_ready ? "true" : "false").arg (g_iptt)
+      .arg (signoffTxInterrupted ? "true" : "false"));
   appendRecoveryLog (m_dataDir, "rig-control",
-                     QString {"failure=%1; online=%2; ptt=%3; split=%4; "
-                              "frequency=%5; tx_frequency=%6; g_iptt=%7; "
-                              "transmitting=%8; enable_tx=%9"}
-                     .arg (reason)
+                     QString {"failure_received=true; reason_present=true; online=%1; ptt=%2; split=%3; "
+                              "frequency=%4; tx_frequency=%5; g_iptt=%6; "
+                              "transmitting=%7; enable_tx=%8"}
                      .arg (m_rigState.online () ? "true" : "false")
                      .arg (m_rigState.ptt () ? "true" : "false")
                      .arg (m_rigState.split () ? "true" : "false")
@@ -8565,7 +8656,11 @@ void MainWindow::retryRigOpen ()
 
 void MainWindow::rigFailure (QString const& reason, QString const& detail)
 {
-  appendRecoveryLog (m_dataDir, "rig-control", reason + ": " + detail);
+  appendRecoveryLog (
+    m_dataDir, "rig-control",
+    QString {"reconnect_failure reason_present=%1 detail_present=%2"}
+      .arg (!reason.isEmpty () ? "true" : "false")
+      .arg (!detail.isEmpty () ? "true" : "false"));
   if (m_rigRecoveryTimer.isActive () || m_rigErrorMessageBox.isVisible ())
     {
       return;

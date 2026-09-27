@@ -13,8 +13,9 @@ namespace JtdxLocalLog
     int rotated_files {1};
   };
 
-  // Appends one sanitized UTF-8 line. A failed write is only a diagnostic
-  // result; callers must not use it as a control-flow or safety decision.
+  // Appends one sanitized UTF-8 line. Write failures and internal logging
+  // exceptions return false; callers must not use the result as a control-flow
+  // or safety decision.
   bool append (QDir const& directory, QString const& file_name,
                QString area, QString message, Limits limits = {});
 }

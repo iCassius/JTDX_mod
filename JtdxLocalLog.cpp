@@ -69,29 +69,37 @@ namespace
 bool JtdxLocalLog::append (QDir const& directory, QString const& file_name,
                            QString area, QString message, Limits limits)
 {
-  if (limits.max_bytes <= 0 || file_name.isEmpty ()) return false;
-  QMutexLocker locker {&log_mutex};
-  QString const path = directory.absoluteFilePath (file_name);
-  QString const line = QDateTime::currentDateTime ().toString (Qt::ISODateWithMs)
-      + QStringLiteral (" [") + sanitize (std::move (area), max_area_length)
-      + QStringLiteral ("] ") + sanitize (std::move (message), max_message_length)
-      + QLatin1Char ('\n');
-  QByteArray bytes = line.toUtf8 ();
-  if (bytes.size () > limits.max_bytes)
+  try
     {
-      int const limit = static_cast<int> (qMin<qint64> (limits.max_bytes, INT_MAX));
-      bytes.truncate (qMax (0, limit - 1));
-      bytes.append ('\n');
+      if (limits.max_bytes <= 0 || file_name.isEmpty ()) return false;
+      QMutexLocker locker {&log_mutex};
+      QString const path = directory.absoluteFilePath (file_name);
+      QString const line = QDateTime::currentDateTime ().toString (Qt::ISODateWithMs)
+          + QStringLiteral (" [") + sanitize (std::move (area), max_area_length)
+          + QStringLiteral ("] ") + sanitize (std::move (message), max_message_length)
+          + QLatin1Char ('\n');
+      QByteArray bytes = line.toUtf8 ();
+      if (bytes.size () > limits.max_bytes)
+        {
+          int const limit = static_cast<int> (qMin<qint64> (limits.max_bytes, INT_MAX));
+          bytes.truncate (qMax (0, limit - 1));
+          bytes.append ('\n');
+        }
+      if (bytes.isEmpty ()) return false;
+
+      QFileInfo const info {path};
+      if (info.exists () && info.size () + bytes.size () > limits.max_bytes
+          && !rotate (path, limits)) return false;
+
+      QFile log {path};
+      if (!log.open (QIODevice::WriteOnly | QIODevice::Append)) return false;
+      qint64 const written = log.write (bytes);
+      log.close ();
+      return written == bytes.size ();
     }
-  if (bytes.isEmpty ()) return false;
-
-  QFileInfo const info {path};
-  if (info.exists () && info.size () + bytes.size () > limits.max_bytes
-      && !rotate (path, limits)) return false;
-
-  QFile log {path};
-  if (!log.open (QIODevice::WriteOnly | QIODevice::Append)) return false;
-  qint64 const written = log.write (bytes);
-  log.close ();
-  return written == bytes.size ();
+  catch (...)
+    {
+      // Diagnostics must never escape into CAT, AutoSeq, or TX control paths.
+      return false;
+    }
 }

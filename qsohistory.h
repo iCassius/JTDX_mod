@@ -49,6 +49,7 @@ class QsoHistory
 	void time(unsigned time);
 	void owndata (QString const& mycontinent, QString const& myprefix, QString const& mygrid, bool strictdirCQ);
 	Status status(QString const& callsign, QString &grid);
+	bool diagnosticSnapshot (QString const& callsign, Status& status, int& count) const;
 	Status autoseq(QString &callsign, QString &grid, QString &rep, int &rx, int &tx, unsigned &time, int &count, int &prio, QString &mode);
 	Status log_data(QString const& callsign, unsigned &time, QString &rrep, QString &srep);
 	int remove(QString const& callsign);		

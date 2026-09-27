@@ -7,11 +7,27 @@
 #include <QThread>
 #include <QDebug>
 
+#include "JtdxLocalLog.hpp"
 #include "moc_TransceiverBase.cpp"
 
 namespace
 {
   auto const unexpected = TransceiverBase::tr ("Unexpected rig error");
+
+  void append_failure_diagnostic () noexcept
+  {
+    try
+      {
+        JtdxLocalLog::append (
+          QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)},
+          QStringLiteral ("jtdx_recovery.log"), QStringLiteral ("rig-control"),
+          QStringLiteral ("transceiver_offline failure_signal=emit reason_present=true"));
+      }
+    catch (...)
+      {
+        // A diagnostic write must not escape into transceiver control flow.
+      }
+  }
 }
 
 void TransceiverBase::start (unsigned sequence_number,JTDXDateTime * jtdxdatetime) noexcept
@@ -649,6 +665,7 @@ void TransceiverBase::update_complete (bool force_signal)
 
 void TransceiverBase::offline (QString const& reason)
 {
+  append_failure_diagnostic ();
 #if JTDX_DEBUG_TO_FILE
   FILE * pFile = fopen (debug_file_.c_str(),"a");
   if (jtdxtime_ == nullptr)

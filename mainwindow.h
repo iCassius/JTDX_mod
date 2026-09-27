@@ -411,6 +411,7 @@ private:
   Q_SIGNAL void toggleShorthand () const;
 
 private:
+  void cancelAutoSeqRecovery (QString const& reason);
   void hideMenus (bool b);
   void applyWebUiConfiguration ();
   void updateWebRadioState ();
