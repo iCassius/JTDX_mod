@@ -1,4 +1,5 @@
 #include "Configuration.hpp"
+#include "RigSessionPolicy.hpp"
 
 //
 // Read me!
@@ -188,15 +189,24 @@
 
 namespace
 {
-  void append_configuration_failure_diagnostic (char const * stage) noexcept
+  using RigSessionPurpose = RigSessionPolicy::Purpose;
+
+  char const * rig_session_purpose_name (RigSessionPurpose purpose) noexcept
+  {
+    return RigSessionPurpose::runtime == purpose ? "runtime" : "configuration_test";
+  }
+
+  void append_configuration_failure_diagnostic (char const * stage,
+                                                quint64 generation) noexcept
   {
     try
       {
         JtdxLocalLog::append (
           QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)},
           QStringLiteral ("jtdx_recovery.log"), QStringLiteral ("rig-control"),
-          QStringLiteral ("configuration_failure stage=%1 received=true reason_present=true")
-            .arg (QString::fromLatin1 (stage)));
+          QStringLiteral ("configuration_failure stage=%1 generation=%2 received=true reason_present=true")
+            .arg (QString::fromLatin1 (stage))
+            .arg (generation));
       }
     catch (...)
       {
@@ -204,7 +214,8 @@ namespace
       }
   }
 
-  void append_configuration_failure_decision (bool configuration_visible,
+  void append_configuration_failure_decision (quint64 generation,
+                                                RigSessionPurpose purpose,
                                                 bool forward_to_main_window) noexcept
   {
     try
@@ -212,8 +223,9 @@ namespace
         JtdxLocalLog::append (
           QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)},
           QStringLiteral ("jtdx_recovery.log"), QStringLiteral ("rig-control"),
-          QStringLiteral ("configuration_failure stage=decision received=true configuration_visible=%1 forward_to_main_window=%2 reason_present=true")
-            .arg (configuration_visible ? "true" : "false")
+          QStringLiteral ("configuration_failure stage=decision generation=%1 session_purpose=%2 forward_to_main_window=%3 reason_present=true")
+            .arg (generation)
+            .arg (QString::fromLatin1 (rig_session_purpose_name (purpose)))
             .arg (forward_to_main_window ? "true" : "false"));
       }
     catch (...)
@@ -440,7 +452,8 @@ private:
       (rig_params_.split_mode != TransceiverFactory::split_mode_none);
   }
   void set_cached_mode ();
-  bool open_rig (bool force = false);
+  bool open_rig (bool force = false,
+                 RigSessionPurpose purpose = RigSessionPurpose::runtime);
   //bool set_mode ();
   void close_rig ();
   TransceiverFactory::ParameterPack gather_rig_data ();
@@ -501,7 +514,7 @@ private:
   Q_SLOT void handle_transceiver_tciframeswritten (qint64);
   Q_SLOT void handle_transceiver_tci_mod_active (bool);
   Q_SLOT void handle_transceiver_update (TransceiverState const&, unsigned sequence_number);
-  Q_SLOT void handle_transceiver_failure (QString const& reason);
+  void handle_transceiver_failure (QString const& reason, quint64 generation);
   Q_SLOT void on_countryName_check_box_clicked(bool checked);
   Q_SLOT void on_callNotif_check_box_clicked(bool checked);
   Q_SLOT void on_otherMessagesMarker_check_box_clicked(bool checked);
@@ -652,6 +665,8 @@ private:
   bool rig_is_dummy_;
   bool is_tci_;
   bool rig_active_;
+  quint64 rig_generation_;
+  RigSessionPurpose rig_session_purpose_;
   bool have_rig_;
   bool rig_changed_;
   TransceiverState cached_rig_state_;
@@ -1495,6 +1510,8 @@ Configuration::impl::impl (Configuration * self, QSettings * settings, QWidget *
   , rig_is_dummy_ {false}
   , is_tci_ {false}
   , rig_active_ {false}
+  , rig_generation_ {0}
+  , rig_session_purpose_ {RigSessionPurpose::runtime}
   , have_rig_ {false}
   , rig_changed_ {false}
   , rig_resolution_ {0}
@@ -3426,7 +3443,8 @@ void Configuration::impl::accept ()
 
   // open_rig() uses values from models so we use it to validate the
   // Transceiver settings before agreeing to accept the configuration
-  if (temp_rig_params != rig_params_ && !open_rig ())
+  if (temp_rig_params != rig_params_
+      && !open_rig (false, RigSessionPurpose::configuration_test))
     {
       return;			// not accepting
     }
@@ -3436,6 +3454,10 @@ void Configuration::impl::accept ()
                                 // delegates in views get flushed to
                                 // the underlying models before we
                                 // access them
+
+  // A candidate rig opened above becomes the live runtime rig only after
+  // this configuration has been accepted.
+  if (rig_active_) rig_session_purpose_ = RigSessionPurpose::runtime;
 
   sync_transceiver (true);	// force an update
 
@@ -3848,6 +3870,12 @@ void Configuration::impl::reject ()
 //          printf("%s(%0.1f) Configuration impl_reject close rig\n",jtdxtime_->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),jtdxtime_->GetOffset());
           close_rig ();
         }
+    }
+
+  if (have_rig_ && rig_active_)
+    {
+      // The restored (or retained) rig is the live runtime rig again.
+      rig_session_purpose_ = RigSessionPurpose::runtime;
     }
 
   QDialog::reject ();
@@ -5207,7 +5235,7 @@ void Configuration::impl::on_test_CAT_push_button_clicked ()
     }
 
   ui_->test_CAT_push_button->setStyleSheet ({});
-  if (open_rig (true))
+  if (open_rig (true, RigSessionPurpose::configuration_test))
     {
       //Q_EMIT sync (true);
     }
@@ -5224,7 +5252,7 @@ void Configuration::impl::on_test_PTT_push_button_clicked (bool checked)
       return;
     }
 
-  if (open_rig ())
+  if (open_rig (false, RigSessionPurpose::configuration_test))
     {
       Q_EMIT self_->transceiver_ptt (checked);
     }
@@ -6011,19 +6039,22 @@ void Configuration::impl::on_web_ui_restart_push_button_clicked ()
   Q_EMIT self_->web_ui_restart_requested ();
 }
 
-bool Configuration::impl::open_rig (bool force)
+bool Configuration::impl::open_rig (bool force, RigSessionPurpose purpose)
 {
   auto result = false;
 
   auto const rig_data = gather_rig_data ();
   if (force || !rig_active_ || rig_data != saved_rig_params_)
     {
+      quint64 generation {0};
       try
         {
 //    printf("%s(%0.1f) Configuration rig_open, active %d, force %d\n",jtdxtime_->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),jtdxtime_->GetOffset(),rig_active_,force);
 
           if (is_tci_ && rig_active_ && tci_audio_) restart_tci_device_ = true; 
           close_rig ();
+          generation = rig_generation_;
+          rig_session_purpose_ = purpose;
 
           // create a new Transceiver object
           auto rig = transceiver_factory_.create (rig_data, transceiver_thread_);
@@ -6045,7 +6076,10 @@ bool Configuration::impl::open_rig (bool force)
           rig_connections_ << connect (rig.get (), &Transceiver::tciframeswritten, this, &Configuration::impl::handle_transceiver_tciframeswritten);
           rig_connections_ << connect (rig.get (), &Transceiver::tci_mod_active, this, &Configuration::impl::handle_transceiver_tci_mod_active);
           rig_connections_ << connect (rig.get (), &Transceiver::update, this, &Configuration::impl::handle_transceiver_update);
-          rig_connections_ << connect (rig.get (), &Transceiver::failure, this, &Configuration::impl::handle_transceiver_failure);
+          rig_connections_ << connect (rig.get (), &Transceiver::failure, this,
+                                       [this, generation] (QString const& reason) {
+                                         handle_transceiver_failure (reason, generation);
+                                       });
 
           // setup thread safe startup and close down semantics
           rig_connections_ << connect (this, &Configuration::impl::start_transceiver, rig.get (), &Transceiver::start);
@@ -6075,7 +6109,7 @@ bool Configuration::impl::open_rig (bool force)
         }
       catch (std::exception const& e)
         {
-          handle_transceiver_failure (e.what ());
+          handle_transceiver_failure (e.what (), generation);
         }
 
       saved_rig_params_ = rig_data;
@@ -6083,6 +6117,12 @@ bool Configuration::impl::open_rig (bool force)
     }
   else
     {
+      if (rig_active_)
+        {
+          // Runtime callers adopt a live session; test callers preserve its identity.
+          rig_session_purpose_ = RigSessionPolicy::purpose_after_reuse (
+            rig_session_purpose_, purpose);
+        }
       result = true;
     }
   return result;
@@ -6384,33 +6424,44 @@ void Configuration::impl::handle_transceiver_update (TransceiverState const& sta
     }
 }
 
-void Configuration::impl::handle_transceiver_failure (QString const& reason)
+void Configuration::impl::handle_transceiver_failure (QString const& reason,
+                                                        quint64 generation)
 {
-  append_configuration_failure_diagnostic ("entered");
+  if (generation != rig_generation_)
+    {
+      append_configuration_failure_diagnostic ("stale_generation_ignored", generation);
+      return;
+    }
+
+  auto const purpose = rig_session_purpose_;
+  auto const action = RigSessionPolicy::failure_action (
+    generation, rig_generation_, purpose);
+  append_configuration_failure_diagnostic ("entered", generation);
 #if WSJT_TRACE_CAT
   qDebug () << "Configuration::handle_transceiver_failure: reason:" << reason;
 #endif
 
   close_rig ();
-  append_configuration_failure_diagnostic ("after_close_rig");
+  append_configuration_failure_diagnostic ("after_close_rig", generation);
   ui_->test_PTT_push_button->setChecked (false);
 
-  auto const configuration_visible = isVisible ();
-  auto const forward_to_main_window = !configuration_visible;
-  append_configuration_failure_decision (configuration_visible, forward_to_main_window);
-  if (configuration_visible)
+  auto const forward_to_main_window =
+    RigSessionPolicy::FailureAction::forward_to_runtime == action;
+  append_configuration_failure_decision (generation, purpose, forward_to_main_window);
+  if (forward_to_main_window)
     {
-      message_box_critical (tr ("Rig failure"), reason);
+      Q_EMIT self_->transceiver_failure (reason);
     }
   else
     {
-      // pass on if our dialog isn't active
-      Q_EMIT self_->transceiver_failure (reason);
+      message_box_critical (tr ("Rig failure"), reason);
     }
 }
 
 void Configuration::impl::close_rig ()
 {
+  // Invalidate failures already queued from the previous transceiver.
+  ++rig_generation_;
   ui_->test_PTT_push_button->setEnabled (false);
 
   // revert to no rig configured

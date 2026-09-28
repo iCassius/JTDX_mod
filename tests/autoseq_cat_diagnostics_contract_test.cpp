@@ -38,6 +38,7 @@ int main ()
   auto const configuration = source (QStringLiteral ("Configuration.cpp"));
   auto const mainwindow = source (QStringLiteral ("mainwindow.cpp"));
   auto const localLog = source (QStringLiteral ("JtdxLocalLog.cpp"));
+  auto const rigPolicy = source (QStringLiteral ("RigSessionPolicy.hpp"));
 
   require (hamlib.contains (QStringLiteral ("throws_to_offline=%14"))
                && hamlib.contains (QStringLiteral (
@@ -59,21 +60,47 @@ int main ()
     QStringLiteral ("void Configuration::impl::handle_transceiver_failure"));
   auto const configurationFailure = configuration.mid (configurationFailureStart, 2400);
   require (configurationFailure.contains (QStringLiteral (
-               "append_configuration_failure_diagnostic (\"entered\");"))
+               "if (generation != rig_generation_)"))
                && ordered (configurationFailure,
-                           QStringLiteral ("append_configuration_failure_diagnostic (\"entered\");"),
+                           QStringLiteral ("if (generation != rig_generation_)"),
+                           QStringLiteral ("append_configuration_failure_diagnostic (\"entered\", generation);"))
+               && ordered (configurationFailure,
+                           QStringLiteral ("if (generation != rig_generation_)"),
+                           QStringLiteral ("RigSessionPolicy::failure_action"))
+               && ordered (configurationFailure,
+                           QStringLiteral ("RigSessionPolicy::failure_action"),
                            QStringLiteral ("close_rig ();"))
                && ordered (configurationFailure,
                            QStringLiteral ("close_rig ();"),
-                           QStringLiteral ("append_configuration_failure_diagnostic (\"after_close_rig\");"))
+                           QStringLiteral ("append_configuration_failure_diagnostic (\"after_close_rig\", generation);"))
                && configurationFailure.contains (QStringLiteral (
-                    "append_configuration_failure_decision (configuration_visible, forward_to_main_window);"))
-               && configurationFailure.contains (QStringLiteral ("if (configuration_visible)"))
-               && configuration.contains (QStringLiteral ("Q_EMIT self_->transceiver_failure (reason);")),
-           "Configuration records entry, post-close, and forwarding decision around the original branch");
+                    "RigSessionPolicy::failure_action"))
+               && configurationFailure.contains (QStringLiteral (
+                    "FailureAction::forward_to_runtime == action"))
+               && configurationFailure.contains (QStringLiteral ("if (forward_to_main_window)"))
+               && configurationFailure.contains (QStringLiteral ("Q_EMIT self_->transceiver_failure (reason);"))
+               && configurationFailure.contains (QStringLiteral ("message_box_critical (tr (\"Rig failure\"), reason);"))
+               && !configurationFailure.contains (QStringLiteral ("isVisible ()")),
+           "Configuration rejects stale generations and routes runtime/test failures by session purpose");
   require (configuration.contains (QStringLiteral (
-               "connect (rig.get (), &Transceiver::failure, this, &Configuration::impl::handle_transceiver_failure);")),
-           "Configuration failure connection remains unchanged");
+               "connect (rig.get (), &Transceiver::failure, this,"))
+               && configuration.contains (QStringLiteral ("[this, generation]"))
+               && configuration.contains (QStringLiteral (
+                    "handle_transceiver_failure (reason, generation);"))
+               && configuration.contains (QStringLiteral (
+                    "open_rig (true, RigSessionPurpose::configuration_test)"))
+               && configuration.contains (QStringLiteral (
+                    "open_rig (false, RigSessionPurpose::configuration_test)"))
+               && configuration.contains (QStringLiteral (
+                    "rig_session_purpose_ = purpose;"))
+               && configuration.contains (QStringLiteral (
+                    "RigSessionPolicy::purpose_after_reuse"))
+               && configuration.contains (QStringLiteral (
+                    "rig_session_purpose_ = RigSessionPurpose::runtime;")),
+           "Configuration binds failure callbacks, open paths, and runtime adoption to session purpose and generation");
+  require (rigPolicy.contains (QStringLiteral ("failure_action"))
+               && rigPolicy.contains (QStringLiteral ("purpose_after_reuse")),
+           "Configuration uses the independently tested rig-session policy");
   require (mainwindow.contains (QStringLiteral (
                "connect (&m_config, &Configuration::transceiver_failure, this, &MainWindow::handle_transceiver_failure);")),
            "MainWindow failure connection remains unchanged");

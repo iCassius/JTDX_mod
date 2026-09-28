@@ -1451,10 +1451,13 @@ int main (int argc, char ** argv)
          "IPv6 wildcard remains rejected unless separately requested");
 
   QTcpServer auto_occupied;
-  if (auto_occupied.listen (QHostAddress::LocalHost, JtdxWebServer::automatic_port_first))
+  check (auto_occupied.listen (QHostAddress::AnyIPv4, JtdxWebServer::automatic_port_first),
+         "automatic wildcard collision fixture should bind the first candidate port");
+  if (auto_occupied.isListening ())
     {
       JtdxWebServer auto_server {&state};
       JtdxWebServer::Configuration auto_skip;
+      auto_skip.bind_address = QHostAddress::AnyIPv4;
       auto_skip.udp_ports.insert (JtdxWebServer::automatic_port_first + 1);
       check (auto_server.start (auto_skip), "automatic server should find a bounded free port");
       check (auto_server.actual_port () != JtdxWebServer::automatic_port_first

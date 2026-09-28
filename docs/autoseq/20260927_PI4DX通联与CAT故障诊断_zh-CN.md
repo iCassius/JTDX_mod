@@ -48,18 +48,19 @@ P029 基线已经包含 AutoSeq 重试计数与冷却修复。本批没有改候
 1. HamlibTransceiver::check_poll_read() 记录硬失败决策及 `throws_to_offline`，并调用现有 error_check()。异常沿轮询调用返回到 PollingTransceiver::poll() 的 catch 分支。
 2. PollingTransceiver::poll() 把异常转换为现有 offline(message) 调用；TransceiverBase::offline() 在 emit 前记 `stage=entered`，Q_EMIT 返回后才记 `stage=after_emit`。后者证明信号发射语句已返回，不证明接收端 slot 已运行。
 3. Configuration::impl 创建专用 transceiver_thread_，Rig 对象由 transceiver_factory_.create(..., transceiver_thread_) 放入该线程。故障连接写成 connect(rig, failure, this, slot)，没有显式 Qt::ConnectionType；跨线程时采用 Qt 默认 AutoConnection 投递规则。
-4. Configuration::impl::handle_transceiver_failure() 先执行 close_rig()，随后看配置窗口可见性。可见时显示 Rig failure 对话框，不向 MainWindow 转发；不可见时发出 Configuration::transceiver_failure。
-5. MainWindow::handle_transceiver_failure() 收到通知后判断 AutoSeq 是否支持、当前目标和 TX 意图，必要时创建/保留恢复票据；然后沿现有 haltTx() 与 rigFailure()/限次重连路径处理。
-6. MainWindow::handle_transceiver_update() 只有在收发机在线且 PTT-off 更新到达时，才按现有逻辑释放 DX 并等待新解码。PTT-on 更新会保留票据和 DX；上下文变化会取消恢复票据。
+4. Configuration::impl::open_rig() 为每个实际新建的 Transceiver 分配 generation，并记录其 session purpose。`have_rig()`、默认运行时打开、配置接受后的运行 rig 和拒绝配置时恢复的 rig 属于 runtime。Test CAT 强制新建会话，Test PTT 在实际新建会话时属于 configuration-test；若 Test PTT 复用参数未变的活动 runtime rig，不改写该 rig 的 purpose。若 runtime 调用者复用活动 test-purpose rig，则把该会话提升为 runtime；test 调用者复用会话不会改写 purpose。
+5. Configuration 的 failure 连接捕获创建该 Transceiver 时的 generation。`close_rig()` 使旧 generation 失效；已排队的旧代失败到达后会被忽略，不会关闭新 rig。Test CAT/PTT 创建的 configuration-test rig 若随后配置被接受，活动会话提升为 runtime；拒绝时恢复或保留的原运行 rig也提升为 runtime。
+6. Configuration::impl::handle_transceiver_failure() 按当前匹配 generation 的 session purpose 路由，不以配置窗口可见性决定是否恢复。runtime 故障始终发出 Configuration::transceiver_failure，进入 MainWindow::handle_transceiver_failure() 的既有 AutoSeq、haltTx() 与 rigFailure()/限次重连路径；configuration-test 故障只显示本地 Rig failure 对话框，不触发 MainWindow 恢复。窗口可见性不参与该决策。
+7. MainWindow::handle_transceiver_update() 只有在收发机在线且 PTT-off 更新到达时，才按现有逻辑释放 DX 并等待新解码。PTT-on 更新会保留票据和 DX；上下文变化会取消恢复票据。
 
-上述是源码控制流，不证明本次运行经过了这些分支。旧 jtdx_recovery.log 在 EPROTO 后没有 MainWindow 自动恢复、计划重连、重连在线或 PTT-off 释放记录。解码日志继续写入并不能证明 CAT 故障信号已送达 UI 线程。Configuration 可见分支是源码中存在的可能解释，但没有事件日志证明当时配置窗口可见。没有证据证明模态对话框或 Qt 重入导致信号丢失。
+上述是当前源码控制流，不证明 2026-09-27 事件经过了哪条分支。旧 jtdx_recovery.log 在 EPROTO 后没有 MainWindow 自动恢复、计划重连、重连在线或 PTT-off 释放记录；它也没有记录 session purpose/generation。事件日志不能据此回溯出当时 rig 的来源。此前源码曾以配置窗口可见性抑制 MainWindow 转发，但没有事件日志证明当时窗口可见，也没有证据证明模态对话框或 Qt 重入导致信号丢失。现在运行时与配置测试路由由会话 purpose 决定。
 
 ## 本批只读诊断日志补强
 
 为下次故障建立同一受限 jtdx_recovery.log 的可检查链，本批只增加状态迁移日志：
 
 - CAT 硬轮询决策是否进入 offline 异常路径；Polling catch 开始 offline 转换；TransceiverBase::offline() 的进入与 Q_EMIT 前后阶段。
-- Configuration slot 入口、`close_rig()` 返回后的阶段，以及后续窗口可见值和转发决策。
+- Configuration slot 入口、会话 generation/purpose、`close_rig()` 返回后的阶段、旧 generation 丢弃和按 purpose 作出的转发决策。
 - MainWindow 是否收到通知；恢复票据是创建、保留、拒绝还是取消及原因；当前目标、主状态、QsoHistory 状态/重试数和 TX 意图。
 - 重连在线更新中的 PTT 观测值，以及保留票据、取消上下文或在 PTT-off 后释放 DX 的既有决策。
 - 所有现有票据取消入口统一记录静态原因码；不改变原有调用顺序和策略。
@@ -79,19 +80,33 @@ QsoHistory::diagnosticSnapshot() 是只读快照，仅暴露指定呼号当前�
 2026-09-28T10:00:00.101 [rig-control] poll_exception offline_transition=begin reason_present=true
 2026-09-28T10:00:00.102 [rig-control] transceiver_offline stage=entered failure_signal=not_yet_emitted reason_present=true
 2026-09-28T10:00:00.103 [rig-control] transceiver_offline stage=after_emit failure_signal=emitted reason_present=true
-2026-09-28T10:00:00.104 [rig-control] configuration_failure stage=entered received=true reason_present=true
-2026-09-28T10:00:00.110 [rig-control] configuration_failure stage=after_close_rig received=true reason_present=true
-2026-09-28T10:00:00.111 [rig-control] configuration_failure stage=decision received=true configuration_visible=false forward_to_main_window=true reason_present=true
+2026-09-28T10:00:00.104 [rig-control] configuration_failure stage=entered generation=17 received=true reason_present=true
+2026-09-28T10:00:00.110 [rig-control] configuration_failure stage=after_close_rig generation=17 received=true reason_present=true
+2026-09-28T10:00:00.111 [rig-control] configuration_failure stage=decision generation=17 session_purpose=runtime forward_to_main_window=true reason_present=true
 2026-09-28T10:00:00.112 [auto-call] recovery_ticket decision=created reason=active_tx_intent was_pending=false pending=true target=PI4DX ...
 2026-09-28T10:00:00.113 [rig-control] failure_received=true reason_present=true online=false ptt=true ...
 2026-09-28T10:00:05.000 [auto-call] recovery_online_update online=true ptt_known=true ptt_on=false target=PI4DX ... decision=release_dx_wait_fresh_decode
 ```
 
-解释缺段时要考虑日志本身也可能写失败：只有 `stage=entered` 而没有 `after_emit`，表示没有观察到 Q_EMIT 之后的阶段；不能仅凭缺段断定 signal 未发射。Configuration 有 `entered` 却没有 `after_close_rig`，可能是 `close_rig()` 尚未返回/异常退出，也可能是该条日志写失败。若 decision 记录 `configuration_visible=true forward_to_main_window=false`，没有 MainWindow 收到记录符合既有分支；若记录 `forward_to_main_window=true`，之后缺少 MainWindow 记录才表明通知尚未被该日志证实收到，仍须考虑异步队列和日志写失败。MainWindow 在线 PTT-off 行只会在恢复票据等待重连的路径出现；缺失并不能单独区分未重连、未收到该状态或日志写失败。
+解释缺段时要考虑日志本身也可能写失败：只有 `stage=entered` 而没有 `after_emit`，表示没有观察到 Q_EMIT 之后的阶段；不能仅凭缺段断定 signal 未发射。Configuration 有 `entered` 却没有 `after_close_rig`，可能是 `close_rig()` 尚未返回/异常退出，也可能是该条日志写失败。`stage=stale_generation_ignored` 表示排队失败来自已关闭的 Transceiver generation，已在 Configuration 边界丢弃；该事件不会关闭当前 rig 或通知 MainWindow。decision 的 `session_purpose=runtime` 应对应向 MainWindow 转发；`session_purpose=configuration_test` 对应本地提示，不进入 MainWindow CAT 恢复。旧 incident 日志没有 generation/purpose 字段，不能套用这些新判据。MainWindow 在线 PTT-off 行只会在恢复票据等待重连的路径出现；缺失并不能单独区分未重连、未收到该状态或日志写失败。
 
 ## 本批实施结果
 
-本批仅补充观察日志和只读状态快照：`HamlibTransceiver.cpp`、`PollingTransceiver.cpp`、`TransceiverBase.cpp`、`Configuration.cpp` 记录 CAT 故障链各阶段；`mainwindow.cpp/.h` 记录恢复票据决策、取消原因码和重连 PTT 状态；`qsohistory.cpp/.h` 增加只读诊断快照；`JtdxLocalLog.cpp/.hpp` 保护诊断写入异常。未改候选优先级、消息解析、目标选择、重试计数策略、TX/PTT、故障信号连接或投递方式、重连策略和 DX 清理门槛；没有版本号、配置或打包改动。
+前一诊断补强批次仅补充观察日志和只读状态快照：`HamlibTransceiver.cpp`、`PollingTransceiver.cpp`、`TransceiverBase.cpp`、`Configuration.cpp` 记录 CAT 故障链各阶段；`mainwindow.cpp/.h` 记录恢复票据决策、取消原因码和重连 PTT 状态；`qsohistory.cpp/.h` 增加只读诊断快照；`JtdxLocalLog.cpp/.hpp` 保护诊断写入异常。该批次未改候选优先级、消息解析、目标选择、重试计数策略、TX/PTT、故障信号连接或投递方式、重连策略和 DX 清理门槛；没有版本号、配置或打包改动。
+
+## 2026-09-28 CAT 故障路由修复
+
+`Configuration.cpp` 现在在实际创建 rig 时绑定 `runtime` 或 `configuration_test` purpose，并用递增 generation 识别会话。Test PTT 若复用参数未变的活动 runtime rig，不改变它的 purpose；该 runtime 会话即使正显示 Configuration，失败仍交给 MainWindow。Test CAT 强制新建的会话以及 Test PTT 因 rig 未活动或参数变化而新建的会话按 configuration-test 本地提示。accept 为校验未提交参数而新开的会话也先标为 configuration-test，接受成功后提升为 runtime；拒绝配置时重开的/保留的原运行 rig也提升为 runtime。
+
+如果运行时恢复流程复用了仍活动的 rig（例如 `MainWindow::retryRigOpen()` 经 `rigOpen()`、`Configuration::transceiver_online()` 和 `have_rig()` 调用到 `open_rig()` 的无重开分支），该 runtime 调用会将会话提升为 runtime purpose。相同分支收到 configuration-test purpose 时不改会话身份。
+
+失败连接捕获创建时的 generation。`close_rig()` 使旧 generation 失效；排队到达的旧代失败被忽略，不会关闭新 rig。runtime failure 始终发出既有 `Configuration::transceiver_failure`；configuration-test failure 只显示 Configuration 的 Rig failure 对话框。AutoSeq 票据、重试策略、PTT/TX、DX 清理、消息解析及 radio flow 未改。
+
+本次在 `Configuration.cpp` 使用独立的 `RigSessionPolicy.hpp` 纯策略函数决定失败路由与活动 rig 复用后的 purpose，并新增 `rig_session_policy_test.cpp` 覆盖五种行为：当前 runtime 故障转发、当前 configuration-test 故障本地提示、旧 generation 故障忽略、runtime caller 复用 test rig 时提升为 runtime、test caller 复用 runtime rig 时保留 runtime。原源码契约测试继续检查 Configuration/MainWindow 接线与 PTT-off 后才释放 DX 的既有门槛。
+
+验证环境为 Release、MinGW Makefiles、Qt 5、Hamlib 4.7.2、本地测试开启；PATH 包含 MinGW 与 Hamlib DLL 目录，完整 CTest 使用 `QT_QPA_PLATFORM=offscreen`。`jtdx`、`jtdx_web_server_test`、`autoseq_cat_diagnostics_contract_test` 和 `rig_session_policy_test` 均成功构建。8 项定向 CTest 通过 8/8；完整 CTest 通过 32/32。日志分别为 `local-support/evidence/AutoSeq-CAT-Diagnostics/targeted-ctest-20260928.log` 与 `full-ctest-20260928.log`。此前 `jtdx_web_server_test` 的全量失败已由同批次通配 IPv4 端口占用夹具纠正并通过；该改动只修正测试覆盖，没有改生产 TCP/UDP 逻辑。`git diff --check` 通过。构建出现 CMake 兼容性提示及原有 `extra_items` 未使用警告，没有构建错误。
+
+自动化测试只证明本机构建和模拟测试结果。没有启动构建出的 JTDX，没有操作真实 CAT/PTT/TX、电台或真实配置窗口，因此 Qt 跨线程通知、实际重连和硬件行为仍未做 HIL 验证。
 
 ### 取消调用行为等价核对
 
