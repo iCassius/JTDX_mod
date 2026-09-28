@@ -41,11 +41,15 @@ if (-not $resolvedStage.StartsWith($allowedStagePrefix, [StringComparison]::Ordi
   throw "Stage must remain inside $supportRoot\staging"
 }
 
-$requiredRoots = @('bin', 'plugins', 'share', 'NOTICE', 'NOTICE_zh-CN.md')
+$requiredRoots = @('bin', 'plugins', 'share')
 foreach ($entry in $requiredRoots) {
   if (-not (Test-Path -LiteralPath (Join-Path $resolvedStage $entry))) {
     throw "Required stage entry is missing: $entry"
   }
+}
+$stageRoots = @(Get-ChildItem -LiteralPath $resolvedStage -Force | ForEach-Object Name | Sort-Object)
+if (Compare-Object ($stageRoots | Sort-Object) ($requiredRoots | Sort-Object)) {
+  throw "Stage must contain exactly these top-level directories: $($requiredRoots -join ', ')"
 }
 
 function Get-TreeRows([string] $Root) {
@@ -66,6 +70,15 @@ function Test-ZipAgainstStage([string] $ArchivePath, [string] $RootPath) {
     $entries = @($archive.Entries | Where-Object { $_.Name -ne '' })
     $paths = @($entries | ForEach-Object FullName)
     if (($paths | Sort-Object -Unique).Count -ne $paths.Count) { throw 'ZIP contains duplicate paths' }
+    foreach ($path in $paths) {
+      if ($path.Contains('\') -or $path.StartsWith('/') -or [IO.Path]::IsPathRooted($path) -or $path -match '^[A-Za-z]:') {
+        throw "ZIP contains an absolute or non-normalized path: $path"
+      }
+      $segments = @($path -split '/')
+      if ($segments.Count -lt 2 -or @($segments | Where-Object { $_ -in @('', '.', '..') }).Count -gt 0) {
+        throw "ZIP contains a path traversal or invalid segment: $path"
+      }
+    }
     $roots = @($paths | ForEach-Object { ($_ -split '/')[0] } | Sort-Object -Unique)
     if (Compare-Object ($roots | Sort-Object) ($requiredRoots | Sort-Object)) {
       throw "Unexpected ZIP roots: $($roots -join ', ')"

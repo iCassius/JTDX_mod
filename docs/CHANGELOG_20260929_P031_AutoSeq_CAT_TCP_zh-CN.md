@@ -37,4 +37,4 @@ Web Server 的生产 TCP/UDP 代码没有修改。自动端口冲突测试现在
 
 ## 验证边界
 
-本变更对应的策略、CAT 会话策略和 QsoHistory 候选筛选自动化覆盖，以及 Release 构建/CTest 和包完整性，将记录在 [`../local-support/releases/P031/说明_zh-CN.md`](../local-support/releases/P031/说明_zh-CN.md)。自动化验证不等于真实 CAT/PTT/TX、HIL、网络部署或法律清权结论。
+本地交付：结果源码提交 b187262f86914b68673344e781fd6e034aa3c621（P031，2.2.159.031；Windows PE 2.2.159.31）。独立 MinGW Release 完整构建成功，完整 CTest 32/32 通过（57.73 秒）。P031 ZIP 为 C:\JTDX64\JTDX-2.2.159.031-local-b187262-P031.zip，49,402,089 bytes，SHA-256 95274274CE774F929FE85D86422ED961B61BD989297D3B57892F6177FEA6B08E，142 个文件；根项严格为 bin/、plugins/、share/，暂存/ZIP/清洁解压 manifest 逐项一致。官方 P21 Hamlib 4.7.2 runtime 已核验，49 个 PE 文件的依赖导入审计无缺失。完整流程、来源哈希和限制见 [`../local-support/releases/P031/说明_zh-CN.md`](../local-support/releases/P031/说明_zh-CN.md)。未启动包内程序，未连接或操作真实 CAT/PTT/TX，未做 HIL。

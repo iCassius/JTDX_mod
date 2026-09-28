@@ -49,7 +49,12 @@ New-Item -ItemType Directory -Force -Path (Join-Path $support 'evidence\P28') | 
 
 检查每条命令的 `$LASTEXITCODE` 和日志再进入下一阶段。不要把旧 `deps-webui` 或根目录 build tree 当输出目录。打包脚本只从已审查、补齐 NOTICE/许可证材料的 stage 生成 ZIP、manifest 和清洁解压校验；ZIP 哈希与报告写在仓库内，不产生根目录 sidecar；不会清理失败产物或覆盖文件。
 
-## P030 当前本机候选打包结果
+## P031 当前本机测试包
+
+- 源码构建结果提交 b187262f86914b68673344e781fd6e034aa3c621；应用显示版本 2.2.159.031，Windows PE 数字版本 2.2.159.31。MinGW Release 全量构建成功，完整 CTest 32/32 通过（57.73 秒）。
+- 用户测试 ZIP：C:\JTDX64\JTDX-2.2.159.031-local-b187262-P031.zip；49,402,089 bytes，SHA-256 95274274CE774F929FE85D86422ED961B61BD989297D3B57892F6177FEA6B08E。142 个文件，根项恰为 bin/、plugins/、share/；暂存/ZIP/清洁解压 manifest 逐项匹配，根目录只新增此 ZIP，无 sidecar。
+- 使用官方 P21 Hamlib 4.7.2 runtime；49 个 PE 文件导入依赖审计缺失 0 项。未启动包内程序、未连接或操作真实 CAT/PTT/TX，未做 HIL。细节见 [`releases/P031/说明_zh-CN.md`](releases/P031/说明_zh-CN.md) 与 `evidence/P031/`。
+## P030 历史本机候选打包结果
 
 - 源码提交 `6283cac280f568c8681c5aa032157c45c63877c0`；显示版本 `2.2.159.030`，Windows PE 数字版本 `2.2.159.30`；完整 Release 构建成功，全量 CTest 30/30（57.47 秒）。本机审阅 ZIP：`C:\JTDX64\JTDX-2.2.159.030-local-6283cac-P030.zip`，49,373,063 bytes，SHA-256 `74F2085ADC3E269974D24604343C1D186F150AF883B47B8F5BE4F2806010B454`，142 文件、未压缩 137,574,291 bytes；ZIP/暂存/清洁解压逐项一致。manifest、依赖审计、清洁解压与验证日志见 `evidence/P030/` 及 [`releases/P030/说明_zh-CN.md`](releases/P030/说明_zh-CN.md)。
 - 新/无 `WebUiBindAddress` 配置默认 `0.0.0.0`；现存值原样保留。升级用户若要 LAN 监听，必须自行将 `WebUiBindAddress` 设为 `0.0.0.0` 并重启 Web 服务；旧版已持久化的 `127.0.0.1` 不会自动迁移。Windows URL 按默认路由与接口综合 metric 选择有效 IPv4，无可用地址时回退 `127.0.0.1`。
