@@ -87,9 +87,9 @@
           await Promise.all([desktopReady, mobileReady]);
           await until(() => connected(desktop) && connected(mobile));
           check("桌面与手机窄屏页面均连接模拟 SSE", true);
-          await until(() => doc(desktop).getElementById("application_name").textContent.endsWith("v2.2.159.030"));
+          await until(() => doc(desktop).getElementById("application_name").textContent.endsWith("v2.2.159.031"));
           const appDisplay = doc(desktop).getElementById("application_name").textContent;
-          check("Web 版本展示复用服务 application_version", appDisplay.endsWith("v2.2.159.030"), appDisplay);
+          check("Web 版本展示复用服务 application_version", appDisplay.endsWith("v2.2.159.031"), appDisplay);
           const mobileWidth = doc(mobile).documentElement.clientWidth;
           const mobileOverflow = doc(mobile).documentElement.scrollWidth - mobileWidth;
           measurements.viewports = {

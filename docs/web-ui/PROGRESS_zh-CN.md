@@ -1,5 +1,12 @@
 # JTDX 内置 Web UI：进度与中断恢复日志
 
+## 2026-09-29 P031 AutoSeq 与 CAT 会话故障路由修复
+
+- 版本：应用显示 `2.2.159.031`，PE 数字版本 `2.2.159.31`。P031 产品行为包括 AutoSeq 回答 CQ 重试计数不被方向判断重置、达到限制时必定清理 DX；自动特殊目标失败冷却只作用于普通 `RCQ/RFIN` CQ，面向本台的呼叫及有效 QSO 回应旁路。无效/空报告按最弱报告处理。
+- CAT 按会话用途分流：运行 rig 故障始终转发到 MainWindow 现有恢复链；配置测试失败留在配置页；复用运行 rig 的 Test PTT 保留 runtime 身份；配置接受/拒绝按最终 rig 归属设置身份；迟到的旧 generation 故障忽略。既有在线/PTT-off 恢复安全门未改变。
+- TCP 自动端口冲突测试改用通配 IPv4 占用夹具；生产 TCP 服务和 UDP 行为没有改变。
+- 本地 Release 构建、完整 CTest、官方 Hamlib 来源、包结构与 SHA-256 证据待本批交付阶段补全，届时见 [`../../local-support/releases/P031/说明_zh-CN.md`](../../local-support/releases/P031/说明_zh-CN.md)。未启动包内程序，未连接或操作真实 CAT/PTT/TX，未做 HIL。
+
 ## 2026-09-28 TCP 自动端口通配冲突测试范围纠正
 
 - 基线：`main` / `11bf7fdd525a54e2d1413617ca2924f4f1446ad6`。自动端口回归夹具改为在 `AnyIPv4` 上占用首个候选端口，并明确自动服务也使用 `AnyIPv4`；同时验证跳过该占用端口和数字 UDP 排除端口。生产 TCP 监听与 UDP 行为未改。

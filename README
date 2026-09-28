@@ -27,12 +27,12 @@ https://jtdx.groups.io/g/main
 
 以下按当前本地 Git 历史的主要版本组整理，不包含本地调试日志、运行数据和构建产物。
 
-### 2.2.159.2（当前显示版本 2.2.159.2.9）
+### 2.2.159.2（当前显示版本 2.2.159.031；Windows PE 版本 2.2.159.31）
 
-- 扩展 AutoSeq 自动起呼、待机应答、周期同步和候选接管保护；统一回答 CQ 的超限清理与转呼终止。
-- 增加只读 UDP 遥测镜像、Fake It 状态恢复、音频/CAT 有界恢复、QRZ 查询和中国呼号省级归属地显示。
-- 修复 FTX-1 Hamlib model 1051 发射期间功率/SWR 表计轮询；增加 OmniRig 明确 ON/OFF 构建边界和离线策略测试。
-- 形成 Windows Release 测试包流程；当前包为 Hamlib-only 测试包，真实电台 HIL 仍需人工验证。
+- AutoSeq 回答 CQ 的尝试次数持续累计；达到启用的上限后必定进入清理，不会因 CQ 方向或优先级分支把 DX 长时间占住。自动特殊目标的失败 CQ 在短期冷却内不会反复入选；明确面向本台的呼叫和有效通联回应不受此冷却影响。
+- CAT 故障依据 rig 会话用途分流：运行会话的故障始终交给主窗口现有恢复流程，配置测试会话只在设置窗口提示；旧 rig generation 的迟到故障会被忽略。现有 PTT-off 安全门和重连策略保持不变。
+- Web TCP 自动端口冲突回归改用 AnyIPv4 夹具覆盖通配监听冲突；生产 TCP 端口选择、UDP 和 Web UI 使用行为没有改变。
+- 版本来源、用户行为和本机候选证据见 [`docs/CHANGELOG_20260929_P031_AutoSeq_CAT_TCP_zh-CN.md`](docs/CHANGELOG_20260929_P031_AutoSeq_CAT_TCP_zh-CN.md) 与 `local-support/releases/P031/说明_zh-CN.md`。真实 CAT/PTT/TX/HIL 仍需使用者按自己的设备环境验收。
 
 ### 2.2.159.1
 

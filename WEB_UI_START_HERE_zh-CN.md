@@ -1,8 +1,8 @@
 # JTDX 内置 Web UI：阶段入口与恢复说明
 
-## 当前候选：P030 IPv4 默认监听与默认路由访问地址（2026-09-25）
+## 当前候选：P031 AutoSeq DX 冷却与 CAT 故障路由（2026-09-29）
 
-源码提交 `6283cac280f568c8681c5aa032157c45c63877c0`，应用版本 `2.2.159.030` / PE `2.2.159.30`；完整 Release 构建成功、全量 CTest 30/30。本机审阅 ZIP：`C:\JTDX64\JTDX-2.2.159.030-local-6283cac-P030.zip`，142 文件、未压缩 137,574,291 bytes，SHA-256 `74F2085ADC3E269974D24604343C1D186F150AF883B47B8F5BE4F2806010B454`；根目录本批只新增 ZIP，无 sidecar。没有存储绑定地址的新配置默认监听 `0.0.0.0`；Windows 依默认路由与接口综合 metric 选择访问 IPv4，URL 始终不使用通配地址。既有值（包括历史 `127.0.0.1`）不会迁移，升级后若要 LAN 监听必须自行设置 `WebUiBindAddress=0.0.0.0` 并重启 Web 服务。详细行为、依赖/包证据、当前只读运行态与未验证范围见 [`local-support/releases/P030/说明_zh-CN.md`](local-support/releases/P030/说明_zh-CN.md)。候选仅供本机审阅，不是发布/法律清权批准；未运行包内程序或真实 CAT/PTT/TX/HIL，也没有验证 LAN 客户端访问。
+应用版本为 `2.2.159.031` / Windows PE 数字版本 `2.2.159.31`。本批修复 AutoSeq 回答 CQ 的次数累计和达到上限后的目标释放，并让短期失败冷却只拦普通 `RCQ/RFIN` CQ 候选，定向来呼和真实 QSO 回应仍可继续。CAT 运行会话故障不再受 Configuration 窗口可见性影响；配置测试故障留在本地提示，旧 generation 通知丢弃。TCP 生产逻辑及 UDP 行为未改，仅增强了通配监听端口冲突测试。详细用户行为见 [`docs/CHANGELOG_20260929_P031_AutoSeq_CAT_TCP_zh-CN.md`](docs/CHANGELOG_20260929_P031_AutoSeq_CAT_TCP_zh-CN.md)。Release 构建、测试和 ZIP 指纹在 [`local-support/releases/P031/说明_zh-CN.md`](local-support/releases/P031/说明_zh-CN.md) 补齐后查阅；当前尚未声明硬件/HIL 验证。
 
 ## 前一候选：P029 频谱窗持久显隐与版本递增（2026-09-24）
 
