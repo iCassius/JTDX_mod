@@ -4,6 +4,8 @@
 
 应用版本为 `2.2.159.031` / Windows PE 数字版本 `2.2.159.31`。本批修复 AutoSeq 回答 CQ 的次数累计和达到上限后的目标释放，并让短期失败冷却只拦普通 `RCQ/RFIN` CQ 候选，定向来呼和真实 QSO 回应仍可继续。CAT 运行会话故障不再受 Configuration 窗口可见性影响；配置测试故障留在本地提示，旧 generation 通知丢弃。TCP 生产逻辑及 UDP 行为未改，仅增强了通配监听端口冲突测试。详细用户行为见 [`docs/CHANGELOG_20260929_P031_AutoSeq_CAT_TCP_zh-CN.md`](docs/CHANGELOG_20260929_P031_AutoSeq_CAT_TCP_zh-CN.md)。P031 已完成独立 Release 构建与全量 CTest（32/32）；测试包为 C:\JTDX64\JTDX-2.2.159.031-local-b187262-P031.zip，142 个文件，SHA-256 95274274CE774F929FE85D86422ED961B61BD989297D3B57892F6177FEA6B08E，根项仅 bin/、plugins/、share/。交付证据与限制见 [`local-support/releases/P031/说明_zh-CN.md`](local-support/releases/P031/说明_zh-CN.md)。未启动包内程序，未连接或操作真实 CAT/PTT/TX，未做 HIL。
 
+P031 面向普通使用者的变更、升级后预期和测试步骤见 [用户版更新说明](docs/CHANGELOG_P031_用户版_zh-CN.md)。
+
 ## 前一候选：P029 频谱窗持久显隐与版本递增（2026-09-24）
 
 P029 源码提交 `ec26de60fb55ed0044a014fa5e6fdb2b0457d4b4`，应用显示版本 `2.2.159.029`、PE 数字版本 `2.2.159.29`；完整 Release 构建成功、全量 CTest 29/29。频谱窗关闭后模式切换/复位保持隐藏，重启记住状态，工具菜单可显式重开；右侧 Rx Frequency 过滤行为未改。ZIP 为 `C:\JTDX64\JTDX-2.2.159.029-local-ec26de6-P029.zip`，SHA-256 `E624A05A404721FF074B9112C04C2C16376605C47B0972D6F4BD6F7C84743D98`，142 文件、49,381,555 bytes；暂存/ZIP/清洁解压逐项校验通过。详细证据见 [`local-support/releases/P029/说明_zh-CN.md`](local-support/releases/P029/说明_zh-CN.md)。
