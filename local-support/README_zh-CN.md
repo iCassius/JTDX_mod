@@ -1,6 +1,6 @@
 # JTDX 本地支持材料与清理记录
 
-本目录位于源码工作树内，用于归档需长期核查的本地证据、恢复索引和分阶段候选材料。它不是产品运行数据；大型二进制、日志、截图、依赖包、生成树和解压材料通过 `.gitignore` 排除，不纳入 Git。
+本目录位于源码工作树内，用于归档需长期核查的本地证据、恢复索引和分阶段候选材料。它不是产品运行数据；大型二进制、日志、截图、依赖包、生成树和解压材料通过 `.gitignore` 排除，不纳入 Git。 当前版本入口见 [WEB_UI_START_HERE_zh-CN.md](../WEB_UI_START_HERE_zh-CN.md)，Web UI 阶段历史见 [ARCHIVE_INDEX_zh-CN.md](../docs/web-ui/ARCHIVE_INDEX_zh-CN.md)。
 
 `dependencies/` 是本机依赖与来源材料的隔离副本，不属于源码提交：`source-archives/P22/` 保存源码/构建来源归档及其 SHA-256 清单，`hamlib-4.7.2/` 保存本机构建所需的 Hamlib 头文件和 import library。它们用于本地构建及来源追溯；保留原件，不纳入 Git。变更依赖前应先对照目录 README/清单核验来源和哈希。
 
@@ -189,3 +189,7 @@ $env:PATH = 'C:\JTDX64\deps-webui\temp\P25-runtime-stage-05ee60d\bin;C:\msys64\m
 ## 清理结果与限制
 
 本批实际释放 0 bytes、删除 0 项。P26 临时目录、失败 build 缓存及 P26 旧 evidence 原件仍保留；P21–P25 临时目录、历史 evidence/deps、两棵既有开发/验证构建树也均保留；这不是全量清空。用户要求的 Explorer 手动候选说明位于 `C:\JTDX64\待手动清理\清理候选清单_2026-09-24.md`；该文件夹仅含说明，不含移动来的文件。CMake build tree 有绝对路径，不能直接移动。没有启动真实 JTDX、CAT/PTT/TX/HIL，也没有重建无关项目。
+
+## 当前文档入口
+
+当前 Web UI 版本入口见 [WEB_UI_START_HERE_zh-CN.md](../WEB_UI_START_HERE_zh-CN.md)，阶段历史导航见 [ARCHIVE_INDEX_zh-CN.md](../docs/web-ui/ARCHIVE_INDEX_zh-CN.md)。

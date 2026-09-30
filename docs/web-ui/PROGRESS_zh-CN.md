@@ -1,5 +1,7 @@
 # JTDX 内置 Web UI：进度与中断恢复日志
 
+当前入口与历史材料导航见 [阶段入口](../../WEB_UI_START_HERE_zh-CN.md) 和 [历史文档索引](ARCHIVE_INDEX_zh-CN.md)。本文件按日期倒序记录事实；P031 是当前源码/本机测试包基线，较早候选均为历史阶段。
+
 ## 2026-09-29 P031 AutoSeq 与 CAT 会话故障路由修复
 
 - 版本：应用显示 2.2.159.031，PE 数字版本 2.2.159.31。P031 产品行为包括 AutoSeq 回答 CQ 重试计数不被方向判断重置、达到限制时必定清理 DX；自动特殊目标失败冷却只作用于普通 RCQ/RFIN CQ，面向本台的呼叫及有效 QSO 回应旁路。无效/空报告按最弱报告处理。
@@ -14,7 +16,7 @@
 - 验证：`jtdx`、`jtdx_web_server_test`、CAT 源码契约测试和新增 rig 会话策略测试均构建成功；定向 CTest 8/8、全量 CTest 32/32 通过。日志位于 `local-support/evidence/AutoSeq-CAT-Diagnostics/targeted-ctest-20260928.log` 和 `full-ctest-20260928.log`。
 - 使用影响：仅测试夹具改用通配 IPv4 地址模拟与生产监听相同类型的端口占用，验证自动选择会跳过已占用候选端口及数字 UDP 保留端口。生产 TCP 服务端口选择、UDP 端口和 Web UI 使用方式没有改变。
 
-## 2026-09-25 P030 IPv4 默认监听与按默认路由显示访问地址
+## 2026-09-25 P030 IPv4 默认监听与按默认路由显示访问地址（最近 Web UI 阶段；已纳入 P031 基线）
 
 - 结果提交：`6283cac280f568c8681c5aa032157c45c63877c0`；版本 `2.2.159.030` / PE `2.2.159.30`。新/无绑定配置默认监听所有 IPv4；保留现有设置值，不把历史 `127.0.0.1` 静默迁移。IPv6 通配仍拒绝。
 - Windows 地址解析只读默认路由表，使用 route metric + interface metric，筛选 Up/Running 接口上的有效 IPv4 并确定性处理 metric 并列；无路由结果回退 localhost。设置页/服务 URL/菜单打开复用同一访问地址与实际端口。非 Windows 当前安全回退 localhost。
@@ -66,7 +68,7 @@
 - 未启动候选 JTDX，未连接/操作 CAT、PTT、TX，未发射，未做 HIL、LAN/公网或部署验证；候选仅供本机审阅，不代表发布批准或第三方清权。
 - 详细范围、证据路径、哈希与边界见 [`P27-AutoSeq修复本机审阅包_zh-CN.md`](P27-AutoSeq修复本机审阅包_zh-CN.md)。
 
-# 2026-09-24 P26 Web 电台控制超时与六按钮收口（待根任务复核）
+# 2026-09-24 P26 Web 电台控制超时与六按钮收口（历史阶段；已被后续版本覆盖）
 
 - P26 基线 `26cf3655a450c3cf42b30ca57ea556d22bb6f16c`，实现 Radio dispatch 超时修复、嵌套安全回读、启用/停止一致回读和窄屏宽度约束；范围、映射、锁策略及边界见 [`P26-Web电台控制超时与六按钮收口_zh-CN.md`](P26-Web电台控制超时与六按钮收口_zh-CN.md)。最终实现提交 `b0732b9`。
 - 页面电台区收口为六项，保留 QSO 草稿取消/确认；430px CSS 视口实测文档宽 430px、卡片宽 406px、解码行宽 358px、无元素越界。桌面与窄屏截图及构建/CTest/manifest 证据归档在 `C:\JTDX64\jtdx_sourcecode\local-support\evidence\P26\`。浏览器使用 loopback 内存夹具，不是真实 MainWindow/ADIF/设备验证。
@@ -74,7 +76,7 @@
 - 最新本机审阅 ZIP：`C:\JTDX64\JTDX-2.2.159.2.10-local-b0732b9-P26.zip`，SHA-256 `9F29D8F2C60BE6C05A136ADE976998BBA0D6BBAF8C607C969953DEA9BD814EE3`；141/141 文件清洁解压与 manifest 哈希一致，根项结构已核验。仅本机审阅，不表示根任务接受或公开发行；未做 CAT/PTT/TX/HIL、UDP 服务线程或部署验证。
 - 本地整理记录：[local-support/README_zh-CN.md](../../local-support/README_zh-CN.md)。P26 的 11 份证据已复制至 `local-support/evidence/P26` 并逐项核对 SHA-256，原 `deps-webui/evidence/P26` 仍保留。含删除操作的单条 PowerShell 清理命令在进程启动前被平台策略拒绝；按约束未改用其他工具/拆分重试，故本批删除 0 项、释放 0 bytes。P21–P25 历史依赖/临时项和两棵既有构建树均未删除，逐项用途与重建限制见整理记录。
 
-# 2026-09-23 P25 解码地理字段与电台安全门纠偏（待根任务复核）
+# 2026-09-23 P25 解码地理字段与电台安全门纠偏（历史阶段；已被后续版本覆盖）
 
 - P25 代码提交：`05ee60d5de8ae1d29b00df6d23badcf12cd435c6`，基线 `2d5ee7b0d75f439b4016a42b0ea69cbd0434c9f8`。更正 24 字符解码投影、DXCC entity/continent/中国省份映射、解码选择关联和动作级门控；停止动作可优先越过未知反馈锁，但不清锁。没有修改 UDP 协议或真实 CAT/PTT/TX 执行机制。
 - 从干净 Release 构建目录完成完整应用及测试目标构建；最终成功日志 `C:\JTDX64\deps-webui\evidence\P25\final-build-retry.log`。首次并行构建因自动生成 UI 头文件时序失败，重跑全部目标成功；全量 CTest `25/25`、100%，最终日志 `C:\JTDX64\deps-webui\evidence\P25\final-ctest.log`。
