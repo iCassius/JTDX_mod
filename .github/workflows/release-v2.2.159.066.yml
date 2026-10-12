@@ -46,6 +46,7 @@ jobs:
 
       - name: Install MSYS2 MinGW64 build dependencies
         uses: msys2/setup-msys2@v2
+        id: msys2
         with:
           msystem: MINGW64
           update: true
@@ -65,15 +66,20 @@ jobs:
             mingw-w64-x86_64-qt5-websockets
 
       - name: Fetch and verify official Hamlib 4.7.2 Windows x64 SDK
+        env:
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
         run: |
           $PSNativeCommandUseErrorActionPreference = $false
-          $gcc = (Get-Command gcc.exe -ErrorAction Stop).Source
-          $mingwBin = Split-Path $gcc -Parent
-          $mingwPrefix = Split-Path $mingwBin -Parent
+          $mingwPrefix = Join-Path $env:MSYS2_LOCATION 'mingw64'
+          $mingwBin = Join-Path $mingwPrefix 'bin'
+          foreach ($tool in @('gcc.exe', 'g++.exe', 'gfortran.exe', 'cmake.exe', 'ninja.exe', 'ctest.exe')) {
+            $toolPath = Join-Path $mingwBin $tool
+            if (!(Test-Path -LiteralPath $toolPath)) { throw "Expected MinGW64 tool is missing: $toolPath" }
+          }
           $qtPlatformPlugins = $null
-          $qmake = Get-Command qmake.exe -ErrorAction SilentlyContinue
-          if ($qmake) {
-            $qtPluginRoot = (& $qmake.Source -query QT_INSTALL_PLUGINS 2>$null | Select-Object -Last 1)
+          $qmake = Join-Path $mingwBin 'qmake.exe'
+          if (Test-Path -LiteralPath $qmake) {
+            $qtPluginRoot = (& $qmake -query QT_INSTALL_PLUGINS 2>$null | Select-Object -Last 1)
             $qmakeExitCode = $LASTEXITCODE
             if ($qmakeExitCode -eq 0 -and $qtPluginRoot) { $qtPlatformPlugins = Join-Path $qtPluginRoot.Trim() 'platforms' }
           }
@@ -106,6 +112,8 @@ jobs:
           "HAMLIB_BIN_DIR=$binDir" >> $env:GITHUB_ENV
           "MINGW_BIN=$mingwBin" >> $env:GITHUB_ENV
           "MINGW_PREFIX=$mingwPrefix" >> $env:GITHUB_ENV
+          "MINGW_CMAKE=$(Join-Path $mingwBin 'cmake.exe')" >> $env:GITHUB_ENV
+          "MINGW_CTEST=$(Join-Path $mingwBin 'ctest.exe')" >> $env:GITHUB_ENV
           "QT_QPA_PLATFORM_PLUGIN_PATH=$qtPlatformPlugins" >> $env:GITHUB_ENV
           $binDir >> $env:GITHUB_PATH
           $mingwBin >> $env:GITHUB_PATH
@@ -126,8 +134,11 @@ jobs:
           foreach ($compiler in @($cCompiler, $cxxCompiler, $fortranCompiler)) {
             if (!(Test-Path -LiteralPath $compiler)) { throw "MinGW compiler is missing: $compiler" }
           }
-          cmake -S . -B build -G Ninja `
+          $cmake = Join-Path $env:MINGW_BIN 'cmake.exe'
+          $ninja = Join-Path $env:MINGW_BIN 'ninja.exe'
+          & $cmake -S . -B build -G Ninja `
             -DCMAKE_BUILD_TYPE=Release `
+            "-DCMAKE_MAKE_PROGRAM=$ninja" `
             "-DCMAKE_C_COMPILER=$cCompiler" `
             "-DCMAKE_CXX_COMPILER=$cxxCompiler" `
             "-DCMAKE_Fortran_COMPILER=$fortranCompiler" `
@@ -139,20 +150,20 @@ jobs:
             -DWSJT_ENABLE_OMNIRIG=OFF
 
       - name: Build all targets
-        run: cmake --build build --parallel 2
+        run: '& $env:MINGW_CMAKE --build build --parallel 2'
 
       - name: Run the full CTest suite
         run: |
           $env:PATH = "$env:MINGW_BIN;$env:HAMLIB_BIN_DIR;$env:PATH"
           if (!(Test-Path -LiteralPath $env:QT_QPA_PLATFORM_PLUGIN_PATH)) { throw "Qt platform plugins are missing: $env:QT_QPA_PLATFORM_PLUGIN_PATH" }
-          ctest --test-dir build -C Release --output-on-failure
+          & $env:MINGW_CTEST --test-dir build -C Release --output-on-failure
 
       - name: Install and package the Windows x64 ZIP
         run: |
           $env:PATH = "$env:MINGW_BIN;$env:HAMLIB_BIN_DIR;$env:PATH"
           if (!(Test-Path -LiteralPath $env:QT_QPA_PLATFORM_PLUGIN_PATH)) { throw "Qt platform plugins are missing: $env:QT_QPA_PLATFORM_PLUGIN_PATH" }
           $stage = Join-Path $env:RUNNER_TEMP 'jtdx-install'
-          cmake --install build --prefix $stage
+          & $env:MINGW_CMAKE --install build --prefix $stage
           if (!(Test-Path -LiteralPath (Join-Path $stage 'bin/jtdx.exe'))) { throw 'Installed jtdx.exe is missing.' }
           foreach ($doc in @(
             'P032_日志与起呼停滞收尾_zh-CN.md',
