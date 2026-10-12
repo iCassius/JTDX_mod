@@ -31,14 +31,17 @@ jobs:
 
       - name: Enforce main-only, unique release identity
         run: |
+          $PSNativeCommandUseErrorActionPreference = $false
           if ($env:GITHUB_REF -ne 'refs/heads/main') { throw 'Dispatch this workflow from main.' }
           $head = (git rev-parse HEAD).Trim()
           if ($head -ne $env:GITHUB_SHA) { throw "Checkout $head differs from dispatched SHA $env:GITHUB_SHA." }
           $tag = "v2.2.159.066-ci-$env:GITHUB_RUN_ID-$env:GITHUB_RUN_ATTEMPT"
           gh release view $tag --json tagName 2>$null | Out-Null
-          if ($LASTEXITCODE -eq 0) { throw "Release $tag already exists; refusing to replace it." }
+          $releaseViewExitCode = $LASTEXITCODE
+          if ($releaseViewExitCode -eq 0) { throw "Release $tag already exists; refusing to replace it." }
           gh api "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$tag" --silent 2>$null
-          if ($LASTEXITCODE -eq 0) { throw "Tag $tag already exists; refusing to reuse it." }
+          $tagLookupExitCode = $LASTEXITCODE
+          if ($tagLookupExitCode -eq 0) { throw "Tag $tag already exists; refusing to reuse it." }
           "RELEASE_TAG=$tag" >> $env:GITHUB_ENV
 
       - name: Install MSYS2 MinGW64 build dependencies
