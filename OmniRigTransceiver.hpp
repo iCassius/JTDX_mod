@@ -40,6 +40,11 @@ public:
   void do_mode (MODE) override;
   void do_ptt (bool on) override;
 
+protected:
+  void bind_delegated_ptt_admission (
+    std::shared_ptr<PttAdmissionBlock> const&) noexcept override;
+  void move_delegates_to_thread (QThread *) noexcept override;
+
 private:
   bool await_notification_with_timeout (int timeout);
   Q_SIGNAL void notified () const;

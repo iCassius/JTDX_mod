@@ -23,16 +23,26 @@ Project mailing  list:
 https://jtdx.groups.io/g/main
 
 
-## 本地 Git 变更摘要
+## P066 发行资产与历史版本摘要
 
-以下按当前本地 Git 历史的主要版本组整理，不包含本地调试日志、运行数据和构建产物。
+以下按 P066 Windows x64 发行资产与保留的历史版本组整理，不包含本地调试日志、运行数据和构建产物。
 
-### 2.2.159.2（当前显示版本 2.2.159.031；Windows PE 版本 2.2.159.31）
+### P066 Windows x64 发行包：2.2.159.066（Windows PE 版本 2.2.159.66）
 
-- AutoSeq 回答 CQ 的尝试次数持续累计；达到启用的上限后必定进入清理，不会因 CQ 方向或优先级分支把 DX 长时间占住。自动特殊目标的失败 CQ 在短期冷却内不会反复入选；明确面向本台的呼叫和有效通联回应不受此冷却影响。
+- P066 修复范围限于 `autoCallRareTargets` 已启用、且自动目标命中已配置优先级的路径：该目标达到尝试阈值后的待机清理不再留下错误的 operator hold；同批次避免重复收尾，后续批次可按现有规则重新选择合格目标。此说明不泛化为所有 AutoSeq CQ retry threshold。用户说明见 [`docs/CHANGELOG_P066_用户版_zh-CN.md`](docs/CHANGELOG_P066_用户版_zh-CN.md)。
+- V066 冻结工作树的全新 Release configure/build/install 均成功，全量 CTest 为 53/53。测试是软件级证据，不代表 GUI、真实 CAT/PTT/TX、音频、COM、HIL 或自然时钟长时间挂机验收。当前发行 ZIP 是在已验证 V066 文件集上更新文档后重打包；二进制未重编译，53/53 证据继承自原 V066 构建。新 ZIP 的 stage、ZIP 与 clean-extract 为 158/158 项逐路径、大小和 SHA-256 匹配。
+- 当前发行资产 `JTDX-2.2.159.066-win64-unsigned-r2.zip`：49,538,396 字节；SHA-256 `2e9957178c4f281b61230531b73df5337f9d3429f4217f64fbc5fbcd4e8a9bba`。49 个 PE（包括应用）均无 Authenticode 签名；基线 Git commit 未签名；ZIP 无 detached `.sig`/`.asc`。SHA-256 只用于完整性比对，不能单独认证发布者或来源。
+- 本次 r2 是在 r1 已验证 clean-extract 上更新四份说明文档后重打包；49 个 PE 与 r1 逐项哈希不变，没有重编译二进制或重跑 V066 的 53 项测试。早期发行候选 r0（`JTDX-2.2.159.066-win64-unsigned.zip`，49,537,560 字节；SHA-256 `7b8a7e8c194cc474c8829a742eb027e7c13c1e68c42aee5ec5dd304391a036fe`）及审阅包 r1（`JTDX-2.2.159.066-win64-unsigned-r1.zip`，49,537,835 字节；SHA-256 `23653f80aaf57e8d89da1ab3f6be8d831ca8036a3de0bf59472a6fb7de53009a`）、旧源码审阅 ZIP（SHA-256 `515103b86942370ce681ad58905f2bca85b7a35946275f1dbca2f516989046c6`）和文档审阅 ZIP（SHA-256 `aed1fd458ac4117366aa308851aba748b0726828d200eb1e3f9ef27e48cd82db`）均保留未改。
+### 历史版本摘要（2.2.159.031–2.2.159.035）
+
+- 历史版本行为摘要：AutoSeq 回答 CQ 的尝试次数持续累计；达到启用的上限后进入清理。自动特殊目标的失败 CQ 在短期冷却内不会反复入选；明确面向本台的呼叫和有效通联回应不受此冷却影响。此条总结 2.2.159.031–.035 的范围，不扩展 P066 修复范围。
 - CAT 故障依据 rig 会话用途分流：运行会话的故障始终交给主窗口现有恢复流程，配置测试会话只在设置窗口提示；旧 rig generation 的迟到故障会被忽略。现有 PTT-off 安全门和重连策略保持不变。
 - Web TCP 自动端口冲突回归改用 AnyIPv4 夹具覆盖通配监听冲突；生产 TCP 端口选择、UDP 和 Web UI 使用行为没有改变。
-- 版本来源、用户行为和本机候选证据见 [`docs/CHANGELOG_20260929_P031_AutoSeq_CAT_TCP_zh-CN.md`](docs/CHANGELOG_20260929_P031_AutoSeq_CAT_TCP_zh-CN.md) 与 `local-support/releases/P031/说明_zh-CN.md`。真实 CAT/PTT/TX/HIL 仍需使用者按自己的设备环境验收。
+- P032 增加本地 AutoSeq 诊断日志，并对新选中的自动 CQ/RFIN 目标实施 120 秒无实际 TX 进展后的安全释放；故障反馈 ZIP 可由用户双击导出工具生成，不会自动上传。
+- P032 用户行为摘要见[用户版说明](docs/CHANGELOG_P032_用户版_zh-CN.md)。真实 CAT/PTT/TX/HIL 仍需使用者按自己的设备环境验收。
+- P033 首次把 CAT 离线/failure 会话代次传播、FTX-1+CAT 实际 GET_PTT 就绪门与未消费请求上下文取消、FTX-1 协议错序计数恢复、诊断日志字段格式修复一并交付。P032 旧候选不含这些修复；详细范围见 [`docs/CHANGELOG_P033_用户版_zh-CN.md`](docs/CHANGELOG_P033_用户版_zh-CN.md)。软件测试不代表真实 CAT/PTT/TX/HIL 验收。
+- P034 历史候选曾增加 retired worker、待发 payload 身份和 CAT 状态观察等保护；实际长挂机使用发现严重回归后，已撤回长挂机验收建议。旧 ZIP、报告和源码快照保留用于追查，不应拿 P034 包做长挂机验证。
+- P034 在实际长挂机使用中出现严重回归，已撤回长挂机验收建议；保留原 ZIP、报告与源码快照用于追查。P035 修正了生产 Qt queued SET 的精确 `PttAdmissionBlock::Token` 类型注册，并补齐 Hamlib 成功 GET 的 health 成功事件。软件回归覆盖不能证明真实电台收发、15 秒恢复或 COM long-idle 根因；详细范围见[P035 用户说明](docs/CHANGELOG_P035_用户版_zh-CN.md)。
 
 ### 2.2.159.1
 

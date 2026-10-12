@@ -41,6 +41,8 @@
 #include "JTDXDateTime.h"
 #include "recovery_policy.hpp"
 #include "autoseq_recovery_policy.hpp"
+#include "autoseq_initial_call_stall_policy.hpp"
+#include "ptt_start_policy.hpp"
 #include "JtdxWebState.hpp"
 #include "JtdxWebControl.hpp"
 #include "JtdxWebFrequency.hpp"
@@ -388,6 +390,9 @@ private slots:
   void on_S_meter_button_clicked(bool checked);
 
 private:
+#ifdef P0_TX_MAINWINDOW_INTEGRATION_TEST
+  friend class MainWindowP0IntegrationTestAccess;
+#endif
   Q_SIGNAL void initializeAudioOutputStream (QAudioDeviceInfo,
       unsigned channels, unsigned msBuffered) const;
   Q_SIGNAL void stopAudioOutputStream () const;
@@ -411,7 +416,37 @@ private:
   Q_SIGNAL void toggleShorthand () const;
 
 private:
+  void cancelPttStartAndRevokeAdmission (QString const& reasonCode = {},
+                                         QString const& event = {}) noexcept;
   void cancelAutoSeqRecovery (QString const& reason);
+  bool cancelPendingPttStart (QString const& reasonCode, bool exemptTune = true);
+  QByteArray selectedTxPayloadBytes () const;
+  PttStartPolicy::RequestContext currentPttRequestContext () const;
+  bool pendingPttRequestContextMatches () const;
+  bool cancelPendingPttStartIfContextChanged (QString const& reasonCode);
+  void rejectFtx1PttRequest (QString const& reasonCode);
+  void appendAutoSeqDiagnostic (QString const& event, QString const& reasonCode = {},
+                                QString const& call = {}, bool includeTxText = false,
+                                qint64 elapsedOverride = -1,
+                                QStringList const& extraFields = {});
+  void setAutoSeqInitialCallOperatorHold (bool hold, QString const& source,
+                                          QString const& call = {});
+  struct PttStopFlags
+  {
+    bool enable_tx;
+    bool btxok;
+    bool transmitting;
+    bool tune;
+    bool tx_when_ready;
+    int g_iptt;
+  };
+  void appendPttStopDiagnostic (char const * event, PttStopFlags const& before,
+                                PttStopFlags const& after, char const * detail_name,
+                                int detail_value) noexcept;
+  void cancelAutoSeqInitialCallStall (QString const& reasonCode,
+                                      bool suppressRearm = false);
+  bool evaluateAutoSeqInitialCallStallAtBatchEnd ();
+  void observeAutoSeqAudioProgress ();
   void hideMenus (bool b);
   void applyWebUiConfiguration ();
   void updateWebRadioState ();
@@ -456,6 +491,7 @@ private:
   QScopedPointer<HelpTextWindow> m_mouseCmnds;
 
   Transceiver::TransceiverState m_rigState;
+  quint64 m_rigStateGeneration {0};
   Frequency  m_lastDialFreq;
   QString m_lastBand;
   Frequency  m_callingFrequency;
@@ -672,6 +708,7 @@ private:
 
   // labels in status bar
   QLabel * tx_status_label;
+  QLabel * cat_health_label {nullptr};
   QLabel * mode_label;
   QLabel * last_tx_label;
   QLabel * txwatchdog_label;
@@ -716,6 +753,39 @@ private:
   QTimer m_rigRecoveryTimer;
   RecoveryPolicy m_rigRecovery;
   AutoSeqRecoveryPolicy m_autoSeqRecovery;
+  AutoSeqInitialCallStallPolicy m_autoSeqInitialCallStall;
+  PttStartPolicy m_pttStartPolicy;
+  PttStartPolicy::Token m_pttRequestToken {};
+  PttStartPolicy::RequestContext m_pttRequestContext {};
+  QString m_autoSeqDiagnosticSessionId;
+  QString m_autoSeqLastAttemptCall;
+  QString m_autoSeqStallSuppressedCall;
+  QString m_autoSeqStallReplySender;
+  QString m_autoSeqStallEnableTxReason;
+  quint64 m_autoSeqDecodeBatchId {0};
+  quint64 m_autoSeqAttemptSequence {0};
+  quint64 m_autoSeqLastAttemptId {0};
+  qint64 m_autoSeqLiveDecodeBatchStartedMs {0};
+  qint64 m_autoSeqPttReadbackMonotonicMs {0};
+  qint64 m_autoSeqPttReadbackAtUtcMs {0};
+  std::uint64_t m_autoSeqLastPttReadbackSerial {0};
+  qint64 m_autoSeqLastNoProgressElapsedMs {-1};
+  qint64 m_autoSeqLastProgressLoggedMonotonicMs {0};
+  bool m_autoSeqLiveDecodeBatchPending {false};
+  bool m_autoSeqStallTargetedReplySeen {false};
+  bool m_autoSeqStallSkipCurrentBatch {false};
+  bool m_autoSeqPttReadbackKnown {false};
+  bool m_autoSeqPttReadbackOn {false};
+  bool m_ftx1PttReadinessRejected {false};
+  bool m_ftx1ReadinessAutoDisabled {false};
+  bool m_tuneStopPending {false};
+  quint64 m_ftx1ReadinessRejectedBatchId {0};
+  bool m_autoSeqInitialCallOperatorHold {false};
+  QString m_autoSeqInitialCallOperatorHoldBlockedCall;
+  bool m_autoSeqInternalTargetSelection {false};
+  bool m_autoSeqInternalHalt {false};
+  bool m_autoSeqInternalClear {false};
+  bool m_autoSeqInternalEnableTxChange {false};
   bool m_autoSeqRecoveryInternalUiChange {false};
   bool m_autoSeqRecoveryInternalHalt {false};
   QString m_autoSeqRecoveryBand;

@@ -42,6 +42,8 @@ protected:
   // Sub-classes implement this and fetch what they can from the rig
   // in a non-intrusive manner.
   virtual void do_poll () = 0;
+  void report_poll_read_result (QString const& operation, int api_return,
+                                bool protocol_valid);
 
   void do_post_start (JTDXDateTime*) override final;
   void do_post_stop () override final;
@@ -72,6 +74,10 @@ private:
   Transceiver::TransceiverState next_state_;
 
   unsigned retries_;            // number of incorrect polls left
+  quint64 next_poll_id_;
+  quint64 current_poll_id_;
+  qint64 current_poll_started_mono_ns_;
+  int current_poll_interval_ms_;
   std::string debug_file_;
   JTDXDateTime * m_jtdxtime;
 

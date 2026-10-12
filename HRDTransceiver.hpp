@@ -41,6 +41,9 @@ public:
                            , QObject * parent = nullptr);
 
 protected:
+  void bind_delegated_ptt_admission (
+    std::shared_ptr<PttAdmissionBlock> const&) noexcept override;
+  void move_delegates_to_thread (QThread *) noexcept override;
   // Implement the TransceiverBase interface.
   int do_start (JTDXDateTime*) override;
   void do_stop () override;

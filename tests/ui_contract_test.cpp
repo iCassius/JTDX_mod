@@ -62,6 +62,24 @@ int main ()
   QFile mainWindowSource {QStringLiteral (JTDX_SOURCE_DIR "/mainwindow.cpp")};
   expect (mainWindowSource.open (QIODevice::ReadOnly), "open MainWindow source");
   auto const mainWindowCpp = mainWindowSource.readAll ();
+  auto const readFrequencyStart = mainWindowCpp.indexOf ("void MainWindow::on_readFreq_clicked()");
+  auto const readFrequencyEnd = mainWindowCpp.indexOf ("\nvoid ", readFrequencyStart + 1);
+  expect (readFrequencyStart >= 0 && readFrequencyEnd > readFrequencyStart,
+          "read-frequency handler is present for CAT refresh contract check");
+  auto const readFrequencyHandler = mainWindowCpp.mid (readFrequencyStart,
+                                                        readFrequencyEnd - readFrequencyStart);
+  auto const onlineGuard = readFrequencyHandler.indexOf ("if (m_config.transceiver_online ())");
+  auto const strongSync = readFrequencyHandler.indexOf ("m_config.sync_transceiver (true, true)");
+  auto const readOnlyRefresh = readFrequencyHandler.indexOf ("m_config.request_read_only_cat_refresh ()");
+  expect (onlineGuard >= 0 && onlineGuard < strongSync && strongSync < readOnlyRefresh,
+          "read-frequency guards the original split-preserving sync and separate read-only refresh");
+  expect (!readFrequencyHandler.contains ("m_config.sync_transceiver (true)"),
+          "read-frequency does not invoke sync with split enforcement disabled");
+  QFile configurationHeader {QStringLiteral (JTDX_SOURCE_DIR "/Configuration.hpp")};
+  expect (configurationHeader.open (QIODevice::ReadOnly), "open Configuration header for sync default check");
+  expect (configurationHeader.readAll ().contains (
+            "sync_transceiver (bool force_signal = false, bool enforce_mode_and_split = false)"),
+          "legacy one-argument sync keeps its historical default that relaxes split enforcement");
   auto const commonActionsStart = mainWindowCpp.indexOf ("void MainWindow::commonActions ()");
   auto const commonActionsEnd = mainWindowCpp.indexOf ("\nvoid ", commonActionsStart + 1);
   expect (commonActionsStart >= 0 && commonActionsEnd > commonActionsStart,
@@ -126,8 +144,10 @@ int main ()
           "fault halt is distinguished from user halt cancellation");
   auto const recoveryPeriod = mainWindowCpp.indexOf ("applyAutoTxPeriod (hisCall, m_autoSeqRecovery.target_receive_time ())");
   auto const recoveryMessages = mainWindowCpp.indexOf ("genStdMsgs (m_rpt);", recoveryPeriod);
-  auto const recoveryEnable = mainWindowCpp.indexOf ("if (!m_enableTx) ui->enableTxButton->click ();", recoveryMessages);
-  expect (recoveryPeriod >= 0 && recoveryMessages > recoveryPeriod && recoveryEnable > recoveryMessages,
+  auto const recoveryEnable = mainWindowCpp.indexOf ("if (!m_enableTx) {", recoveryMessages);
+  auto const recoveryEnableClick = mainWindowCpp.indexOf ("ui->enableTxButton->click ();", recoveryEnable);
+  expect (recoveryPeriod >= 0 && recoveryMessages > recoveryPeriod
+              && recoveryEnable > recoveryMessages && recoveryEnableClick > recoveryEnable,
           "recovery settles period and messages before Enable Tx");
   expect (mainWindowCpp.contains ("recovery rejected unsupported fallback candidate="),
           "unsupported fallback candidate is rejected while recovery ticket remains pending");

@@ -35,11 +35,19 @@ public:
                                     QObject * parent = nullptr);
 
   void set (TransceiverState const&,
-            unsigned sequence_number) noexcept override;
+            unsigned sequence_number,
+            PttAdmissionBlock::Token ptt_admission_token) noexcept override;
+  void refresh_read_only (quint64 request_id) noexcept override;
+  bool supports_health_observation () const noexcept override;
 
   // forward everything else to wrapped Transceiver
   void start (unsigned sequence_number, JTDXDateTime* jtdxtime) noexcept override {wrapped_->start (sequence_number,jtdxtime);}
   void stop () noexcept override {wrapped_->stop ();}
+
+protected:
+  void bind_delegated_ptt_admission (
+    std::shared_ptr<PttAdmissionBlock> const&) noexcept override;
+  void move_delegates_to_thread (QThread *) noexcept override;
 
 private:
   void handle_update (TransceiverState const&, unsigned seqeunce_number);
@@ -50,6 +58,7 @@ private:
   Frequency rx_frequency_;        // requested Rx frequency
   Frequency tx_frequency_;        // requested Tx frequency
   bool split_; // requested split state
+  bool last_observed_ptt_ {false};
   unsigned last_sequence_number_ {0};
 };
 

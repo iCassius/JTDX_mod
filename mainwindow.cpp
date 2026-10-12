@@ -1,9 +1,11 @@
 //-------------------------------------------------------- MainWindow
 
 #include "mainwindow.h"
+#include "ptt_tx_payload.hpp"
 #include <cinttypes>
 #include <algorithm>
 #include <limits>
+#include <chrono>
 #include <fftw3.h>
 #include <thread>
 
@@ -32,8 +34,10 @@
 #include <QButtonGroup>
 #include <QtMath>
 #include <QDateTime>
+#include <QUuid>
 #include <QFile>
 #include <QFileInfo>
+#include <QScopedValueRollback>
 #include <QTextStream>
 #if QT_VERSION >= QT_VERSION_CHECK (5, 15, 0)
 #include <QRandomGenerator>
@@ -78,6 +82,8 @@
 #include "auto_call_policy.hpp"
 #include "auto_tx_period_policy.hpp"
 #include "directed_call_policy.hpp"
+#include "autoseq_diagnostic_formatter.hpp"
+#include "autoseq_ptt_observation_policy.hpp"
 
 #include <QSound>
 
@@ -137,6 +143,12 @@ QVector<QColor> g_ColorTbl;
 
 namespace
 {
+  qint64 auto_seq_monotonic_ms () noexcept
+  {
+    return std::chrono::duration_cast<std::chrono::milliseconds> (
+      std::chrono::steady_clock::now ().time_since_epoch ()).count ();
+  }
+
   void appendRecoveryLog (QDir const& dataDirectory, QString area, QString message)
   {
     try
@@ -506,6 +518,8 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
   m_manual {network_manager}
 {
   ui->setupUi(this);
+  m_autoSeqDiagnosticSessionId = QUuid::createUuid ().toString (QUuid::WithoutBraces);
+  appendAutoSeqDiagnostic (QStringLiteral ("session_start"), QStringLiteral ("startup"));
   m_webState->set_cycle_clock_provider ([this] { return m_jtdxtime->currentMSecsSinceEpoch2 (); },
                                         [this] { return m_TRperiod; });
   m_webControl->set_diagnostic_logger ([this] (QString const& line) {
@@ -644,11 +658,13 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
   connect (m_soundOutput, &SoundOutput::ready, this, [this] {m_soundOutputError = false;});
   connect (m_soundOutput, &SoundOutput::startupConfirmed, this,
            [this] (QString const& message) {
+             observeAutoSeqAudioProgress ();
              appendRecoveryLog (m_dataDir, "audio-output", message);
              m_soundOutputError = false;
            });
   connect (m_soundOutput, &SoundOutput::startupProgress, this,
            [this] (QString const& message) {
+             observeAutoSeqAudioProgress ();
              appendRecoveryLog (m_dataDir, "audio-output", message);
            });
   // SoundOutput and Modulator share the existing audio thread.  A failed
@@ -661,10 +677,12 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
   connect (&m_audioThread, &QThread::finished, m_soundOutput, &QObject::deleteLater);
 
   // hook up Modulator slots and disposal
+#ifndef P0_TX_MAINWINDOW_INTEGRATION_TEST
   connect (this, &MainWindow::transmitFrequency, m_modulator, &Modulator::setFrequency);
   connect (this, &MainWindow::endTransmitMessage, m_modulator, &Modulator::stop);
   connect (this, &MainWindow::tune, m_modulator, &Modulator::tune);
   connect (this, &MainWindow::sendMessage, m_modulator, &Modulator::start);
+#endif
   connect (&m_audioThread, &QThread::finished, m_modulator, &QObject::deleteLater);
 
   // hook up the audio input stream signals, slots and disposal
@@ -1029,6 +1047,13 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
   connect (&m_config, &Configuration::transceiver_TCIframesWritten, this, &MainWindow::dataSink);
   connect (&m_config, &Configuration::transceiver_TCImodActive, this, &MainWindow::tci_mod_active);
   connect (&m_config, &Configuration::transceiver_failure, this, &MainWindow::handle_transceiver_failure);
+  connect (&m_config, &Configuration::transceiver_cat_health_changed, this,
+           [this] (QString const& label, QString const& detail, quint64 generation) {
+      if (generation != m_config.transceiver_session_generation () || !cat_health_label)
+        return;
+      cat_health_label->setText (label);
+      cat_health_label->setToolTip (detail);
+    });
   m_rigRecoveryTimer.setSingleShot (true);
   connect (&m_rigRecoveryTimer, &QTimer::timeout, this, &MainWindow::retryRigOpen);
   connect (&m_config, &Configuration::udp_server_changed, m_messageClient, &MessageClient::set_server);
@@ -1156,7 +1181,7 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
 
   m_audioThread.start (m_audioThreadPriority);
 
-#ifdef WIN32
+#if defined (WIN32) && !defined (P0_TX_MAINWINDOW_INTEGRATION_TEST)
   if (!m_multiple)
     {
       while(true)
@@ -1172,6 +1197,7 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
 
 //  auto_tx_label->setText (m_autoTx ? "AutoTx Armed" : "AutoTx Disarmed");
 
+#ifndef P0_TX_MAINWINDOW_INTEGRATION_TEST
   {
     //delete any .quit file that might have been left lying around
     //since its presence will cause jtdxjt9 to exit a soon as we start it
@@ -1216,6 +1242,7 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
   proc_jtdxjt9.setProcessEnvironment (new_env);
   proc_jtdxjt9.start(QDir::toNativeSeparators (m_appDir) + QDir::separator () +
           "jtdxjt9", jt9_args, QIODevice::ReadWrite | QIODevice::Unbuffered);
+#endif
 
   QString fname {QDir::toNativeSeparators(m_dataDir.absoluteFilePath ("wsjtx_wisdom.dat"))};
   QByteArray cfname=fname.toLocal8Bit();
@@ -1231,6 +1258,7 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
       (version() + (m_tci ? " tci " : " ") + revision()).toStdString().c_str(),QThread::idealThreadCount ());
   fclose (pFile);
 #endif
+#ifndef P0_TX_MAINWINDOW_INTEGRATION_TEST
 //  printf ("is_tci: %d downsampleFactor %d\n",m_tci,m_downSampleFactor);
   if (m_tci) {
     Q_EMIT m_config.transceiver_period(double(NTMAX));
@@ -1242,6 +1270,7 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
       Q_EMIT initializeAudioOutputStream (m_config.audio_output_device (), AudioDevice::Mono == m_config.audio_output_channel () ? 1 : 2, m_tx_audio_buffer_frames);
     }
   }
+#endif
 //  if (m_tci) Q_EMIT m_config.transceiver_trfrequency(ui->TxFreqSpinBox->value () - m_XIT); 
 //  else Q_EMIT transmitFrequency (ui->TxFreqSpinBox->value () - m_XIT);
 
@@ -1252,9 +1281,12 @@ MainWindow::MainWindow(bool multiple, QSettings * settings, QSharedMemory *shdme
   // enter a modal dialog before main.cpp has shown the window.  The event
   // loop now opens the rig immediately after the first show() opportunity;
   // settings therefore remain available even when the initial open fails.
+#ifndef P0_TX_MAINWINDOW_INTEGRATION_TEST
   QTimer::singleShot (StartupPolicy::rigOpenDelayMs (), this, [this] {
       if (m_valid) rigOpen ();
     });
+#endif
+
 
   ui->TxMinuteButton->setChecked(m_txFirst);
   setMinButton();
@@ -2599,6 +2631,7 @@ void MainWindow::dispatchWebDx (JtdxWebControl::Dispatch dispatch)
   // 只更新 DX 输入投影；不进入桌面双击、QSO 历史或 TX 路径。
   m_hisCall = validation.call;
   m_hisGrid = validation.grid;
+  cancelPendingPttStartIfContextChanged (QStringLiteral ("web_dx_target_changed"));
   {
     QSignalBlocker call_blocker {ui->dxCallEntry};
     QSignalBlocker grid_blocker {ui->dxGridEntry};
@@ -2933,9 +2966,19 @@ void MainWindow::on_AutoTxButton_clicked (bool checked)
 
 void MainWindow::on_AutoSeqButton_clicked (bool checked)
 {
+  bool const automaticRestore = m_wasAutoSeq;
+  if (checked && !automaticRestore) {
+    setAutoSeqInitialCallOperatorHold (false,
+                                       QStringLiteral ("manual_auto_sequence_enabled"));
+    m_autoSeqStallSuppressedCall.clear ();
+  }
   m_autoseq = checked;
   if (!checked) {
     m_autoDirectedAnswerActive = false;
+    if (!m_wasAutoSeq && m_autoSeqInitialCallStall.active ())
+      setAutoSeqInitialCallOperatorHold (true,
+                                         QStringLiteral ("manual_auto_sequence_disabled"));
+    cancelAutoSeqInitialCallStall (QStringLiteral ("auto_sequence_disabled"), true);
     cancelAutoSeqRecovery (QStringLiteral ("auto_sequence_disabled"));
   }
   if (checked) {
@@ -3020,13 +3063,37 @@ void MainWindow::on_actionAbout_triggered() { CAboutDlg {this}.exec (); } //Disp
 
 void MainWindow::on_enableTxButton_clicked (bool checked)
 {
+  bool const wasEnabled = m_enableTx;
+  if (checked && !m_autoSeqInternalEnableTxChange) {
+    setAutoSeqInitialCallOperatorHold (false,
+                                       QStringLiteral ("operator_enable_tx"));
+    m_autoSeqStallSuppressedCall.clear ();
+    m_ftx1PttReadinessRejected = false;
+    m_ftx1ReadinessAutoDisabled = false;
+    m_ftx1ReadinessRejectedBatchId = 0;
+  }
+  if (!checked && m_autoSeqInitialCallStall.active ()
+      && !m_autoSeqInternalEnableTxChange) {
+    setAutoSeqInitialCallOperatorHold (true,
+                                       QStringLiteral ("operator_enable_tx_disabled"));
+    cancelAutoSeqInitialCallStall (QStringLiteral ("enable_tx_disabled"), true);
+  }
   if (!checked && m_autoSeqRecovery.pending () && !m_autoSeqRecoveryInternalHalt
       && !m_autoSeqRecoveryInternalUiChange)
     cancelAutoSeqRecovery (QStringLiteral ("enable_tx_disabled"));
+  if (PttStartPolicy::should_cancel_pending_audio (checked, m_tx_when_ready, m_tune)
+      && m_pttStartPolicy.active ())
+    cancelPendingPttStart (QStringLiteral ("enable_tx_disabled_pending_audio"));
   ui->pbBandHopping->setChecked(false); // disable band hopping when Tx is enabled
   if(m_enableTx && !checked && m_curMsgTx.startsWith(m_hisCall+" ")) m_lasthint=true;
   if(checked && m_lasthint) m_lasthint=false;
   m_enableTx = checked;
+  if (wasEnabled != checked)
+    appendAutoSeqDiagnostic (checked ? QStringLiteral ("enable_tx_enabled")
+                                     : QStringLiteral ("enable_tx_disabled"),
+                             m_autoSeqStallEnableTxReason.isEmpty ()
+                               ? QStringLiteral ("operator_or_existing_flow")
+                               : m_autoSeqStallEnableTxReason);
   statusUpdate ();
   if(m_mode.left(4)=="WSPR")  {
     QPalette palette {ui->sbTxPercent->palette ()};
@@ -3442,6 +3509,15 @@ void MainWindow::createStatusBar()                           //createStatusBar
   tx_status_label->setFrameStyle(QFrame::Panel | QFrame::Sunken);
   statusBar()->addWidget(tx_status_label);
 
+  cat_health_label = new QLabel (this);
+  cat_health_label->setAlignment (Qt::AlignHCenter | Qt::AlignVCenter);
+  cat_health_label->setContentsMargins (1, 1, 1, 1);
+  cat_health_label->setMinimumSize (QSize (116, 20));
+  cat_health_label->setFrameStyle (QFrame::Panel | QFrame::Sunken);
+  cat_health_label->setText (tr ("CAT PTT：未观测"));
+  cat_health_label->setToolTip (tr ("尚无运行时 CAT PTT GET 观察。"));
+  statusBar ()->addWidget (cat_health_label);
+
   mode_label->setAlignment(Qt::AlignHCenter);
   mode_label->setAlignment(Qt::AlignVCenter);
   mode_label->setContentsMargins(1,1,1,1);
@@ -3536,6 +3612,7 @@ void MainWindow::subProcessError (QProcess * process, QProcess::ProcessError)
 void MainWindow::closeEvent(QCloseEvent * e)
 {
   m_valid = false;              // suppresses subprocess errors
+  cancelPttStartAndRevokeAdmission (QStringLiteral ("window_closing"));
   if (m_webControl) m_webControl->shutdown ();
   if (m_webService) m_webService->shutdown ();
   if(m_config.clear_DX_exit())
@@ -4083,6 +4160,14 @@ void MainWindow::on_DecodeButton_clicked (bool /* checked */)	//Decode request
 {
   if(!m_rxDone) { ui->DecodeButton->setChecked (false); return; }
   if(!m_decoderBusy && m_mode != "WSPR-2") {
+    if (cancelPendingPttStart (QStringLiteral ("manual_decode_takeover"))
+        && m_config.requires_ftx1_cat_ptt_readback ())
+      {
+        m_ftx1PttReadinessRejected = true;
+        m_ftx1ReadinessRejectedBatchId = m_autoSeqDecodeBatchId;
+        appendAutoSeqDiagnostic (QStringLiteral ("ptt_request_blocked"),
+                                 QStringLiteral ("manual_decode_takeover"), {}, true, 0);
+      }
     dec_data.params.newdat=0;
     dec_data.params.nagain=1;
     m_blankLine=false; // don't insert the separator again
@@ -4123,6 +4208,17 @@ void MainWindow::decode()                                       //decode()
   if(m_diskData && !m_mode.startsWith("FT")) dec_data.params.nutc=dec_data.params.nutc/100;
   if(dec_data.params.newdat==1) {
     m_msDecStarted=m_jtdxtime->currentMSecsSinceEpoch2();
+  if (!m_manualDecode && !m_diskData) {
+      ++m_autoSeqDecodeBatchId;
+      m_autoSeqLiveDecodeBatchStartedMs = auto_seq_monotonic_ms ();
+      m_autoSeqLiveDecodeBatchPending = true;
+      m_autoSeqStallTargetedReplySeen = false;
+      m_autoSeqStallReplySender.clear ();
+      m_autoSeqStallSkipCurrentBatch = false;
+    } else {
+      m_autoSeqLiveDecodeBatchPending = false;
+      cancelAutoSeqInitialCallStall (QStringLiteral ("manual_or_disk_decode"));
+    }
     if (!m_manualDecode && !m_diskData)
       m_autoSeqRecovery.begin_decode_batch (m_msDecStarted);
     if(!m_mode.startsWith("FT")) {
@@ -4265,6 +4361,21 @@ void MainWindow::decode()                                       //decode()
 
 void MainWindow::process_Auto(bool forceCandidate)
 {
+  if (m_autoSeqStallSkipCurrentBatch) return;
+  if (m_autoSeqInitialCallStall.active () && m_autoSeqLiveDecodeBatchPending
+      && !m_manualDecode && !m_diskData
+      && m_autoSeqInitialCallStall.elapsed_ms (auto_seq_monotonic_ms ())
+           >= AutoSeqInitialCallStallPolicy::timeout_ms) {
+    auto const owner = QString::fromStdString (m_autoSeqInitialCallStall.call ());
+    QsoHistory::Status historyStatus = QsoHistory::NONE;
+    int retryCount = -1;
+    bool const historyKnown = m_qsoHistory.diagnosticSnapshot (owner, historyStatus, retryCount);
+    bool const validDirectedPhase = historyKnown
+      && (historyStatus == QsoHistory::RCALL || historyStatus == QsoHistory::RREPORT
+          || historyStatus == QsoHistory::RRREPORT || historyStatus == QsoHistory::RRR
+          || historyStatus == QsoHistory::RRR73 || historyStatus == QsoHistory::R73);
+    if (!validDirectedPhase) return;
+  }
   if (m_autoSeqRecovery.pending () && (m_manualDecode || m_diskData)) {
     appendRecoveryLog (m_dataDir, "auto-call",
                        QStringLiteral ("recovery gate withheld manual or disk decode"));
@@ -4302,6 +4413,10 @@ void MainWindow::process_Auto(bool forceCandidate)
                        QStringLiteral ("recovery gate withheld by TX/PTT guard; ticket retained"));
     return;
   }
+  bool const freshFtx1AutoDecision = m_ftx1PttReadinessRejected
+    && PttStartPolicy::fresh_auto_decision (
+         m_ftx1ReadinessRejectedBatchId, m_autoSeqDecodeBatchId,
+         m_autoseq, m_manualDecode, m_diskData);
   int count = 0;
   int prio = 0;
   bool counters = true;
@@ -4319,6 +4434,7 @@ void MainWindow::process_Auto(bool forceCandidate)
   int tx = ui->TxFreqSpinBox->value ();
   bool rareTargetRejected = false;
   bool autoRareTargetArm = false;
+  bool standbyCleanupHandled = false;
   bool autoDirectedAnswerArm = false;
   bool recoveryResumeArm = false;
   bool recoveryFallbackArm = false;
@@ -4378,6 +4494,14 @@ void MainWindow::process_Auto(bool forceCandidate)
   if (!hisCall.isEmpty ()) {
     if (m_houndMode) count = -1; //marker for changing status to FIN when status is RRR73
     m_status = m_qsoHistory.autoseq(hisCall,grid,rpt,rx,tx,time,count,prio,mode);
+    if (m_autoSeqInitialCallStall.active ()
+        && Radio::base_callsign (hisCall)
+             == QString::fromStdString (m_autoSeqInitialCallStall.base_call ())
+        && !rpt.isEmpty ()
+        && (m_status == QsoHistory::RCQ || m_status == QsoHistory::RFIN
+            || m_status == QsoHistory::SCQ || m_status == QsoHistory::SCALL))
+      m_autoSeqInitialCallStall.update_report (
+        AutoCallPolicy::receivedReportOrWeakest (rpt));
     if (m_transmitting) count -=1;
     if(m_config.write_decoded_debug()) {
       QString StrDirection = "";
@@ -4437,6 +4561,10 @@ void MainWindow::process_Auto(bool forceCandidate)
         QString const reason = replyOtherTerminates
             ? QStringLiteral ("automatic target answer-CQ retry terminated: reply-other; standby cleanup")
             : QStringLiteral ("automatic target answer-CQ retry threshold reached; standby cleanup");
+        standbyCleanupHandled = true;
+        QString const cleanupTarget = m_hisCall.isEmpty () ? hisCall : m_hisCall;
+        bool const operatorHoldBefore = m_autoSeqInitialCallOperatorHold;
+        bool const ownerActiveBefore = m_autoSeqInitialCallStall.active ();
         if (!m_haltTrans && (m_enableTx || m_transmitting || m_btxok || g_iptt == 1))
           haltTx (reason);
         // Reuse QsoHistory's bounded report/time suppression so the same
@@ -4451,13 +4579,45 @@ void MainWindow::process_Auto(bool forceCandidate)
               .arg (hisCall).arg (prio).arg (count)
               .arg (m_config.answerCQCount () ? m_config.nAnswerCQCounter () : 0)
               .arg (receivedReport).arg (time));
-        clearDX (QStringLiteral (" cleared, ") + reason);
+        // Automatic threshold cleanup ends the current owner without turning
+        // it into an operator stop or marking the same target as manually
+        // suppressed. The CQ-failure cooldown above owns that suppression.
+        m_autoSeqStallSkipCurrentBatch = true;
+        cancelAutoSeqInitialCallStall (
+            QStringLiteral ("automatic_answer_cq_retry_cleanup"), false);
+        {
+          QScopedValueRollback<bool> internalClear {m_autoSeqInternalClear, true};
+          clearDX (QStringLiteral (" cleared, ") + reason);
+        }
         count = m_qsoHistory.reset_count (hisCall);
         hisCall = m_hisCall;
         grid = m_hisGrid;
         m_status = QsoHistory::NONE;
         counters = false;
         counters2 = false;
+        QStringList cleanupFields;
+        auto const boolText = [] (bool value) {
+          return value ? QStringLiteral ("true") : QStringLiteral ("false");
+        };
+        AutoSeqDiagnosticFormatter::append_field (
+            cleanupFields, QStringLiteral ("cleanup_target_before"), cleanupTarget);
+        AutoSeqDiagnosticFormatter::append_field (
+            cleanupFields, QStringLiteral ("cleanup_target_after"), m_hisCall);
+        AutoSeqDiagnosticFormatter::append_field (
+            cleanupFields, QStringLiteral ("operator_hold_before"), boolText (operatorHoldBefore));
+        AutoSeqDiagnosticFormatter::append_field (
+            cleanupFields, QStringLiteral ("operator_hold_after"),
+            boolText (m_autoSeqInitialCallOperatorHold));
+        AutoSeqDiagnosticFormatter::append_field (
+            cleanupFields, QStringLiteral ("owner_active_before"), boolText (ownerActiveBefore));
+        AutoSeqDiagnosticFormatter::append_field (
+            cleanupFields, QStringLiteral ("owner_active_after"),
+            boolText (m_autoSeqInitialCallStall.active ()));
+        AutoSeqDiagnosticFormatter::append_field (
+            cleanupFields, QStringLiteral ("batch_skipped"), boolText (m_autoSeqStallSkipCurrentBatch));
+        appendAutoSeqDiagnostic (QStringLiteral ("standby_cleanup_complete"),
+                                 QStringLiteral ("retry_cleanup_handled_once"),
+                                 cleanupTarget, false, -1, cleanupFields);
     } else if (retryAction == AutoCallPolicy::AnswerCQRetryAction::legacyCleanup) {
         QString const reason = replyOtherTerminates
             ? QStringLiteral ("ordinary answer-CQ retry terminated: reply-other")
@@ -4519,6 +4679,7 @@ void MainWindow::process_Auto(bool forceCandidate)
     m_autoSeqRecoveryInternalUiChange = false;
     if (m_mode == "JT9+JT65" && m_modeTx != mode) {
       m_modeTx = mode;
+      cancelPendingPttStartIfContextChanged (QStringLiteral ("tx_mode_changed"));
       if (m_modeTx == "JT9") ui->pbTxMode->setText ("Tx JT9  @");
       else ui->pbTxMode->setText ("Tx JT65  #");
       m_wideGraph->setModeTx (m_modeTx);
@@ -4587,8 +4748,19 @@ void MainWindow::process_Auto(bool forceCandidate)
     // standard call and arm transmission for the next permitted Tx interval.
     // Existing JTDX band, frequency, watchdog and PTT guards still decide
     // whether a transmission can actually start.
-    autoRareTargetArm = m_autoseq && m_callMode > 0 && m_config.autoCallRareTargets ()
-      && allowedRareTarget && (m_status == QsoHistory::RCQ || m_status == QsoHistory::RFIN);
+      autoRareTargetArm = m_autoseq && m_callMode > 0 && m_config.autoCallRareTargets ()
+      && allowedRareTarget && !m_autoSeqInitialCallOperatorHold
+      && (m_status == QsoHistory::RCQ || m_status == QsoHistory::RFIN);
+    bool const rareCandidateWithheldByOperatorHold = m_autoseq && m_callMode > 0
+      && m_config.autoCallRareTargets () && allowedRareTarget
+      && m_autoSeqInitialCallOperatorHold
+      && (m_status == QsoHistory::RCQ || m_status == QsoHistory::RFIN);
+    if (rareCandidateWithheldByOperatorHold
+        && m_autoSeqInitialCallOperatorHoldBlockedCall != hisCall) {
+      m_autoSeqInitialCallOperatorHoldBlockedCall = hisCall;
+      appendAutoSeqDiagnostic (QStringLiteral ("automatic_candidate_withheld"),
+                               QStringLiteral ("operator_hold"), hisCall);
+    }
     autoDirectedAnswerArm = directedAnswerIdle && !hisCall.isEmpty ()
       && DirectedCallPolicy::isDirectedCallStatus (m_status);
     recoveryFallbackArm = recoveryFreshBatch && !recoveryResumeArm
@@ -4624,10 +4796,53 @@ void MainWindow::process_Auto(bool forceCandidate)
     if (!hisCall.isEmpty ()) {
       if (m_callToClipboard) clipboard->setText(hisCall);
       if (recoveryFallbackArm) m_autoSeqRecoveryInternalUiChange = true;
+      m_autoSeqInternalTargetSelection = true;
       ui->dxCallEntry->setText(hisCall);
+      m_autoSeqInternalTargetSelection = false;
       if (recoveryFallbackArm) m_autoSeqRecoveryInternalUiChange = false;
+      if (m_autoSeqInitialCallStall.active ()
+          && !m_autoSeqInitialCallStall.is_owned_call (
+               hisCall.toStdString (), Radio::base_callsign (hisCall).toStdString ()))
+        cancelAutoSeqInitialCallStall (QStringLiteral ("automatic_target_replaced"));
+      if (autoPeriodCandidate && m_autoseq && !m_houndMode
+          && !m_mode.startsWith ("WSPR") && !m_manualDecode && !m_diskData
+          && (m_enableTx || autoRareTargetArm)
+          && !m_autoSeqInitialCallOperatorHold) {
+        if (m_autoSeqStallSuppressedCall == hisCall) {
+          appendAutoSeqDiagnostic (QStringLiteral ("stall_rearm_suppressed"),
+                                   QStringLiteral ("operator_cancelled_same_target"), hisCall);
+        } else {
+          m_autoSeqStallSuppressedCall.clear ();
+          auto const band = m_config.bands ()->find (m_freqNominal);
+          if (!m_autoSeqInitialCallStall.is_owned_call (
+                hisCall.toStdString (), Radio::base_callsign (hisCall).toStdString ())
+              || QString::fromStdString (m_autoSeqInitialCallStall.band ()) != band
+              || QString::fromStdString (m_autoSeqInitialCallStall.mode ()) != m_mode) {
+            auto const attemptId = ++m_autoSeqAttemptSequence;
+            m_autoSeqInitialCallStall.select (
+              hisCall.toStdString (), Radio::base_callsign (hisCall).toStdString (),
+              AutoCallPolicy::receivedReportOrWeakest (rpt), band.toStdString (),
+              m_mode.toStdString (), attemptId,
+              auto_seq_monotonic_ms ());
+            m_autoSeqLastAttemptCall = hisCall;
+            m_autoSeqLastAttemptId = attemptId;
+            appendAutoSeqDiagnostic (QStringLiteral ("initial_target_selected"),
+                                     QStringLiteral ("automatic_rcq_or_rfin_candidate"),
+                                     hisCall, false, 0);
+          } else {
+            m_autoSeqInitialCallStall.update_report (
+              AutoCallPolicy::receivedReportOrWeakest (rpt));
+          }
+        }
+      }
+      if (!m_autoSeqStallSuppressedCall.isEmpty ()
+          && m_autoSeqStallSuppressedCall == hisCall) {
+        autoRareTargetArm = false;
+        autoDirectedAnswerArm = false;
+      }
       if(m_mode=="JT9+JT65" && m_modeTx != mode) {
       m_modeTx = mode;
+      cancelPendingPttStartIfContextChanged (QStringLiteral ("tx_mode_changed"));
       if (m_modeTx == "JT9") ui->pbTxMode->setText("Tx JT9  @");
       else ui->pbTxMode->setText("Tx JT65  #");
       m_wideGraph->setModeTx(m_modeTx);
@@ -4650,6 +4865,46 @@ void MainWindow::process_Auto(bool forceCandidate)
     }
   }
 //  printf("%s(%0.1f) process_Auto: %s,%s,%s,%s,%d,%d,%d,%d,%d,%d,%d,%d,%d\n",m_jtdxtime->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),m_jtdxtime->GetOffset(),m_hisCall.toStdString().c_str(),hisCall.toStdString().c_str(),m_lastloggedcall.toStdString().c_str(),mode.toStdString().c_str(),m_status,prio,ui->TxFreqSpinBox->value (),m_used_freq,m_callMode,m_callPrioCQ,m_reply_other,m_reply_me,counters2);
+
+  auto const readinessOwnerCall = QString::fromStdString (m_autoSeqInitialCallStall.call ());
+  bool const readinessSameOwner = m_autoSeqInitialCallStall.is_owned_call (
+      hisCall.toStdString (), Radio::base_callsign (hisCall).toStdString ())
+    && hisCall == readinessOwnerCall
+    && QString::fromStdString (m_autoSeqInitialCallStall.band ())
+         == m_config.bands ()->find (m_freqNominal)
+    && QString::fromStdString (m_autoSeqInitialCallStall.mode ()) == m_mode;
+  bool const readinessInitialCandidate = m_autoseq && m_callMode > 0
+    && !m_houndMode && !m_mode.startsWith ("WSPR")
+    && (m_status == QsoHistory::RCQ || m_status == QsoHistory::RFIN);
+  bool const rearmReadinessOwner = m_ftx1PttReadinessRejected
+    && PttStartPolicy::may_rearm_initial_owner (
+         freshFtx1AutoDecision, m_autoSeqInitialCallStall.active (),
+         readinessSameOwner, readinessInitialCandidate,
+         m_autoSeqRecovery.pending (), m_autoSeqInitialCallOperatorHold);
+  if (rearmReadinessOwner)
+    {
+      m_ftx1PttReadinessRejected = false;
+      bool const wasReadinessAutoDisabled = m_ftx1ReadinessAutoDisabled;
+      m_ftx1ReadinessAutoDisabled = false;
+      m_ftx1ReadinessRejectedBatchId = 0;
+      bool reenabledTx = false;
+      if (wasReadinessAutoDisabled && !m_enableTx)
+        {
+          bool const previousInternalEnableChange = m_autoSeqInternalEnableTxChange;
+          QString const previousEnableTxReason = m_autoSeqStallEnableTxReason;
+          m_autoSeqInternalEnableTxChange = true;
+          m_autoSeqStallEnableTxReason = QStringLiteral ("ftx1_cat_fresh_auto_decision");
+          enableTx_mode (true);
+          reenabledTx = true;
+          m_autoSeqInternalEnableTxChange = previousInternalEnableChange;
+          m_autoSeqStallEnableTxReason = previousEnableTxReason;
+        }
+      appendAutoSeqDiagnostic (reenabledTx
+                                 ? QStringLiteral ("enable_tx_enabled")
+                                 : QStringLiteral ("ptt_readiness_refusal_cleared"),
+                               QStringLiteral ("ftx1_cat_fresh_auto_decision_same_initial_owner"),
+                               hisCall, true, 0);
+    }
 
   if (rx > 0 && rx != ui->RxFreqSpinBox->value ()) ui->RxFreqSpinBox->setValue (rx);
   //if (tx > 0 && tx != ui->TxFreqSpinBox->value ()) ui->TxFreqSpinBox->setValue (tx);
@@ -4770,12 +5025,27 @@ void MainWindow::process_Auto(bool forceCandidate)
     }
     bool const recoveryMayArm = recoveryResumeReady && !m_houndMode
       && !m_mode.startsWith ("WSPR") && !m_transmitting && !m_tune
-      && g_iptt == 0 && !m_callFirst73;
+      && g_iptt == 0 && !m_callFirst73 && !m_autoSeqInitialCallOperatorHold;
     if (autoRareTargetArm || autoDirectedAnswerArm || recoveryMayArm) {
+      if (recoveryMayArm || recoveryFallbackArm) {
+        // This is an already-qualified fresh recovery decision.  It may
+        // release a prior readiness refusal through the existing ticket path.
+        m_ftx1PttReadinessRejected = false;
+        m_ftx1ReadinessAutoDisabled = false;
+        m_ftx1ReadinessRejectedBatchId = 0;
+      }
       // The candidate's period and standard Tx message have both been
       // applied before the watchdog and Enable Tx transition.
       txwatchdog (false);
-      if (!m_enableTx) ui->enableTxButton->click ();
+      if (!m_enableTx) {
+        bool const previousInternalEnableChange = m_autoSeqInternalEnableTxChange;
+        QString const previousEnableTxReason = m_autoSeqStallEnableTxReason;
+        m_autoSeqInternalEnableTxChange = true;
+        m_autoSeqStallEnableTxReason = QStringLiteral ("automatic_initial_candidate");
+        ui->enableTxButton->click ();
+        m_autoSeqInternalEnableTxChange = previousInternalEnableChange;
+        m_autoSeqStallEnableTxReason = previousEnableTxReason;
+      }
       if (recoveryMayArm) {
         appendRecoveryLog (m_dataDir, "auto-call",
                            QString {"recovery armed continuation=%1 status=%2"}
@@ -4789,8 +5059,10 @@ void MainWindow::process_Auto(bool forceCandidate)
     }
   } else {
     if (!counters) {
-       if(m_singleshot) { autoStopTx("m_singleshot, counter triggered "); }
-       else if(m_houndMode) { autoStopTx("m_houndMode, counter triggered "); }
+       if (!standbyCleanupHandled) {
+         if(m_singleshot) { autoStopTx("m_singleshot, counter triggered "); }
+         else if(m_houndMode) { autoStopTx("m_houndMode, counter triggered "); }
+       }
     }
   }
 }
@@ -4813,7 +5085,14 @@ void MainWindow::readFromStdout()                             //readFromStdout
       int indxncand=t.indexOf("<ncand>")+7; m_ncand=t.mid(indxncand,5).toInt();
       int indxdt=t.indexOf("<avexdt>")+8; QString avexdt = t.mid(indxdt,6).trimmed();
 //  printf("%s(%0.1f) Timing decode stop, %d candidates\n",m_jtdxtime->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),m_jtdxtime->GetOffset(),m_ncand);
-      if (m_autoseq && !m_processAuto_done && !m_manualDecode) { m_processAuto_done = true; process_Auto(); }
+      bool const stallReleased = evaluateAutoSeqInitialCallStallAtBatchEnd ();
+      m_autoSeqLiveDecodeBatchPending = false;
+      if (!stallReleased && !m_autoSeqStallSkipCurrentBatch
+          && m_autoseq && !m_processAuto_done && !m_manualDecode) {
+        m_processAuto_done = true;
+        process_Auto();
+        cancelPendingPttStartIfContextChanged (QStringLiteral ("autoseq_target_changed"));
+      }
       m_okToPost=true;
       m_RxLog=0;
       m_startAnother=m_loopall;
@@ -4953,6 +5232,13 @@ void MainWindow::readFromStdout()                             //readFromStdout
       QString deCall="";
       QString grid="";
       decodedtext.deCallAndGrid(/*out*/deCall,grid);
+      if (m_autoSeqInitialCallStall.active () && !m_manualDecode && !m_diskData
+          && mycallinmsg && !deCall.isEmpty ()
+          && Radio::base_callsign (deCall)
+               == QString::fromStdString (m_autoSeqInitialCallStall.base_call ())) {
+        m_autoSeqStallTargetedReplySeen = true;
+        m_autoSeqStallReplySender = deCall;
+      }
       if (!m_hisCall.isEmpty() && !deCall.isEmpty() && Radio::base_callsign (m_hisCall) == Radio::base_callsign (deCall)) ui->RxFreqSpinBox->setValue (decodedtext.frequencyOffset());
       if (!deCall.isEmpty() && !m_reply_me && Radio::base_callsign (deCall) == Radio::base_callsign (m_hisCall)) {
           if (mycallinmsg) {
@@ -5134,10 +5420,12 @@ void MainWindow::readFromStdout()                             //readFromStdout
            || (decodedtextmsg.contains(" 73") && m_status==QsoHistory::RRREPORT && m_rrr) || (decodedtextmsg.contains("RR73") && m_status==QsoHistory::RREPORT) || m_callMode==0 || m_singleshot || m_houndMode)) {
              m_processAuto_done = true;
              process_Auto();
+             cancelPendingPttStartIfContextChanged (QStringLiteral ("autoseq_target_changed"));
            } else if ((decodedtextmsg.contains(" 73") || decodedtextmsg.contains("RR73")) && m_callMode<=1) m_callFirst73 = true;
          } else if (m_callMode==1 && !m_processAuto_done && m_autoseq && m_hisCall.isEmpty()) {
            m_processAuto_done = true;
            process_Auto();
+           cancelPendingPttStartIfContextChanged (QStringLiteral ("autoseq_target_changed"));
          }
       } else if (!deCall.isEmpty() && Radio::base_callsign (deCall) == Radio::base_callsign (m_hisCall) && decodedtextmsg.left(3) != "CQ " && decodedtextmsg.left(3) != "DE " && decodedtextmsg.left(4) != "QRZ " && !decodedtextmsg.contains(" 73") && !decodedtextmsg.contains(" RR73") && !decodedtextmsg.contains(" RRR")) {
         m_used_freq = decodedtext.frequencyOffset();
@@ -5355,6 +5643,18 @@ void MainWindow::guiUpdate()
   }
   if(m_tune) m_bTxTime=true;                 //"Tune" takes precedence
 
+  if (PttStartPolicy::should_cancel_request_at_slot_end (
+        m_bTxTime, m_tune, m_tx_when_ready) && m_pttStartPolicy.active ())
+    {
+      ptt1Timer.stop ();
+      cancelPttStartAndRevokeAdmission (QStringLiteral ("tx_slot_ended"));
+      m_tx_when_ready = false;
+      m_pttRequestedAtMs = 0;
+      // Reuse the GUI TX sequencer's normal lower-PTT path in this same
+      // update cycle; audio/data callbacks are not a slot-boundary clock.
+      if (g_iptt == 1 && !m_transmitting) m_haltTrans = true;
+    }
+
   if(m_transmitting or m_enableTx or m_tune) {
 // Check for "txboth" (testing purposes only)
     QFile f(m_appDir + "/txboth");
@@ -5421,12 +5721,75 @@ void MainWindow::guiUpdate()
     if (m_bTxTime && iptt0==0 && fTR<99.0 && m_autoseq && !m_processAuto_done && (m_callMode==2 || (m_callMode<=1 && (m_callFirst73 || m_status >= QsoHistory::RRR73)))) {
       m_processAuto_done = true;
       process_Auto();
+      cancelPendingPttStartIfContextChanged (QStringLiteral ("autoseq_target_changed"));
     }
-    if(g_iptt==0 and ((m_bTxTime and fTR<99.0) or m_tune )) {   //### Allow late starts
+    if(g_iptt==0 && PttStartPolicy::may_start_request (
+         (m_bTxTime && fTR < 99.0) || m_tune, m_tuneStopPending)) {   //### Allow late starts
       icw[0]=m_ncw;
-      g_iptt = 1;
+      bool const rejectedFtx1RequestThisSlot = m_ftx1PttReadinessRejected
+        && m_config.requires_ftx1_cat_ptt_readback ();
+      if (!rejectedFtx1RequestThisSlot)
+        {
+      // Resolve/reuse the session before testing readiness. A call to
+      // setRig() may itself ask Configuration to open CAT; no PTT is sent
+      // until the post-open generation has supplied its own state.
+      m_config.transceiver_online ();
+      auto const rigGeneration = m_config.transceiver_session_generation ();
+      bool const readbackRequired = m_config.requires_ftx1_cat_ptt_readback ();
+      bool const stateIsCurrentGeneration = m_rigStateGeneration == rigGeneration;
+      bool const pttReadbackKnown = !readbackRequired
+        || (m_rigState.ptt_readback_required () && m_rigState.ptt_readback_known ());
+      auto const pttReadbackSerial = m_rigState.ptt_readback_serial ();
+      if (readbackRequired && m_ftx1PttReadinessRejected)
+        {
+          // One safe refusal per slot. A later callback cannot turn this
+          // refused request into an implicit same-slot retry.
+        }
+      else if (!PttStartPolicy::ready_for_request (
+                 readbackRequired,
+                 m_rigOk && m_rigState.online () && m_config.is_transceiver_online (),
+                 pttReadbackKnown, m_rigState.ptt (),
+                 stateIsCurrentGeneration, pttReadbackSerial))
+        {
+          rejectFtx1PttRequest (QStringLiteral ("ftx1_cat_not_ready"));
+        }
+      else
+        {
       setRig ();
       setXIT (ui->TxFreqSpinBox->value ());
+      if (m_config.transceiver_session_generation () != rigGeneration)
+        {
+          // The request must not migrate to a rig generation different from
+          // the one whose readiness was evaluated above.
+          if (readbackRequired)
+            rejectFtx1PttRequest (QStringLiteral ("rig_generation_changed"));
+          else
+            {
+              m_ftx1PttReadinessRejected = true;
+              appendAutoSeqDiagnostic (QStringLiteral ("ptt_request_blocked"),
+                                       QStringLiteral ("rig_generation_changed"), {}, true, 0);
+            }
+        }
+      else
+        {
+      // A prior PTT-off poll cannot guard a new request that has not yet been
+      // confirmed by a subsequent online transceiver update.
+      auto const invalidatedPttObservation =
+        AutoSeqPttObservationPolicy::invalidate_for_request (
+          {m_autoSeqPttReadbackKnown, m_autoSeqPttReadbackOn,
+           m_autoSeqPttReadbackMonotonicMs, m_autoSeqLastPttReadbackSerial});
+      m_autoSeqPttReadbackKnown = invalidatedPttObservation.known;
+      m_autoSeqPttReadbackOn = invalidatedPttObservation.on;
+      m_autoSeqPttReadbackMonotonicMs = invalidatedPttObservation.observed_at_ms;
+      m_autoSeqLastPttReadbackSerial = invalidatedPttObservation.serial;
+      m_autoSeqPttReadbackAtUtcMs = 0;
+      if (m_autoSeqInitialCallStall.active ())
+        appendAutoSeqDiagnostic (QStringLiteral ("ptt_readback_invalidated"),
+                                 QStringLiteral ("new_ptt_request"), {}, true, 0);
+      m_pttRequestContext = currentPttRequestContext ();
+      m_pttRequestToken = m_pttStartPolicy.begin (
+        rigGeneration, pttReadbackSerial, readbackRequired);
+      g_iptt = 1;
       m_pttRequestedAtMs = m_jtdxtime->currentMSecsSinceEpoch2 ();
       appendRecoveryLog (
         m_dataDir, "rig-control",
@@ -5437,6 +5800,11 @@ void MainWindow::guiUpdate()
           .arg (ui->RxFreqSpinBox->value ()));
       Q_EMIT m_config.transceiver_ptt (true);       //Assert the PTT
       m_tx_when_ready = true;
+      appendAutoSeqDiagnostic (QStringLiteral ("ptt_request_started"),
+                               QStringLiteral ("cat_ptt_requested"), {}, true, 0);
+        }
+        }
+    }
     }
     if(!m_bTxTime and !m_tune) m_btxok=false;       //Time to stop transmitting
   }
@@ -5457,7 +5825,8 @@ void MainWindow::guiUpdate()
 
   bool haltedEmpty=false;
   // Calculate Tx tones when needed
-  if((g_iptt==1 && iptt0==0) || m_restart) {
+  if(((g_iptt==1 && iptt0==0) || m_restart)
+     && !m_ftx1PttReadinessRejected && !m_tuneStopPending) {
 //----------------------------------------------------------------------
 //    printf("%s(%0.1f) Timing transmission start %d %d\n",m_jtdxtime->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),m_jtdxtime->GetOffset(),g_iptt,iptt0);
     QByteArray ba;
@@ -5482,15 +5851,9 @@ void MainWindow::guiUpdate()
       }
       ba=msg2.toLatin1();
     } else {
-      QString txMsg{""};
-      if(m_ntx == 1) { txMsg=ui->tx1->text(); }
-      else if(m_ntx == 2) { txMsg=ui->tx2->text(); }
-      else if(m_ntx == 3) { txMsg=ui->tx3->text(); }
-      else if(m_ntx == 4) { txMsg=ui->tx4->text(); }
-      else if(m_ntx == 5) { txMsg=ui->tx5->currentText(); txMsg.remove(" ^"); }
-      else if(m_ntx == 6) { txMsg=ui->tx6->text(); }
-      else if(m_ntx == 7) { txMsg=ui->genMsg->text(); }
-      else if(m_ntx == 8) { txMsg=ui->freeTextMsg->currentText(); txMsg.remove(" ^"); }
+      auto const selectedPayload = selectedTxPayloadBytes ();
+      QString const txMsg = QString::fromLocal8Bit (selectedPayload.constData (),
+                                                     selectedPayload.size ());
       int msgLength=txMsg.trimmed().length();
       if(!m_tune && (msgLength==0 || m_config.my_callsign().isEmpty() || (m_houndMode && (m_QSOProgress == CALLING || m_ntx == 6)))) { 
         haltedEmpty=true;
@@ -5499,7 +5862,7 @@ void MainWindow::guiUpdate()
         else if(m_config.my_callsign().isEmpty()) haltTx("Transmission halted: user callsign is not configured ");
         else haltTx("Transmission of CQ message is not allowed in the Hound mode ");
       }
-	  else { ba=txMsg.toLocal8Bit(); }
+      else { ba=selectedPayload; }
     }
 
     ba2msg(ba,message);
@@ -5759,7 +6122,21 @@ void MainWindow::guiUpdate()
     statusUpdate ();
   }
 
-  if((!m_btxok && btxok0 && g_iptt==1) || m_haltTrans) { stopTx(); if(m_haltTrans) m_haltTrans=false; }
+  bool const slotEndStop = !m_btxok && btxok0 && g_iptt == 1;
+  if((!m_btxok && btxok0 && g_iptt==1) || m_haltTrans)
+    {
+      PttStopFlags const before {
+        m_enableTx, m_btxok, m_transmitting, m_tune, m_tx_when_ready, g_iptt};
+      stopTx ();
+      if (m_haltTrans) m_haltTrans = false;
+      if (slotEndStop)
+        {
+          PttStopFlags const after {
+            m_enableTx, m_btxok, m_transmitting, m_tune, m_tx_when_ready, g_iptt};
+          appendPttStopDiagnostic ("tx_slot_end", before, after,
+                                   "previous_btxok", btxok0 ? 1 : 0);
+        }
+    }
 
   if(m_startAnother) {
     m_startAnother=false;
@@ -5886,7 +6263,19 @@ void MainWindow::set_scheduler(QString const& setto,bool mixed)
   m_wideGraph->setRxBand (m_config.bands ()->find (frq));
 }
 
-void MainWindow::haltTx(QString reason) { m_haltTxWritten=true; writeHaltTxEvent(reason); on_stopTxButton_clicked(); }
+void MainWindow::haltTx(QString reason)
+{
+  appendAutoSeqDiagnostic (QStringLiteral ("halt_tx_requested"), reason, {}, true);
+  m_haltTxWritten = true;
+  writeHaltTxEvent (reason);
+  bool const priorHalt = m_autoSeqInternalHalt;
+  bool const priorEnable = m_autoSeqInternalEnableTxChange;
+  m_autoSeqInternalHalt = true;
+  m_autoSeqInternalEnableTxChange = true;
+  on_stopTxButton_clicked ();
+  m_autoSeqInternalEnableTxChange = priorEnable;
+  m_autoSeqInternalHalt = priorHalt;
+}
 
 void MainWindow::haltTxTuneTimer()
 {
@@ -5911,6 +6300,50 @@ void MainWindow::logChanged()
 
 void MainWindow::startTx2()
 {
+  if (cancelPendingPttStartIfContextChanged (QStringLiteral ("ptt_request_context_changed")))
+    return;
+  auto const rigGeneration = m_config.transceiver_session_generation ();
+  bool const stateIsCurrentGeneration = m_rigStateGeneration == rigGeneration;
+  bool const stateKnown = m_rigState.ptt_readback_required ()
+    ? m_rigState.ptt_readback_known () : m_rigState.online ();
+  bool const rigOnline = stateIsCurrentGeneration && m_rigOk
+    && m_rigState.online () && m_config.is_transceiver_online ();
+  if ((!m_bTxTime && !m_tune) || m_tuneStopPending || (m_manualDecode && !m_tune))
+    {
+      ptt1Timer.stop ();
+      QString const cancelReason = m_tuneStopPending
+        ? QStringLiteral ("tune_stop_requested")
+        : (m_manualDecode && !m_tune
+             ? QStringLiteral ("manual_decode_takeover")
+             : QStringLiteral ("tx_slot_ended"));
+      if (!cancelPendingPttStart (cancelReason) && m_pttStartPolicy.active ())
+        {
+          cancelPttStartAndRevokeAdmission (cancelReason);
+          m_tx_when_ready = false;
+          m_pttRequestedAtMs = 0;
+        }
+      return;
+    }
+  if (!m_tx_when_ready
+      || !m_pttStartPolicy.consume_audio (m_pttRequestToken, rigGeneration,
+                                          rigOnline, stateKnown, m_rigState.ptt (),
+                                          m_rigState.ptt_readback_serial ()))
+    {
+      ptt1Timer.stop ();
+      if (m_pttStartPolicy.matches (m_pttRequestToken, rigGeneration)
+          && (m_bTxTime || m_tune) && !m_tuneStopPending)
+        m_tx_when_ready = true;
+      else
+        {
+          cancelPttStartAndRevokeAdmission (
+            QStringLiteral ("token_generation_or_readback_invalid"),
+            QStringLiteral ("ptt_audio_start_refused"));
+        }
+      return;
+    }
+  appendAutoSeqDiagnostic (QStringLiteral ("ptt_audio_started"),
+                           QStringLiteral ("request_token_consumed"), {}, true, 0);
+  m_tx_when_ready = false;
 //  for(int i=0; i<15; i++) { // workaround to modulator start failure
 //    if(i==1) QThread::currentThread()->msleep(5);
 //    else if(i>1) QThread::currentThread()->msleep(10);
@@ -5968,6 +6401,10 @@ void MainWindow::startTx2()
 
 void MainWindow::stopTx()
 {
+  PttStopFlags const before {
+    m_enableTx, m_btxok, m_transmitting, m_tune, m_tx_when_ready, g_iptt};
+  cancelPttStartAndRevokeAdmission (QStringLiteral ("tx_stopping"));
+  m_tx_when_ready = false;
   if (m_tci) Q_EMIT m_config.transceiver_modulator_stop();
   else Q_EMIT endTransmitMessage ();
   m_btxok = false;
@@ -5984,10 +6421,18 @@ void MainWindow::stopTx()
     statusUpdate ();
     m_secTxStopped=m_jtdxtime->currentMSecsSinceEpoch2()/1000;
   }
+  PttStopFlags const after {
+    m_enableTx, m_btxok, m_transmitting, m_tune, m_tx_when_ready, g_iptt};
+  appendPttStopDiagnostic ("ptt_off_schedule", before, after,
+                           "off_delay_ms", ptt0Timer.interval ());
 }
 
 void MainWindow::stopTx2()
 {
+  PttStopFlags const before {
+    m_enableTx, m_btxok, m_transmitting, m_tune, m_tx_when_ready, g_iptt};
+  ptt1Timer.stop ();
+  cancelPttStartAndRevokeAdmission (QStringLiteral ("tx_stopped"));
   Q_EMIT m_config.transceiver_ptt (false);      //Lower PTT
   m_pttRequestedAtMs = 0;
   if (m_tci) {
@@ -6002,6 +6447,10 @@ void MainWindow::stopTx2()
     m_ntr=0;
   }
   last_tx_label->setText(tr("LastTx: ") + m_currentMessage.trimmed());
+  PttStopFlags const after {
+    m_enableTx, m_btxok, m_transmitting, m_tune, m_tx_when_ready, g_iptt};
+  appendPttStopDiagnostic ("ptt_off_dispatch", before, after,
+                           "dispatch_result", 1);
 }
 
 void MainWindow::RxQSY()
@@ -6051,7 +6500,12 @@ void MainWindow::on_rrr1CheckBox_stateChanged(int nrrr)        //RRR or RR73
   if(!ui->tx4->text().isEmpty ()) genStdMsgs(m_rpt); // can change message for non tx4 transmission?
 }
 
-void MainWindow::set_ntx(int n) { m_ntx=n; m_nlasttx=n; } //set_ntx()
+void MainWindow::set_ntx(int n)
+{
+  m_ntx = n;
+  m_nlasttx = n;
+  cancelPendingPttStartIfContextChanged (QStringLiteral ("tx_step_changed"));
+}
 
 void MainWindow::on_txb1_clicked()                                //txb1
 {
@@ -6059,6 +6513,7 @@ void MainWindow::on_txb1_clicked()                                //txb1
   m_QSOProgress = REPLYING;
   m_nlasttx=1;
   ui->txrb1->setChecked(true);
+  cancelPendingPttStartIfContextChanged (QStringLiteral ("tx_step_changed"));
   if (m_transmitting) m_restart=true;
 }
 
@@ -6068,6 +6523,7 @@ void MainWindow::on_txb2_clicked()                                //txb2
   m_QSOProgress = REPORT;
   m_nlasttx=2;
   ui->txrb2->setChecked(true);
+  cancelPendingPttStartIfContextChanged (QStringLiteral ("tx_step_changed"));
   if (m_transmitting) m_restart=true;
 }
 
@@ -6077,6 +6533,7 @@ void MainWindow::on_txb3_clicked()                                //txb3
   m_QSOProgress = ROGER_REPORT;
   m_nlasttx=3;
   ui->txrb3->setChecked(true);
+  cancelPendingPttStartIfContextChanged (QStringLiteral ("tx_step_changed"));
   if (m_transmitting) m_restart=true;
 }
 
@@ -6086,6 +6543,7 @@ void MainWindow::on_txb4_clicked()                                //txb4
   m_QSOProgress = ROGERS;
   m_nlasttx=4;
   ui->txrb4->setChecked(true);
+  cancelPendingPttStartIfContextChanged (QStringLiteral ("tx_step_changed"));
   if (m_transmitting) m_restart=true;
 }
 
@@ -6095,6 +6553,7 @@ void MainWindow::on_txb5_clicked()                                //txb5
   m_QSOProgress = SIGNOFF;
   m_nlasttx=5;
   ui->txrb5->setChecked(true);
+  cancelPendingPttStartIfContextChanged (QStringLiteral ("tx_step_changed"));
   if (m_transmitting) m_restart=true;
 }
 
@@ -6123,11 +6582,15 @@ void MainWindow::on_txb6_clicked()                                //txb6
   m_nlasttx=6;
   ui->txrb6->setChecked(true);
   ui->genMsg->setText(ui->tx6->text()); // directional CQ tab1/tab2 sync
+  cancelPendingPttStartIfContextChanged (QStringLiteral ("tx_step_changed"));
   if (m_transmitting) m_restart=true;
 }
 
 void MainWindow::doubleClickOnCall(bool alt, bool ctrl)
 {
+  if (m_autoSeqInitialCallStall.active ())
+    setAutoSeqInitialCallOperatorHold (true, QStringLiteral ("manual_call_selection"));
+  cancelAutoSeqInitialCallStall (QStringLiteral ("manual_call_selection"), true);
   txwatchdog (false);
   QTextCursor cursor;
   QString t;                         //Full contents
@@ -6764,6 +7227,11 @@ void MainWindow::TxAgain() { enableTx_mode(true); }
 
 void MainWindow::clearDX (QString reason)
 {
+  cancelPendingPttStart (QStringLiteral ("dx_cleared"));
+  if (!m_autoSeqInternalClear && m_autoSeqInitialCallStall.active ())
+    setAutoSeqInitialCallOperatorHold (true, QStringLiteral ("manual_dx_clear"));
+  if (!m_autoSeqInternalClear)
+    cancelAutoSeqInitialCallStall (QStringLiteral ("dx_cleared"), true);
   if (m_autoSeqRecovery.pending () && !m_autoSeqRecoveryInternalUiChange)
     cancelAutoSeqRecovery (QStringLiteral ("dx_cleared"));
   QString dxcallclr=m_hisCall;
@@ -7139,6 +7607,10 @@ void MainWindow::on_propLineEdit_textChanged(const QString &text) {
 
 void MainWindow::on_dxCallEntry_textChanged(const QString &t) //dxCall changed
 {
+  if (!m_autoSeqInternalTargetSelection && m_autoSeqInitialCallStall.active ())
+    setAutoSeqInitialCallOperatorHold (true, QStringLiteral ("manual_target_changed"));
+  if (!m_autoSeqInternalTargetSelection && !m_autoSeqInternalClear)
+    cancelAutoSeqInitialCallStall (QStringLiteral ("manual_target_changed"), true);
   if (m_autoSeqRecovery.pending () && !m_autoSeqRecoveryInternalUiChange)
     cancelAutoSeqRecovery (QStringLiteral ("dx_target_edited"));
   if (!m_hisCall.isEmpty () && t.toUpper ().trimmed () != m_hisCall)
@@ -7149,6 +7621,7 @@ void MainWindow::on_dxCallEntry_textChanged(const QString &t) //dxCall changed
       if (m_hisCall.isEmpty()) { m_hisCallCompound=false; return; }
       else m_hisCall.clear();
   } else m_hisCall=t.toUpper().trimmed();
+  cancelPendingPttStartIfContextChanged (QStringLiteral ("manual_target_changed"));
   m_hisCallCompound=(!m_hisCall.isEmpty() && m_hisCall.contains("/")); // && !m_hisCall.endsWith("/P") && !m_hisCall.endsWith("/R"));
   if(m_myCallCompound && m_hisCallCompound) {
     if(m_skipTx1) { m_skipTx1=false; ui->skipTx1->setChecked(false); ui->skipGrid->setChecked(false); on_txb1_clicked(); }
@@ -7434,6 +7907,7 @@ void MainWindow::on_actionWSPR_2_triggered()
   WSPR_config(true);
   switch_mode (Modes::WSPR);
   m_modeTx="WSPR-2";                                    //### not needed ?? ###
+  cancelPendingPttStartIfContextChanged (QStringLiteral ("mode_changed"));
   m_TRperiod=120.0;
   if (m_tci) Q_EMIT m_config.transceiver_period(m_TRperiod); // TODO - not thread safe
   else {  m_modulator->setPeriod(m_TRperiod); m_detector->setPeriod(m_TRperiod); }// TODO - not thread safe
@@ -7464,6 +7938,10 @@ void MainWindow::on_actionWSPR_2_triggered()
 
 void MainWindow::switch_mode (Mode mode)
 {
+  if (m_autoSeqInitialCallStall.active () && mode != m_mode) {
+    setAutoSeqInitialCallOperatorHold (true, QStringLiteral ("mode_changed"));
+    cancelAutoSeqInitialCallStall (QStringLiteral ("mode_changed"), true);
+  }
 // m_lastMode value is deliberately not assigned in constructor to let qsohistory init at SW startup 
   if (m_autoSeqRecovery.pending () && m_autoSeqRecoveryMode != m_mode)
     cancelAutoSeqRecovery (QStringLiteral ("mode_changed"));
@@ -7492,6 +7970,7 @@ void MainWindow::switch_mode (Mode mode)
 
 void MainWindow::commonActions ()
 {
+  cancelPendingPttStartIfContextChanged (QStringLiteral ("mode_changed"));
 //  m_modulator->setPeriod(m_TRperiod); // TODO - not thread safe
 //  m_detector->setPeriod(m_TRperiod);   // TODO - not thread safe
   m_nsps=6912;                   //For symspec only
@@ -7579,6 +8058,7 @@ void MainWindow::WSPR_config(bool b)
 
 void MainWindow::on_TxFreqSpinBox_valueChanged(int n)
 {
+  cancelPendingPttStartIfContextChanged (QStringLiteral ("tx_audio_frequency_changed"));
 //  if(n<200 && (!m_rigOk || ui->readFreq->text()!="S")) n=200;
   m_wideGraph->setTxFreq(n);
   if(m_lockTxFreq) ui->RxFreqSpinBox->setValue(n);
@@ -7767,6 +8247,11 @@ void MainWindow::on_bandComboBox_activated (int index)
 
 void MainWindow::band_changed (Frequency f)
 {
+  if (m_autoSeqInitialCallStall.active ()
+      && m_autoSeqInitialCallStall.band () != m_config.bands ()->find (f).toStdString ()) {
+    setAutoSeqInitialCallOperatorHold (true, QStringLiteral ("band_changed"));
+    cancelAutoSeqInitialCallStall (QStringLiteral ("band_changed"), true);
+  }
   if (m_autoSeqRecovery.pending () && !m_autoSeqRecoveryBand.isEmpty ()
       && m_autoSeqRecoveryBand != m_config.bands ()->find (f))
     cancelAutoSeqRecovery (QStringLiteral ("band_changed"));
@@ -7811,6 +8296,7 @@ void MainWindow::band_changed (Frequency f)
     }
 
     m_freqNominal = f;
+    cancelPendingPttStartIfContextChanged (QStringLiteral ("dial_frequency_changed"));
     m_freqTxNominal = m_freqNominal;
     setRig ();
     setXIT (ui->TxFreqSpinBox->value ());
@@ -8074,7 +8560,18 @@ void MainWindow::on_tuneButton_clicked (bool checked)
   static bool lastChecked = false;
   if (lastChecked == checked) return;
   lastChecked = checked;
-  if(!checked) m_addtx = -2;
+  if(!checked) {
+    m_addtx = -2;
+    m_tuneStopPending = true;
+    ptt1Timer.stop ();
+    cancelPttStartAndRevokeAdmission (QStringLiteral ("tune_stop_requested"));
+    m_tx_when_ready = false;
+  } else {
+    m_tuneStopPending = false;
+    m_ftx1PttReadinessRejected = false;
+    m_ftx1ReadinessAutoDisabled = false;
+    m_ftx1ReadinessRejectedBatchId = 0;
+  }
   QString curBand;
   if (m_mode == "JT9+JT65" && m_modeTx == "JT65") { curBand = ui->bandComboBox->currentText()+m_modeTx; }
   else { curBand = ui->bandComboBox->currentText()+m_mode; }
@@ -8111,18 +8608,37 @@ void MainWindow::on_tuneButton_clicked (bool checked)
 
 void MainWindow::stop_tuning ()
 {
+  ptt1Timer.stop ();
+  cancelPttStartAndRevokeAdmission (QStringLiteral ("tune_stopped"));
+  m_tx_when_ready = false;
   if(StopTuneTimer.isActive()) StopTuneTimer.stop();
   on_tuneButton_clicked(false);
   ui->tuneButton->setChecked (false);
   ui->tuneButton->setText(tr("&Tune"));
   m_bTxTime=false;
   m_tune=false;
+  m_tuneStopPending=false;
 }
 
 void MainWindow::stopTuneATU() { on_tuneButton_clicked(false); m_bTxTime=false; }
 
 void MainWindow::on_stopTxButton_clicked()                    //Stop Tx
 {
+  ptt1Timer.stop ();
+  cancelPttStartAndRevokeAdmission (m_autoSeqInternalHalt
+                                      ? QStringLiteral ("internal_halt")
+                                      : QStringLiteral ("operator_halt"));
+  if (m_autoSeqInitialCallStall.active ()) {
+    if (!m_autoSeqInternalHalt || m_autoSeqRecovery.pending ()) {
+      if (!m_autoSeqInternalHalt)
+        setAutoSeqInitialCallOperatorHold (true, QStringLiteral ("operator_halt"));
+      cancelAutoSeqInitialCallStall (m_autoSeqInternalHalt
+        ? QStringLiteral ("internal_halt_with_recovery_ticket")
+        : QStringLiteral ("operator_halt"), !m_autoSeqInternalHalt);
+    }
+  }
+  if (!m_autoSeqInternalHalt)
+    appendAutoSeqDiagnostic (QStringLiteral ("halt"), QStringLiteral ("operator_halt"));
   if (m_autoSeqRecovery.pending () && !m_autoSeqRecoveryInternalHalt)
     cancelAutoSeqRecovery (QStringLiteral ("stop_tx"));
   m_autoDirectedAnswerActive = false;
@@ -8147,7 +8663,18 @@ void MainWindow::rigOpen ()
   m_rigOk=false;
   ui->readFreq->setText ("");
   ui->readFreq->setEnabled (true);
+  ptt1Timer.stop ();
+  cancelPttStartAndRevokeAdmission (QStringLiteral ("rig_session_open"));
+  auto const oldGeneration = m_config.transceiver_session_generation ();
   m_config.transceiver_online ();
+  if (m_config.transceiver_session_generation () != oldGeneration)
+    {
+      m_rigStateGeneration = 0;
+      m_autoSeqPttReadbackKnown = false;
+      m_autoSeqPttReadbackOn = false;
+      m_autoSeqPttReadbackMonotonicMs = 0;
+      m_autoSeqPttReadbackAtUtcMs = 0;
+    }
   Q_EMIT m_config.sync_transceiver (true, true);
 }
 
@@ -8164,7 +8691,11 @@ void MainWindow::on_pbT2R_clicked()
 void MainWindow::on_readFreq_clicked()
 {
   if (m_transmitting) return;
-  if (m_config.transceiver_online ()) Q_EMIT m_config.sync_transceiver (true, true);
+  if (m_config.transceiver_online ())
+    {
+      Q_EMIT m_config.sync_transceiver (true, true);
+      m_config.request_read_only_cat_refresh ();
+    }
 }
 
 void MainWindow::on_pbTxMode_clicked()
@@ -8177,6 +8708,7 @@ void MainWindow::on_pbTxMode_clicked()
     m_modeTx="JT9";
     ui->pbTxMode->setText("Tx JT9  @");
   }
+  cancelPendingPttStartIfContextChanged (QStringLiteral ("tx_mode_changed"));
   if (m_config.pwrBandTxMemory() && !m_tune) {
       if (m_mode == "JT9+JT65" && m_modeTx == "JT65") { curBand = ui->bandComboBox->currentText()+m_modeTx; }
       else { curBand = ui->bandComboBox->currentText()+m_mode; }
@@ -8325,17 +8857,116 @@ void MainWindow::handle_transceiver_update (Transceiver::TransceiverState const&
 {
   // qDebug () << "MainWindow::handle_transceiver_update:" << s;
   Transceiver::TransceiverState old_state {m_rigState};
+  if (!s.online ())
+    {
+      // Offline snapshots can carry zero/default frequency fields.  Keep the
+      // last confirmed display values, but mark CAT unavailable and avoid
+      // treating the default values as a QSY or a fresh PTT-off readback.
+      cancelPttStartAndRevokeAdmission (QStringLiteral ("cat_offline_update"));
+      if (m_autoSeqPttReadbackKnown)
+        appendAutoSeqDiagnostic (QStringLiteral ("ptt_readback_invalidated"),
+                                 QStringLiteral ("cat_offline_update"));
+      m_autoSeqPttReadbackKnown = false;
+      m_autoSeqPttReadbackOn = false;
+      m_autoSeqPttReadbackMonotonicMs = 0;
+      m_autoSeqPttReadbackAtUtcMs = 0;
+      m_autoSeqLastPttReadbackSerial = 0;
+      ptt1Timer.stop ();
+      m_rigStateGeneration = 0;
+      m_rigState.online (false);
+      m_rigState.ptt_readback_known (false);
+      m_rigOk = false;
+      m_webState->observe_rig (false, m_rigState.frequency (),
+                               m_rigState.tx_frequency (), false);
+      ui->readFreq->setStyleSheet (ui->readFreq->styleSheet ().left (230)
+        + QString ("background: %1;\n color: %2;\n}")
+            .arg (Radio::convert_dark ("#ff0000", m_useDarkStyle),
+                  Radio::convert_dark ("#000000", m_useDarkStyle)));
+      ui->readFreq->setEnabled (true);
+      ui->readFreq->setText ("");
+      if (old_state.online ())
+        appendAutoSeqDiagnostic (QStringLiteral ("cat_offline"),
+                                 QStringLiteral ("transceiver_state_transition"));
+      return;
+    }
+
+  auto const rigGeneration = m_config.transceiver_session_generation ();
+  cancelPendingPttStartIfContextChanged (QStringLiteral ("ptt_request_context_changed"));
+  bool const oldStateIsCurrentGeneration = m_rigStateGeneration == rigGeneration;
+  if (!oldStateIsCurrentGeneration)
+    {
+      m_autoSeqPttReadbackKnown = false;
+      m_autoSeqPttReadbackOn = false;
+      m_autoSeqPttReadbackMonotonicMs = 0;
+      m_autoSeqPttReadbackAtUtcMs = 0;
+      m_autoSeqLastPttReadbackSerial = 0;
+    }
+  // Configuration filters old rig generations before forwarding state here.
+  // The observation policy keeps legacy callback freshness distinct from the
+  // strict real-GET serial path; neither observation refreshes the stall's
+  // actual-progress clock by itself.
+  auto const pttStateObservation = AutoSeqPttObservationPolicy::observe (
+    {m_autoSeqPttReadbackKnown, m_autoSeqPttReadbackOn,
+     m_autoSeqPttReadbackMonotonicMs, m_autoSeqLastPttReadbackSerial},
+    true, s.online (), s.ptt_readback_required (), s.ptt_readback_known (),
+    s.ptt (), s.ptt_readback_serial (), auto_seq_monotonic_ms ());
+  m_autoSeqPttReadbackKnown = pttStateObservation.snapshot.known;
+  m_autoSeqPttReadbackOn = pttStateObservation.snapshot.on;
+  m_autoSeqPttReadbackMonotonicMs = pttStateObservation.snapshot.observed_at_ms;
+  m_autoSeqLastPttReadbackSerial = pttStateObservation.snapshot.serial;
+  if (pttStateObservation.accepted ())
+    m_autoSeqPttReadbackAtUtcMs = QDateTime::currentDateTimeUtc ().toMSecsSinceEpoch ();
+  else if (pttStateObservation.action == AutoSeqPttObservationPolicy::Action::invalidated_offline
+           || pttStateObservation.action == AutoSeqPttObservationPolicy::Action::invalidated_unknown)
+    m_autoSeqPttReadbackAtUtcMs = 0;
+  bool const pttReadbackKnown = pttStateObservation.snapshot.known;
+  bool const pttReadbackAdvanced = pttStateObservation.real_get_advanced ();
+  bool const tokenIsCurrent = m_pttStartPolicy.matches (m_pttRequestToken, rigGeneration);
+  bool const pttJustTurnedOn = pttReadbackKnown && s.ptt () && tokenIsCurrent
+    && (!s.ptt_readback_required () || pttReadbackAdvanced)
+    && (!oldStateIsCurrentGeneration || !old_state.ptt ()
+        || (s.ptt_readback_required () && !old_state.ptt_readback_known ()))
+    && (!s.ptt_readback_required () || s.ptt_readback_known ());
+  auto pttObservation = PttStartPolicy::Observation::stale;
+  if (tokenIsCurrent)
+    {
+      if (s.ptt_readback_required () && (!s.ptt_readback_known () || pttReadbackAdvanced))
+        pttObservation = m_pttStartPolicy.observe (
+          m_pttRequestToken, rigGeneration, s.online (), s.ptt_readback_known (), s.ptt (),
+          s.ptt_readback_serial ());
+      else if (pttJustTurnedOn)
+        pttObservation = m_pttStartPolicy.observe (
+          m_pttRequestToken, rigGeneration, s.online (), true, s.ptt ());
+    }
+  if (s.ptt_readback_required ()
+      && pttObservation == PttStartPolicy::Observation::waiting_for_readback)
+    ptt1Timer.stop ();
+  bool const pttWentOffAfterConfirmedOn = tokenIsCurrent
+    && pttObservation == PttStartPolicy::Observation::ptt_went_off_after_confirmation;
+  bool logPttProgress = false;
+  bool const acceptedLegacyObservation = pttStateObservation.action
+    == AutoSeqPttObservationPolicy::Action::accepted_legacy_state;
+  if (pttJustTurnedOn && m_autoSeqInitialCallStall.active ()
+      && (pttReadbackAdvanced || acceptedLegacyObservation)) {
+    char const * progressSource = pttReadbackAdvanced ? "rig_get_ptt" : "legacy_state";
+    m_autoSeqInitialCallStall.observe_actual_progress (
+      m_autoSeqPttReadbackMonotonicMs, progressSource);
+    logPttProgress = !m_autoSeqLastProgressLoggedMonotonicMs
+      || m_autoSeqPttReadbackMonotonicMs - m_autoSeqLastProgressLoggedMonotonicMs >= 5000;
+    if (logPttProgress)
+      m_autoSeqLastProgressLoggedMonotonicMs = m_autoSeqPttReadbackMonotonicMs;
+  }
 
   // CAT 重连后仍须看到实际 PTT 关闭；首次在线状态可能只反映初始化，
   // 因此重连计数复位后仍保留票据等待随后的 PTT-off 更新。
-  // TransceiverState has no separate PTT-validity bit; ptt_known below means
-  // an online state update carrying the current PTT value was received.
+  // Strict FTX-1 readiness/recovery uses sequenced successful rig_get_ptt
+  // evidence. Other backends retain their legacy state-edge behavior.
   if (s.online () && m_autoSeqRecovery.awaiting_reconnect ())
     {
       bool const changedContext = m_autoSeqRecoveryMode != m_mode
         || (s.frequency () != 0 && !m_autoSeqRecoveryBand.isEmpty ()
             && m_autoSeqRecoveryBand != m_config.bands ()->find (s.frequency ()));
-      auto log_online_recovery = [this, &s] (char const * decision) noexcept {
+      auto log_online_recovery = [this, &s, pttReadbackKnown] (char const * decision) noexcept {
         try
           {
             auto const ticketTarget = QString::fromStdString (m_autoSeqRecovery.target ());
@@ -8346,9 +8977,10 @@ void MainWindow::handle_transceiver_update (Transceiver::TransceiverState const&
               diagnosticTarget, historyStatus, retryCount);
             appendRecoveryLogLazy (
               m_dataDir, "auto-call", [&] {
-                return QString {"recovery_online_update online=true ptt_known=true ptt_on=%1 "
-                                "target=%2 history_known=%3 history_status=%4 retry_count=%5 "
-                                "decision=%6"}
+                return QString {"recovery_online_update online=true ptt_known=%1 ptt_on=%2 "
+                                "target=%3 history_known=%4 history_status=%5 retry_count=%6 "
+                                "decision=%7"}
+                  .arg (pttReadbackKnown ? "true" : "false")
                   .arg (s.ptt () ? "true" : "false").arg (diagnosticTarget)
                   .arg (historyKnown ? "true" : "false")
                   .arg (static_cast<int> (historyStatus)).arg (retryCount)
@@ -8365,7 +8997,7 @@ void MainWindow::handle_transceiver_update (Transceiver::TransceiverState const&
           log_online_recovery ("cancel_ticket_context_changed");
           cancelAutoSeqRecovery (QStringLiteral ("band_or_mode_changed_while_cat_offline"));
         }
-      else if (!s.ptt ())
+      else if (pttReadbackKnown && !s.ptt ())
         {
           log_online_recovery ("release_dx_wait_fresh_decode");
           auto const recoveredAt = m_jtdxtime->currentMSecsSinceEpoch2 ();
@@ -8397,28 +9029,31 @@ void MainWindow::handle_transceiver_update (Transceiver::TransceiverState const&
    }
 //   printf("%s(%0.1f) tranceiver update %d %d old %d new %d\n",m_jtdxtime->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),
 //     m_jtdxtime->GetOffset(),m_tx_when_ready,g_iptt,m_rigState.ptt (),s.ptt ());
-  if (!s.ptt() && m_rigState.ptt () && (m_transmitting || m_tune)) haltTx("Halt Tx from rig detected ");
-  if (s.ptt () && !m_rigState.ptt ()) // safe to start audio
-                                      // (caveat - DX Lab Suite Commander)
+  if ((s.ptt_readback_required () ? pttWentOffAfterConfirmedOn
+                                  : (!s.ptt () && oldStateIsCurrentGeneration
+                                     && m_rigState.ptt ()))
+      && (m_transmitting || m_tune || ptt1Timer.isActive () || m_tx_when_ready))
+    haltTx ("Halt Tx from rig detected ");
+  if (pttObservation == PttStartPolicy::Observation::audio_armed
+      && m_tx_when_ready && g_iptt)
     {
       if (m_pttRequestedAtMs > 0)
         {
           auto const delay = m_jtdxtime->currentMSecsSinceEpoch2 () - m_pttRequestedAtMs;
           appendRecoveryLog (m_dataDir, "rig-control",
-                             QString {"PTT confirmed delayMs=%1"}.arg (delay));
+                             QString {"PTT state observed delayMs=%1 source=%2"}
+                               .arg (delay)
+                               .arg (s.ptt_readback_required ()
+                                       ? QStringLiteral ("rig_get_ptt")
+                                       : QStringLiteral ("legacy_state")));
           m_pttRequestedAtMs = 0;
         }
-  // waiting to Tx and still needed
- //Start-of-transmission sequencer delay
-      if (m_tx_when_ready && g_iptt) {
-//          QThread::currentThread()->setPriority(QThread::HighestPriority);
+      if (!ptt1Timer.isActive ()) {
           int ms_delay=1000*m_config.txDelay();
           if(m_mode=="FT4") ms_delay=20;
           ptt1Timer.start(ms_delay);
-//          printf("ptt1Timer started\n");
           if(m_config.write_decoded_debug()) writeToALLTXT("ptt1Timer started");
-      }
-      m_tx_when_ready = false;
+        }
     }
   if(m_config.do_snr() && m_rigState.level() != s.level()) {
       ui->S_meter_button->setText(Radio::convert_Smeter(s.level(),ui->S_meter_button->isChecked()));
@@ -8435,6 +9070,15 @@ void MainWindow::handle_transceiver_update (Transceiver::TransceiverState const&
     }
   }    
   m_rigState = s;
+  m_rigStateGeneration = rigGeneration;
+  if (pttWentOffAfterConfirmedOn && s.ptt_readback_required ()
+      && s.ptt_readback_known () && !s.ptt ())
+    {
+      PttStopFlags const observed {
+        m_enableTx, m_btxok, m_transmitting, m_tune, m_tx_when_ready, g_iptt};
+      appendPttStopDiagnostic ("ptt_off_readback", observed, observed,
+                               "readback_serial", s.ptt_readback_serial ());
+    }
   m_webState->observe_rig (s.online (), s.frequency (), s.tx_frequency (), s.ptt ());
   if (m_webFrequencyPending && m_webControl)
     {
@@ -8453,6 +9097,7 @@ void MainWindow::handle_transceiver_update (Transceiver::TransceiverState const&
     }
   auto old_freqNominal = m_freqNominal;
   m_freqNominal = s.frequency ();
+  cancelPendingPttStartIfContextChanged (QStringLiteral ("external_dial_changed"));
   // initializing
   if (old_state.online () == false && s.online () == true) {
       on_monitorButton_clicked(true);
@@ -8512,7 +9157,23 @@ void MainWindow::handle_transceiver_update (Transceiver::TransceiverState const&
 
   displayDialFrequency ();
   ui->readFreq->setStyleSheet(ui->readFreq->styleSheet().left(230)+QString("background: %1;\n color: %2;\n}").arg(Radio::convert_dark("#00ff00",m_useDarkStyle),Radio::convert_dark("#000000",m_useDarkStyle)));
-  m_rigOk=true;
+  m_rigOk = s.online () && m_config.is_transceiver_online ();
+  if (old_state.online () != s.online ())
+    appendAutoSeqDiagnostic (s.online () ? QStringLiteral ("cat_online")
+                                         : QStringLiteral ("cat_offline"),
+                             QStringLiteral ("transceiver_state_transition"));
+  if (logPttProgress && m_autoSeqInitialCallStall.active ())
+    appendAutoSeqDiagnostic (s.ptt_readback_required ()
+                               ? QStringLiteral ("ptt_readback_on")
+                               : QStringLiteral ("ptt_state_observed"),
+                             s.ptt_readback_required ()
+                               ? QStringLiteral ("rig_get_ptt")
+                               : QStringLiteral ("legacy_state"), {}, true, 0);
+  else if (pttReadbackKnown && old_state.ptt () != s.ptt ())
+    appendAutoSeqDiagnostic (QStringLiteral ("ptt_readback_off"),
+                             s.ptt_readback_required ()
+                               ? QStringLiteral ("rig_get_ptt")
+                               : QStringLiteral ("legacy_state"));
   ui->readFreq->setEnabled (false);
   ui->readFreq->setText (s.split () ? "S" : "");
   if(m_config.write_decoded_debug()) {
@@ -8522,6 +9183,586 @@ void MainWindow::handle_transceiver_update (Transceiver::TransceiverState const&
   }
   if(m_start2) { if(m_config.monitor_off_at_startup ()) on_monitorButton_clicked(false); m_start2=false; }
   tryCompletePendingWebRadio ();
+}
+
+bool MainWindow::cancelPendingPttStart (QString const& reasonCode, bool exemptTune)
+{
+  if (!m_pttStartPolicy.active () || !m_tx_when_ready || (exemptTune && m_tune))
+    return false;
+  ptt1Timer.stop ();
+  cancelPttStartAndRevokeAdmission (reasonCode);
+  m_tx_when_ready = false;
+  m_pttRequestedAtMs = 0;
+  if (g_iptt == 1 && !m_transmitting) m_haltTrans = true;
+  return true;
+}
+
+void MainWindow::cancelPttStartAndRevokeAdmission (QString const& reasonCode,
+                                                   QString const& event) noexcept
+{
+  m_config.revoke_transceiver_ptt_start ();
+  if (m_pttStartPolicy.active () && !reasonCode.isEmpty ())
+    appendAutoSeqDiagnostic (event.isEmpty ()
+                               ? QStringLiteral ("ptt_request_cancelled") : event,
+                             reasonCode, {}, true, 0);
+  m_pttStartPolicy.cancel ();
+}
+
+PttStartPolicy::RequestContext MainWindow::currentPttRequestContext () const
+{
+  PttStartPolicy::RequestContext context;
+  context.tune = m_tune;
+  if (context.tune) return context;
+  context.logical_target = PttStartPolicy::logical_target (
+    m_hisCall.toStdString (), m_QSOProgress == CALLING || m_ntx == 6);
+  context.band = m_config.bands ()->find (m_freqNominal).toStdString ();
+  context.mode = m_mode.toStdString ();
+  context.tx_mode = m_modeTx.toStdString ();
+  context.dial_frequency = static_cast<std::int64_t> (m_freqNominal);
+  context.tx_audio_frequency = ui->TxFreqSpinBox->value ();
+  context.tx_index = m_ntx;
+  context.qso_phase = static_cast<int> (m_QSOProgress);
+  if (m_mode.left (4) != "WSPR")
+    context.tx_payload_identity = PttTxPayload::identity (
+      selectedTxPayloadBytes ().toStdString ());
+  return context;
+}
+
+QByteArray MainWindow::selectedTxPayloadBytes () const
+{
+  PttTxPayload::Messages messages {{
+    ui->tx1->text ().toLocal8Bit ().toStdString (),
+    ui->tx2->text ().toLocal8Bit ().toStdString (),
+    ui->tx3->text ().toLocal8Bit ().toStdString (),
+    ui->tx4->text ().toLocal8Bit ().toStdString (),
+    ui->tx5->currentText ().toLocal8Bit ().toStdString (),
+    ui->tx6->text ().toLocal8Bit ().toStdString (),
+    ui->genMsg->text ().toLocal8Bit ().toStdString (),
+    ui->freeTextMsg->currentText ().toLocal8Bit ().toStdString ()
+  }};
+  auto const selected = PttTxPayload::select (m_ntx, messages);
+  return QByteArray (selected.data (), static_cast<int> (selected.size ()));
+}
+
+bool MainWindow::pendingPttRequestContextMatches () const
+{
+  return PttStartPolicy::same_request_context (m_pttRequestContext,
+                                                currentPttRequestContext ());
+}
+
+bool MainWindow::cancelPendingPttStartIfContextChanged (QString const& reasonCode)
+{
+  if (!m_pttStartPolicy.active () || !m_tx_when_ready
+      || pendingPttRequestContextMatches ()) return false;
+  return cancelPendingPttStart (reasonCode, false);
+}
+
+void MainWindow::rejectFtx1PttRequest (QString const& reasonCode)
+{
+  ptt1Timer.stop ();
+  cancelPttStartAndRevokeAdmission (reasonCode);
+  m_ftx1PttReadinessRejected = true;
+  m_ftx1ReadinessRejectedBatchId = m_autoSeqDecodeBatchId;
+  m_tx_when_ready = false;
+  appendAutoSeqDiagnostic (QStringLiteral ("ptt_request_blocked"), reasonCode, {}, true, 0);
+
+  if (m_tune)
+    {
+      // Preserve Tune's existing 250 ms CAT shutdown sequencing while closing
+      // the software request immediately.
+      on_tuneButton_clicked (false);
+      return;
+    }
+
+  bool const ownedInitialCandidate = m_config.requires_ftx1_cat_ptt_readback ()
+    && m_autoseq && m_callMode > 0 && !m_houndMode
+    && !m_mode.startsWith ("WSPR") && !m_manualDecode && !m_diskData
+    && m_autoSeqInitialCallStall.active ()
+    && m_autoSeqInitialCallStall.is_owned_call (
+         m_hisCall.toStdString (), Radio::base_callsign (m_hisCall).toStdString ())
+    && QString::fromStdString (m_autoSeqInitialCallStall.band ())
+         == m_config.bands ()->find (m_freqNominal)
+    && QString::fromStdString (m_autoSeqInitialCallStall.mode ()) == m_mode
+    && (m_status == QsoHistory::RCQ || m_status == QsoHistory::RFIN)
+    && !m_autoSeqRecovery.pending () && !m_autoSeqInitialCallOperatorHold;
+  if (ownedInitialCandidate && m_enableTx)
+    {
+      m_ftx1ReadinessAutoDisabled = true;
+      bool const previousInternalEnableChange = m_autoSeqInternalEnableTxChange;
+      QString const previousEnableTxReason = m_autoSeqStallEnableTxReason;
+      m_autoSeqInternalEnableTxChange = true;
+      m_autoSeqStallEnableTxReason = QStringLiteral ("ftx1_cat_not_ready");
+      enableTx_mode (false);
+      m_autoSeqInternalEnableTxChange = previousInternalEnableChange;
+      m_autoSeqStallEnableTxReason = previousEnableTxReason;
+      appendAutoSeqDiagnostic (QStringLiteral ("enable_tx_disabled"),
+                               QStringLiteral ("ftx1_cat_not_ready_owned_initial"),
+                               m_hisCall, true, 0);
+    }
+}
+
+void MainWindow::appendPttStopDiagnostic (char const * event,
+                                          PttStopFlags const& before,
+                                          PttStopFlags const& after,
+                                          char const * detail_name,
+                                          int detail_value) noexcept
+{
+  try
+    {
+      auto const localNow = QDateTime::currentDateTime ();
+      auto const utcNow = localNow.toUTC ();
+      auto const current_generation = m_config.transceiver_session_generation ();
+      bool const state_is_current = m_rigStateGeneration == current_generation;
+      bool const fresh_readback = state_is_current
+        && m_rigState.ptt_readback_required ()
+        && m_rigState.ptt_readback_known ()
+        && m_autoSeqLastPttReadbackSerial == m_rigState.ptt_readback_serial ();
+      QString const readback_source = fresh_readback
+        ? QStringLiteral ("rig_get_ptt")
+        : (!state_is_current || m_rigState.ptt_readback_required ()
+             ? QStringLiteral ("unknown")
+             : QStringLiteral ("legacy_state_or_cached"));
+      QString const readback_state = fresh_readback
+        ? (m_rigState.ptt () ? QStringLiteral ("on") : QStringLiteral ("off"))
+        : QStringLiteral ("unknown");
+      bool const is_dispatch =
+        QString::fromLatin1 (event ? event : "") == QStringLiteral ("ptt_off_dispatch");
+      QString const detail = is_dispatch
+        ? QStringLiteral ("dispatch=requested")
+        : QStringLiteral ("%1=%2")
+            .arg (QString::fromLatin1 (detail_name ? detail_name : "detail"))
+            .arg (detail_value);
+      QString const evidence_scope = is_dispatch
+        ? QStringLiteral ("mainwindow_signal_only_not_worker_or_driver")
+        : QStringLiteral ("software_observation_not_rf_proof");
+      QString const line = QStringLiteral (
+        "stop_diag event=%1 utc=%2 local=%3 monotonic_ms=%4 session_id=%5 "
+        "rig_generation=%6 state_generation=%7 request_serial=%8 request_generation=%9 "
+        "readback_baseline=%10 readback_serial=%11 pre_enable_tx=%12 pre_btxok=%13 "
+        "pre_transmitting=%14 pre_tune=%15 pre_tx_when_ready=%16 pre_g_iptt=%17 "
+        "post_enable_tx=%18 post_btxok=%19 post_transmitting=%20 post_tune=%21 "
+        "post_tx_when_ready=%22 post_g_iptt=%23 readback_source=%24 readback_state=%25 "
+        "detail=%26 evidence_scope=%27 off_timer_active=%28")
+        .arg (QString::fromLatin1 (event ? event : "unknown"))
+        .arg (utcNow.toString (Qt::ISODateWithMs))
+        .arg (localNow.toString (Qt::ISODateWithMs))
+        .arg (auto_seq_monotonic_ms ())
+        .arg (m_autoSeqDiagnosticSessionId.isEmpty ()
+                ? QStringLiteral ("unknown") : m_autoSeqDiagnosticSessionId)
+        .arg (current_generation)
+        .arg (m_rigStateGeneration)
+        .arg (m_pttRequestToken.serial)
+        .arg (m_pttRequestToken.generation)
+        .arg (m_pttRequestToken.readback_serial)
+        .arg (m_rigState.ptt_readback_serial ())
+        .arg (before.enable_tx ? 1 : 0).arg (before.btxok ? 1 : 0)
+        .arg (before.transmitting ? 1 : 0).arg (before.tune ? 1 : 0)
+        .arg (before.tx_when_ready ? 1 : 0).arg (before.g_iptt)
+        .arg (after.enable_tx ? 1 : 0).arg (after.btxok ? 1 : 0)
+        .arg (after.transmitting ? 1 : 0).arg (after.tune ? 1 : 0)
+        .arg (after.tx_when_ready ? 1 : 0).arg (after.g_iptt)
+        .arg (readback_source).arg (readback_state).arg (detail)
+        .arg (evidence_scope).arg (ptt0Timer.isActive () ? 1 : 0);
+      JtdxLocalLog::append (m_dataDir, QStringLiteral ("jtdx_recovery.log"),
+                            QStringLiteral ("rig-control"), line);
+    }
+  catch (...)
+    {
+      // Stop diagnostics must not affect TX/PTT control.
+    }
+}
+
+void MainWindow::appendAutoSeqDiagnostic (QString const& event, QString const& reasonCode,
+                                          QString const& call, bool includeTxText,
+                                          qint64 elapsedOverride,
+                                          QStringList const& extraFields)
+{
+  try
+    {
+      auto const localNow = QDateTime::currentDateTime ();
+      auto const utcNow = localNow.toUTC ();
+      QString const target = call.isEmpty ()
+        ? (m_autoSeqInitialCallStall.active ()
+             ? QString::fromStdString (m_autoSeqInitialCallStall.call ()) : m_hisCall)
+        : call;
+      QsoHistory::Status historyStatus = QsoHistory::NONE;
+      int retryCount = -1;
+      bool const historyKnown = !target.isEmpty ()
+        && m_qsoHistory.diagnosticSnapshot (target, historyStatus, retryCount);
+      qint64 const nowMono = auto_seq_monotonic_ms ();
+      qint64 const noProgressMs = elapsedOverride >= 0 ? elapsedOverride
+        : m_autoSeqInitialCallStall.elapsed_ms (nowMono);
+       bool const pttReadbackCurrentGeneration = m_rigStateGeneration
+         == m_config.transceiver_session_generation ();
+      bool const pttDiagnosticKnown = m_autoSeqPttReadbackKnown
+         && pttReadbackCurrentGeneration;
+       bool const realPttReadback = pttDiagnosticKnown
+         && m_rigState.ptt_readback_required ()
+         && m_autoSeqLastPttReadbackSerial == m_rigState.ptt_readback_serial ();
+       qint64 const pttAgeMs = realPttReadback
+         ? qMax<qint64> (0, utcNow.toMSecsSinceEpoch () - m_autoSeqPttReadbackAtUtcMs) : -1;
+      QString const band = m_config.bands ()->find (m_freqNominal);
+      QStringList fields;
+      auto add = [&fields] (QString const& key, QString const& value) {
+        AutoSeqDiagnosticFormatter::append_field (fields, key, value);
+      };
+      add (QStringLiteral ("event"), event);
+      add (QStringLiteral ("reason"), reasonCode);
+      add (QStringLiteral ("utc"), utcNow.toString (Qt::ISODateWithMs));
+      add (QStringLiteral ("local"), localNow.toString (Qt::ISODateWithMs));
+      add (QStringLiteral ("session_id"), m_autoSeqDiagnosticSessionId);
+      add (QStringLiteral ("app_version"), QCoreApplication::applicationVersion ());
+      add (QStringLiteral ("revision"), m_revision);
+      add (QStringLiteral ("build"), QStringLiteral (__DATE__ " " __TIME__));
+      add (QStringLiteral ("attempt_id"), m_autoSeqInitialCallStall.active ()
+             ? QString::number (m_autoSeqInitialCallStall.attempt_id ())
+             : QString::number (m_autoSeqLastAttemptId));
+      add (QStringLiteral ("decode_batch_id"), QString::number (m_autoSeqDecodeBatchId));
+      add (QStringLiteral ("decode_started_utc"), m_autoSeqLiveDecodeBatchStartedMs > 0
+             ? QDateTime::fromMSecsSinceEpoch (m_msDecStarted, Qt::UTC)
+                 .toString (Qt::ISODateWithMs)
+             : QStringLiteral ("unknown"));
+      add (QStringLiteral ("call"), target);
+      add (QStringLiteral ("mode"), m_mode);
+      add (QStringLiteral ("band"), band);
+      add (QStringLiteral ("history_known"), historyKnown ? QStringLiteral ("true") : QStringLiteral ("false"));
+      add (QStringLiteral ("history_status"), historyKnown
+             ? QString::number (static_cast<int> (historyStatus)) : QStringLiteral ("unknown"));
+      add (QStringLiteral ("retry_count"), QString::number (retryCount));
+      add (QStringLiteral ("retry_limit"), QString::number (
+             m_config.answerCQCount () ? m_config.nAnswerCQCounter () : 0));
+      add (QStringLiteral ("tx_slot"), QString::number (m_ntx));
+      add (QStringLiteral ("enable_tx"), m_enableTx ? QStringLiteral ("true") : QStringLiteral ("false"));
+      add (QStringLiteral ("transmitting"), m_transmitting ? QStringLiteral ("true") : QStringLiteral ("false"));
+      add (QStringLiteral ("tune"), m_tune ? QStringLiteral ("true") : QStringLiteral ("false"));
+      add (QStringLiteral ("ptt_intent"), QString::number (g_iptt));
+      add (QStringLiteral ("ptt_owner_active"), m_autoSeqInitialCallStall.active ()
+             ? QStringLiteral ("true") : QStringLiteral ("false"));
+      add (QStringLiteral ("ptt_owner_call"), m_autoSeqInitialCallStall.active ()
+             ? QString::fromStdString (m_autoSeqInitialCallStall.call ())
+             : QStringLiteral ("none"));
+      add (QStringLiteral ("operator_hold"), m_autoSeqInitialCallOperatorHold
+             ? QStringLiteral ("true") : QStringLiteral ("false"));
+      auto const currentRigGeneration = m_config.transceiver_session_generation ();
+      add (QStringLiteral ("ptt_request_serial"),
+           QString::number (m_pttRequestToken.serial));
+      add (QStringLiteral ("ptt_request_generation"),
+           QString::number (m_pttRequestToken.generation));
+      add (QStringLiteral ("rig_generation"), QString::number (currentRigGeneration));
+      add (QStringLiteral ("state_generation"), QString::number (m_rigStateGeneration));
+      add (QStringLiteral ("ptt_request_readback_baseline"),
+           QString::number (m_pttRequestToken.readback_serial));
+      add (QStringLiteral ("ptt_readback_serial"),
+           QString::number (m_rigState.ptt_readback_serial ()));
+      add (QStringLiteral ("ptt_token_active"), m_pttStartPolicy.active ()
+             ? QStringLiteral ("true") : QStringLiteral ("false"));
+      add (QStringLiteral ("ptt_request_pending"), m_tx_when_ready
+             ? QStringLiteral ("true") : QStringLiteral ("false"));
+      add (QStringLiteral ("ptt_timer_active"), ptt1Timer.isActive ()
+             ? QStringLiteral ("true") : QStringLiteral ("false"));
+       add (QStringLiteral ("cat_online"), m_rigOk && m_rigState.online ()
+              && pttReadbackCurrentGeneration && m_config.is_transceiver_online ()
+              ? QStringLiteral ("true") : QStringLiteral ("false"));
+       add (QStringLiteral ("ptt_known"), pttDiagnosticKnown
+              ? QStringLiteral ("true") : QStringLiteral ("false"));
+       add (QStringLiteral ("ptt_readback_on"), pttDiagnosticKnown && m_autoSeqPttReadbackOn
+              ? QStringLiteral ("true") : QStringLiteral ("false"));
+       QString const pttSource = pttDiagnosticKnown
+         ? (m_rigState.ptt_readback_required ()
+              ? QStringLiteral ("rig_get_ptt") : QStringLiteral ("legacy_state"))
+         : (m_rigState.ptt_readback_required ()
+              ? QStringLiteral ("readback_unknown")
+              : (pttReadbackCurrentGeneration && m_rigState.online ()
+                   ? QStringLiteral ("legacy_state") : QStringLiteral ("none")));
+       add (QStringLiteral ("ptt_source"), pttSource);
+       add (QStringLiteral ("ptt_readback_utc"), realPttReadback
+              ? QDateTime::fromMSecsSinceEpoch (m_autoSeqPttReadbackAtUtcMs, Qt::UTC)
+                 .toString (Qt::ISODateWithMs) : QStringLiteral ("unknown"));
+      add (QStringLiteral ("ptt_readback_age_ms"), QString::number (pttAgeMs));
+      add (QStringLiteral ("no_progress_ms"), QString::number (noProgressMs));
+      add (QStringLiteral ("last_progress"), m_autoSeqInitialCallStall.active ()
+             ? QString::fromStdString (m_autoSeqInitialCallStall.last_progress ())
+             : QStringLiteral ("none"));
+
+      bool const pttRequestDiagnostic = event.startsWith (QStringLiteral ("ptt_request_"))
+        || event == QStringLiteral ("ptt_audio_start_refused");
+      if (pttRequestDiagnostic)
+        {
+          bool const requestedContextValid = m_pttStartPolicy.active ()
+            && m_pttRequestToken.serial != 0;
+          auto const currentContext = currentPttRequestContext ();
+          auto const add_context = [&add] (QString const& prefix,
+                                           PttStartPolicy::RequestContext const& context,
+                                           bool valid) {
+            auto const value = [valid] (QString const& field) {
+              return valid ? field : QStringLiteral ("unknown");
+            };
+            add (prefix + QStringLiteral ("logical_target"),
+                 value (QString::fromStdString (context.logical_target)));
+            add (prefix + QStringLiteral ("band"),
+                 value (QString::fromStdString (context.band)));
+            add (prefix + QStringLiteral ("mode"),
+                 value (QString::fromStdString (context.mode)));
+            add (prefix + QStringLiteral ("tx_mode"),
+                 value (QString::fromStdString (context.tx_mode)));
+            add (prefix + QStringLiteral ("dial_frequency"),
+                 valid ? QString::number (context.dial_frequency)
+                       : QStringLiteral ("unknown"));
+            add (prefix + QStringLiteral ("tx_audio_frequency"),
+                 valid ? QString::number (context.tx_audio_frequency)
+                       : QStringLiteral ("unknown"));
+            add (prefix + QStringLiteral ("tx_index"),
+                 valid ? QString::number (context.tx_index)
+                       : QStringLiteral ("unknown"));
+            add (prefix + QStringLiteral ("qso_phase"),
+                 valid ? QString::number (context.qso_phase)
+                       : QStringLiteral ("unknown"));
+            add (prefix + QStringLiteral ("tune"),
+                 valid ? (context.tune ? QStringLiteral ("true")
+                                       : QStringLiteral ("false"))
+                       : QStringLiteral ("unknown"));
+          };
+          add (QStringLiteral ("requested_context_valid"),
+               requestedContextValid ? QStringLiteral ("true")
+                                     : QStringLiteral ("false"));
+          add_context (QStringLiteral ("requested_"), m_pttRequestContext,
+                       requestedContextValid);
+          add_context (QStringLiteral ("current_"), currentContext, true);
+
+          QStringList contextDiff;
+          bool payloadChanged = false;
+          if (requestedContextValid)
+            {
+              auto const& requested = m_pttRequestContext;
+              auto const& current = currentContext;
+              if (requested.tune != current.tune)
+                contextDiff << QStringLiteral ("tune");
+              else if (!requested.tune)
+                {
+                  if (requested.logical_target != current.logical_target)
+                    contextDiff << QStringLiteral ("logical_target");
+                  if (requested.band != current.band)
+                    contextDiff << QStringLiteral ("band");
+                  if (requested.mode != current.mode)
+                    contextDiff << QStringLiteral ("mode");
+                  if (requested.tx_mode != current.tx_mode)
+                    contextDiff << QStringLiteral ("tx_mode");
+                  if (requested.dial_frequency != current.dial_frequency)
+                    contextDiff << QStringLiteral ("dial_frequency");
+                  if (requested.tx_audio_frequency != current.tx_audio_frequency)
+                    contextDiff << QStringLiteral ("tx_audio_frequency");
+                  if (requested.tx_index != current.tx_index)
+                    contextDiff << QStringLiteral ("tx_index");
+                  if (requested.qso_phase != current.qso_phase)
+                    contextDiff << QStringLiteral ("qso_phase");
+                  payloadChanged = requested.tx_payload_identity
+                    != current.tx_payload_identity;
+                  if (payloadChanged)
+                    contextDiff << QStringLiteral ("tx_payload_changed");
+                }
+            }
+          add (QStringLiteral ("request_context_matches"),
+               requestedContextValid
+                 ? (PttStartPolicy::same_request_context (m_pttRequestContext,
+                                                         currentContext)
+                      ? QStringLiteral ("true") : QStringLiteral ("false"))
+                 : QStringLiteral ("unknown"));
+          add (QStringLiteral ("request_context_diff"),
+               requestedContextValid
+                 ? (contextDiff.isEmpty () ? QStringLiteral ("none")
+                                           : contextDiff.join (QLatin1Char (',')))
+                 : QStringLiteral ("unavailable"));
+          add (QStringLiteral ("tx_payload_changed"),
+               requestedContextValid
+                 ? (payloadChanged ? QStringLiteral ("true")
+                                   : QStringLiteral ("false"))
+                 : QStringLiteral ("unknown"));
+          add (QStringLiteral ("ftx1_readiness_rejected"),
+               m_ftx1PttReadinessRejected
+                 ? QStringLiteral ("true") : QStringLiteral ("false"));
+          add (QStringLiteral ("ftx1_readiness_auto_disabled"),
+               m_ftx1ReadinessAutoDisabled
+                 ? QStringLiteral ("true") : QStringLiteral ("false"));
+          add (QStringLiteral ("ftx1_readiness_rejected_batch_id"),
+               QString::number (m_ftx1ReadinessRejectedBatchId));
+          QString const recoveryPhase = m_autoSeqRecovery.awaiting_reconnect ()
+            ? QStringLiteral ("awaiting_reconnect")
+            : (m_autoSeqRecovery.awaiting_fresh_batch ()
+                 ? QStringLiteral ("awaiting_fresh_batch")
+                 : QStringLiteral ("idle"));
+          add (QStringLiteral ("recovery_phase"), recoveryPhase);
+          add (QStringLiteral ("recovery_pending"),
+               m_autoSeqRecovery.pending ()
+                 ? QStringLiteral ("true") : QStringLiteral ("false"));
+        }
+      for (auto const& extraField : extraFields) fields.append (extraField);
+      QString message = AutoSeqDiagnosticFormatter::line (fields);
+      if (includeTxText && !pttRequestDiagnostic)
+        {
+          AutoSeqDiagnosticFormatter::append_field (
+            fields, QStringLiteral ("tx_text"), m_curMsgTx);
+          message = AutoSeqDiagnosticFormatter::line (fields);
+        }
+      if (!m_autoSeqStallEnableTxReason.isEmpty ())
+        {
+          AutoSeqDiagnosticFormatter::append_field (
+            fields, QStringLiteral ("enable_tx_reason"), m_autoSeqStallEnableTxReason);
+          message = AutoSeqDiagnosticFormatter::line (fields);
+        }
+      appendRecoveryLog (m_dataDir, QStringLiteral ("auto-call"), std::move (message));
+    }
+  catch (...)
+    {
+      // Diagnostics must not alter AutoSeq, CAT, or TX control flow.
+    }
+}
+
+void MainWindow::setAutoSeqInitialCallOperatorHold (bool hold,
+                                                    QString const& source,
+                                                    QString const& call)
+{
+  if (m_autoSeqInitialCallOperatorHold == hold) return;
+  m_autoSeqInitialCallOperatorHold = hold;
+  if (!hold) m_autoSeqInitialCallOperatorHoldBlockedCall.clear ();
+  appendAutoSeqDiagnostic (hold ? QStringLiteral ("operator_hold_set")
+                                : QStringLiteral ("operator_hold_cleared"),
+                           source, call);
+}
+
+void MainWindow::cancelAutoSeqInitialCallStall (QString const& reasonCode,
+                                                 bool suppressRearm)
+{
+  if (!m_autoSeqInitialCallStall.active ()) return;
+  QString const call = QString::fromStdString (m_autoSeqInitialCallStall.call ());
+  qint64 const elapsed = m_autoSeqInitialCallStall.elapsed_ms (auto_seq_monotonic_ms ());
+  if (suppressRearm) m_autoSeqStallSuppressedCall = call;
+  appendAutoSeqDiagnostic (QStringLiteral ("stall_ownership_cancelled"), reasonCode,
+                           call, false, elapsed);
+  m_autoSeqInitialCallStall.cancel ();
+  m_autoSeqStallTargetedReplySeen = false;
+  m_autoSeqStallReplySender.clear ();
+}
+
+bool MainWindow::evaluateAutoSeqInitialCallStallAtBatchEnd ()
+{
+  if (!m_autoSeqInitialCallStall.active () || !m_autoSeqLiveDecodeBatchPending)
+    return false;
+  if (m_manualDecode || m_diskData)
+    {
+      cancelAutoSeqInitialCallStall (QStringLiteral ("manual_or_disk_decode"));
+      return false;
+    }
+
+  QString const owner = QString::fromStdString (m_autoSeqInitialCallStall.call ());
+  QString const baseOwner = QString::fromStdString (m_autoSeqInitialCallStall.base_call ());
+  QsoHistory::Status historyStatus = QsoHistory::NONE;
+  int retryCount = -1;
+  bool const historyKnown = m_qsoHistory.diagnosticSnapshot (owner, historyStatus, retryCount);
+  bool const validDirectedPhase = historyKnown
+    && (historyStatus == QsoHistory::RCALL || historyStatus == QsoHistory::RREPORT
+        || historyStatus == QsoHistory::RRREPORT || historyStatus == QsoHistory::RRR
+        || historyStatus == QsoHistory::RRR73 || historyStatus == QsoHistory::R73);
+  if (m_autoSeqStallTargetedReplySeen
+      && !m_autoSeqStallReplySender.isEmpty ()
+      && Radio::base_callsign (m_autoSeqStallReplySender) == baseOwner
+      && validDirectedPhase)
+    {
+      appendAutoSeqDiagnostic (QStringLiteral ("valid_directed_reply"),
+                               QStringLiteral ("same_batch_history_confirmed"),
+                               owner, false,
+                               m_autoSeqInitialCallStall.elapsed_ms (auto_seq_monotonic_ms ()));
+      m_autoSeqInitialCallStall.observe_valid_directed_reply (
+        m_autoSeqStallReplySender.toStdString (), baseOwner.toStdString ());
+      m_autoSeqStallTargetedReplySeen = false;
+      m_autoSeqStallReplySender.clear ();
+      return false;
+    }
+
+  bool const initialHistoryStage = historyKnown
+    && (historyStatus == QsoHistory::RCQ || historyStatus == QsoHistory::RFIN
+        || historyStatus == QsoHistory::SCQ || historyStatus == QsoHistory::SCALL
+        || (m_skipTx1 && historyStatus == QsoHistory::SREPORT
+            && m_QSOProgress == REPORT))
+    && (m_QSOProgress == CALLING || m_QSOProgress == REPLYING
+        || (m_skipTx1 && historyStatus == QsoHistory::SREPORT
+            && m_QSOProgress == REPORT));
+  QString const currentCall = m_hisCall;
+  bool const targetMatches = !currentCall.isEmpty ()
+    && Radio::base_callsign (currentCall) == baseOwner
+    && m_config.bands ()->find (m_freqNominal)
+         == QString::fromStdString (m_autoSeqInitialCallStall.band ())
+    && m_mode == QString::fromStdString (m_autoSeqInitialCallStall.mode ());
+  qint64 const nowMono = auto_seq_monotonic_ms ();
+  qint64 const elapsed = m_autoSeqInitialCallStall.elapsed_ms (nowMono);
+  bool const catOnline = m_rigOk && m_rigState.online ()
+    && m_config.is_transceiver_online ();
+  bool const pttReadbackAfterAttempt = m_autoSeqPttReadbackKnown
+    && m_autoSeqPttReadbackMonotonicMs >= m_autoSeqInitialCallStall.selected_at_ms ();
+  bool const pttPending = g_iptt != 0 || m_tx_when_ready || m_btxok || m_restart || m_txNext
+    || m_pttRequestedAtMs > 0;
+  bool const recoveryPending = m_autoSeqRecovery.pending () || m_rigRecovery.attempts () > 0
+    || m_rigRecoveryTimer.isActive ();
+  auto const decision = m_autoSeqInitialCallStall.evaluate (
+    nowMono, true, m_autoseq, targetMatches, initialHistoryStage, catOnline,
+    m_autoSeqPttReadbackKnown && catOnline,
+    m_autoSeqPttReadbackKnown && !m_autoSeqPttReadbackOn,
+    pttReadbackAfterAttempt, m_transmitting, m_tune, pttPending,
+    recoveryPending, false);
+  if (decision.action == AutoSeqInitialCallStallPolicy::Action::snapshot)
+    appendAutoSeqDiagnostic (QStringLiteral ("stall_active_snapshot"),
+                             QString::fromStdString (decision.reason), owner, false, elapsed);
+  else if (decision.action == AutoSeqInitialCallStallPolicy::Action::blocked)
+    appendAutoSeqDiagnostic (QStringLiteral ("stall_release_deferred"),
+                             QString::fromStdString (decision.reason), owner, false, elapsed);
+  else if (decision.action == AutoSeqInitialCallStallPolicy::Action::release)
+    {
+      int const receivedReport = m_autoSeqInitialCallStall.report ();
+      auto const nowUtc = m_jtdxtime->currentDateTimeUtc2 ().toUTC ();
+      unsigned const releaseSeconds = static_cast<unsigned> (
+        nowUtc.time ().hour () * 3600 + nowUtc.time ().minute () * 60 + nowUtc.time ().second ());
+      appendAutoSeqDiagnostic (QStringLiteral ("stall_released"),
+                               QStringLiteral ("initial_call_no_progress_timeout"),
+                               owner, false, elapsed);
+      // Persist the existing limited automatic-CQ cooldown before clearing DX.
+      // calllist does not mutate QsoHistory's live QSO record.
+      m_qsoHistory.calllist (owner, receivedReport, releaseSeconds, true);
+      m_autoSeqLastNoProgressElapsedMs = elapsed;
+      m_autoSeqLastAttemptCall = owner;
+      m_autoSeqLastAttemptId = m_autoSeqInitialCallStall.attempt_id ();
+      m_autoSeqInitialCallStall.cancel ();
+      m_autoSeqStallSkipCurrentBatch = true;
+      if (m_enableTx)
+        {
+          bool const previousInternalEnableChange = m_autoSeqInternalEnableTxChange;
+          QString const previousEnableTxReason = m_autoSeqStallEnableTxReason;
+          m_autoSeqInternalEnableTxChange = true;
+          m_autoSeqStallEnableTxReason = QStringLiteral ("initial_call_stall_release");
+          enableTx_mode (false);
+          m_autoSeqInternalEnableTxChange = previousInternalEnableChange;
+          m_autoSeqStallEnableTxReason = previousEnableTxReason;
+        }
+      m_autoSeqInternalClear = true;
+      clearDX (QStringLiteral (" cleared after initial AutoSeq call stalled"));
+      m_autoSeqInternalClear = false;
+      return true;
+    }
+  else if (decision.reason == "ownership_ended")
+    appendAutoSeqDiagnostic (QStringLiteral ("stall_ownership_ended"),
+                             QStringLiteral ("initial_stage_or_target_changed"), owner);
+  return false;
+}
+
+void MainWindow::observeAutoSeqAudioProgress ()
+{
+  if (!m_autoSeqInitialCallStall.active ()) return;
+  auto const now = auto_seq_monotonic_ms ();
+  m_autoSeqInitialCallStall.observe_actual_progress (now, "audio_startup_confirmed");
+  if (!m_autoSeqLastProgressLoggedMonotonicMs
+      || now - m_autoSeqLastProgressLoggedMonotonicMs >= 5000) {
+    m_autoSeqLastProgressLoggedMonotonicMs = now;
+    appendAutoSeqDiagnostic (QStringLiteral ("actual_audio_progress"),
+                             QStringLiteral ("startup_confirmed"), {}, true, 0);
+  }
 }
 
 void MainWindow::cancelAutoSeqRecovery (QString const& reason)
@@ -8561,6 +9802,18 @@ void MainWindow::cancelAutoSeqRecovery (QString const& reason)
 
 void MainWindow::handle_transceiver_failure (QString const& reason)
 {
+  ptt1Timer.stop ();
+  cancelPttStartAndRevokeAdmission (QStringLiteral ("cat_failure"));
+  m_rigStateGeneration = 0;
+  m_rigState.ptt_readback_known (false);
+  if (m_autoSeqPttReadbackKnown)
+    appendAutoSeqDiagnostic (QStringLiteral ("ptt_readback_invalidated"),
+                             QStringLiteral ("cat_failure"));
+  m_autoSeqPttReadbackKnown = false;
+  m_autoSeqPttReadbackOn = false;
+  m_autoSeqPttReadbackMonotonicMs = 0;
+  m_autoSeqPttReadbackAtUtcMs = 0;
+  m_autoSeqLastPttReadbackSerial = 0;
   m_webState->observe_rig (false, 0, 0, false);
   bool const recoverySupported = m_autoseq && !m_houndMode
     && !m_mode.startsWith ("WSPR");

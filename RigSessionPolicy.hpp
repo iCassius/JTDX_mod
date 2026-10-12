@@ -16,6 +16,13 @@ namespace RigSessionPolicy
     report_to_configuration
   };
 
+  constexpr bool callback_is_current (unsigned long long callback_generation,
+                                     unsigned long long current_generation,
+                                     bool session_active) noexcept
+  {
+    return session_active && callback_generation == current_generation;
+  }
+
   constexpr FailureAction failure_action (unsigned long long failure_generation,
                                            unsigned long long current_generation,
                                            Purpose purpose) noexcept

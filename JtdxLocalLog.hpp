@@ -9,8 +9,8 @@ namespace JtdxLocalLog
 {
   struct Limits
   {
-    qint64 max_bytes {256 * 1024};
-    int rotated_files {1};
+    qint64 max_bytes {2 * 1024 * 1024};
+    int rotated_files {3};
   };
 
   // Appends one sanitized UTF-8 line. Write failures and internal logging

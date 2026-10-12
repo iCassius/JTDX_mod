@@ -43,25 +43,38 @@ namespace
 
   bool rotate (QString const& path, JtdxLocalLog::Limits limits)
   {
-    if (limits.rotated_files < 1) return false;
-    QString const rotated = path + QStringLiteral (".1");
-    QFile::remove (rotated);
-    if (QFile::rename (path, rotated))
+    if (limits.rotated_files < 1 || limits.rotated_files > 16) return false;
+    for (int index = limits.rotated_files; index > 0; --index)
       {
-        if (limit_file (rotated, limits.max_bytes)) return true;
-        QFile truncate_rotated {rotated};
-        if (truncate_rotated.open (QIODevice::WriteOnly | QIODevice::Truncate))
+        QString const source = index == 1
+          ? path : path + QLatin1Char ('.') + QString::number (index - 1);
+        QString const destination = path + QLatin1Char ('.') + QString::number (index);
+        QFile::remove (destination);
+        QFileInfo const source_info {source};
+        if (!source_info.exists ()) continue;
+        if (!source_info.isFile ())
           {
-            truncate_rotated.close ();
+            // A non-file at an archive path must not be moved or treated as a
+            // readable log. Fall back to a bounded active file instead.
+            QFile truncate {path};
+            if (!truncate.open (QIODevice::WriteOnly | QIODevice::Truncate)) return false;
+            truncate.close ();
+            return true;
           }
+        if (!QFile::rename (source, destination))
+          {
+            // Keep append bounded even if the requested archive shift fails.
+            QFile truncate {path};
+            if (!truncate.open (QIODevice::WriteOnly | QIODevice::Truncate)) return false;
+            truncate.close ();
+            return true;
+          }
+        if (limit_file (destination, limits.max_bytes)) continue;
+        QFile truncate_rotated {destination};
+        if (truncate_rotated.open (QIODevice::WriteOnly | QIODevice::Truncate))
+          truncate_rotated.close ();
         return false;
       }
-
-    // If rotation is unavailable, truncate the active file rather than
-    // allowing an unbounded diagnostic log to grow.
-    QFile truncate {path};
-    if (!truncate.open (QIODevice::WriteOnly | QIODevice::Truncate)) return false;
-    truncate.close ();
     return true;
   }
 }

@@ -1,5 +1,10 @@
 #include "Configuration.hpp"
 #include "RigSessionPolicy.hpp"
+#include "transceiver_update_policy.hpp"
+#include "transceiver_tx_frequency_policy.hpp"
+#include "cat_health_policy.hpp"
+
+#include <memory>
 
 //
 // Read me!
@@ -134,6 +139,7 @@
 #include <functional>
 #include <limits>
 #include <cmath>
+#include <chrono>
 
 #include <QApplication>
 #include <QMetaType>
@@ -163,6 +169,7 @@
 #include <QSerialPortInfo>
 #include <QScopedPointer>
 #include <QDebug>
+#include <QDateTime>
 #include <QtGui>
 #include "qt_helpers.hpp"
 #include "MetaDataRegistry.hpp"
@@ -181,6 +188,7 @@
 #include "NetworkServerLookup.hpp"
 #include "JTDXMessageBox.hpp"
 #include "JtdxLocalLog.hpp"
+#include "TransceiverBase.hpp"
 
 #include "pimpl_impl.hpp"
 
@@ -191,22 +199,272 @@ namespace
 {
   using RigSessionPurpose = RigSessionPolicy::Purpose;
 
+  qint64 configuration_monotonic_ns () noexcept
+  {
+    return std::chrono::duration_cast<std::chrono::nanoseconds> (
+      std::chrono::steady_clock::now ().time_since_epoch ()).count ();
+  }
+
+  char const * cat_health_state_name (CatHealthPolicy::State state) noexcept
+  {
+    switch (state)
+      {
+      case CatHealthPolicy::State::healthy: return "healthy";
+      case CatHealthPolicy::State::suspect: return "suspect";
+      default: return "unknown";
+      }
+  }
+
+  char const * cat_health_reason_name (CatHealthPolicy::Reason reason) noexcept
+  {
+    switch (reason)
+      {
+      case CatHealthPolicy::Reason::awaiting_poll: return "awaiting_poll";
+      case CatHealthPolicy::Reason::poll_in_progress: return "poll_in_progress";
+      case CatHealthPolicy::Reason::valid_get: return "valid_get_api_return";
+      case CatHealthPolicy::Reason::invalid_get: return "get_failed_or_protocol_invalid";
+      case CatHealthPolicy::Reason::poll_failed: return "poll_failed";
+      case CatHealthPolicy::Reason::poll_stalled: return "poll_over_5s_no_finish";
+      case CatHealthPolicy::Reason::poll_slow: return "poll_duration_over_5s";
+      case CatHealthPolicy::Reason::get_stale: return "last_valid_get_outside_cadence";
+      case CatHealthPolicy::Reason::no_valid_get: return "poll_completed_without_valid_get";
+      default: return "no_poll_observed";
+      }
+  }
+
+  void append_cat_health_diagnostic (QString const& event, quint64 generation,
+                                     CatHealthPolicy::Snapshot const& state,
+                                     qint64 worker_now_ns) noexcept
+  {
+    try
+      {
+        auto const age_ms = state.last_valid_get_ns > 0
+          && worker_now_ns >= state.last_valid_get_ns
+          ? (worker_now_ns - state.last_valid_get_ns) / 1000000LL : -1LL;
+        JtdxLocalLog::append (
+          QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)},
+          QStringLiteral ("jtdx_recovery.log"), QStringLiteral ("rig-health"),
+          QStringLiteral ("cat_health event=%1 generation=%2 state=%3 reason=%4 poll_id=%5 completed_poll_id=%6 poll_in_flight=%7 poll_entered_mono_ns=%8 poll_completed_mono_ns=%9 poll_duration_ms=%10 actual_interval_ms=%11 poll_failed=%12 get_operation=rig_get_ptt latest_get=%13 api_return=%14 protocol_valid=%15 last_valid_get_age_ms=%16 control_sequence=%17 ptt_readback_serial=%18").
+            arg (event).arg (generation)
+            .arg (QString::fromLatin1 (cat_health_state_name (state.state)))
+            .arg (QString::fromLatin1 (cat_health_reason_name (state.reason)))
+            .arg (state.poll_id).arg (state.completed_poll_id)
+            .arg (state.poll_in_flight ? "true" : "false")
+            .arg (static_cast<qlonglong> (state.last_poll_started_ns))
+            .arg (static_cast<qlonglong> (state.last_poll_completed_ns))
+            .arg (static_cast<qlonglong> (state.last_poll_duration_ns / 1000000LL))
+            .arg (static_cast<qlonglong> (state.poll_interval_ms))
+            .arg (state.last_poll_failed ? "true" : "false")
+            .arg (state.last_api_get_succeeded ? "success" : "failure_or_unobserved")
+            .arg (state.api_return).arg (state.protocol_valid ? "true" : "false")
+            .arg (static_cast<qlonglong> (age_ms))
+            .arg (state.control_sequence).arg (state.ptt_readback_serial));
+      }
+    catch (...)
+      {
+        // Health observation must never alter worker control or recovery.
+      }
+  }
+
+  void append_cat_refresh_diagnostic (quint64 generation, quint64 request_id,
+                                      qint64 worker_ns, int status,
+                                      QString const& operation, int api_return,
+                                      bool protocol_valid, unsigned control_sequence,
+                                      quint64 ptt_readback_serial) noexcept
+  {
+    try
+      {
+        JtdxLocalLog::append (
+          QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)},
+          QStringLiteral ("jtdx_recovery.log"), QStringLiteral ("rig-health"),
+          QStringLiteral ("cat_refresh phase=completed generation=%1 request_id=%2 worker_mono_ns=%3 status=%4 operation=%5 api_return=%6 protocol_valid=%7 control_sequence=%8 ptt_readback_serial=%9 result_scope=hamlib_api_get_not_wire_proof")
+            .arg (generation).arg (request_id)
+            .arg (static_cast<qlonglong> (worker_ns)).arg (status)
+            .arg (operation).arg (api_return)
+            .arg (protocol_valid ? "true" : "false")
+            .arg (control_sequence).arg (ptt_readback_serial));
+      }
+    catch (...)
+      {
+        // Explicit diagnostic reads must not affect transceiver control.
+      }
+  }
+
+  void append_cat_refresh_queued (quint64 generation, quint64 request_id,
+                                  qint64 queued_mono_ns,
+                                  unsigned control_sequence) noexcept
+  {
+    try
+      {
+        JtdxLocalLog::append (
+          QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)},
+          QStringLiteral ("jtdx_recovery.log"), QStringLiteral ("rig-health"),
+          QStringLiteral ("cat_refresh phase=queued generation=%1 request_id=%2 queued_mono_ns=%3 control_sequence=%4 api_execution=not_yet_confirmed")
+            .arg (generation).arg (request_id)
+            .arg (static_cast<qlonglong> (queued_mono_ns))
+            .arg (control_sequence));
+      }
+    catch (...)
+      {
+        // Request telemetry must not affect worker command routing.
+      }
+  }
+
   char const * rig_session_purpose_name (RigSessionPurpose purpose) noexcept
   {
     return RigSessionPurpose::runtime == purpose ? "runtime" : "configuration_test";
   }
 
+  char const * rig_data_bits_name (TransceiverFactory::DataBits value) noexcept
+  {
+    switch (value)
+      {
+      case TransceiverFactory::seven_data_bits: return "seven_data_bits";
+      case TransceiverFactory::eight_data_bits: return "eight_data_bits";
+      case TransceiverFactory::default_data_bits: return "default_data_bits";
+      default: return "unknown";
+      }
+  }
+
+  char const * rig_stop_bits_name (TransceiverFactory::StopBits value) noexcept
+  {
+    switch (value)
+      {
+      case TransceiverFactory::one_stop_bit: return "one_stop_bit";
+      case TransceiverFactory::two_stop_bits: return "two_stop_bits";
+      case TransceiverFactory::default_stop_bits: return "default_stop_bits";
+      default: return "unknown";
+      }
+  }
+
+  char const * rig_handshake_name (TransceiverFactory::Handshake value) noexcept
+  {
+    switch (value)
+      {
+      case TransceiverFactory::handshake_default: return "handshake_default";
+      case TransceiverFactory::handshake_none: return "handshake_none";
+      case TransceiverFactory::handshake_XonXoff: return "handshake_XonXoff";
+      case TransceiverFactory::handshake_hardware: return "handshake_hardware";
+      default: return "unknown";
+      }
+  }
+
+  char const * rig_ptt_method_name (TransceiverFactory::PTTMethod value) noexcept
+  {
+    switch (value)
+      {
+      case TransceiverFactory::PTT_method_VOX: return "VOX";
+      case TransceiverFactory::PTT_method_CAT: return "CAT";
+      case TransceiverFactory::PTT_method_DTR: return "DTR";
+      case TransceiverFactory::PTT_method_RTS: return "RTS";
+      default: return "unknown";
+      }
+  }
+
+  char const * rig_split_mode_name (TransceiverFactory::SplitMode value) noexcept
+  {
+    switch (value)
+      {
+      case TransceiverFactory::split_mode_none: return "split_mode_none";
+      case TransceiverFactory::split_mode_rig: return "split_mode_rig";
+      case TransceiverFactory::split_mode_emulate: return "split_mode_emulate";
+      default: return "unknown";
+      }
+  }
+
+  QString safe_rig_model_name (QString const& value)
+  {
+    if (value.isEmpty () || value.size () > 96) return QStringLiteral ("unknown");
+    for (auto const ch : value)
+      if (!((ch >= QLatin1Char ('A') && ch <= QLatin1Char ('Z'))
+            || (ch >= QLatin1Char ('a') && ch <= QLatin1Char ('z'))
+            || (ch >= QLatin1Char ('0') && ch <= QLatin1Char ('9'))
+            || ch == QLatin1Char (' ') || ch == QLatin1Char ('_')
+            || ch == QLatin1Char ('.') || ch == QLatin1Char ('+')
+            || ch == QLatin1Char ('-') || ch == QLatin1Char ('(')
+            || ch == QLatin1Char (')')))
+        return QStringLiteral ("unknown");
+    return value;
+  }
+
+  QString safe_rig_baud (int value)
+  {
+    switch (value)
+      {
+      case 1200: case 2400: case 4800: case 9600:
+      case 19200: case 38400: case 57600: case 115200:
+        return QString::number (value);
+      default: return QStringLiteral ("unknown");
+      }
+  }
+
+  void append_rig_session_config (TransceiverFactory::ParameterPack const& rig_data,
+                                  quint64 generation, RigSessionPurpose purpose) noexcept
+  {
+    try
+      {
+        int const polling = rig_data.poll_interval & 0x7fff;
+        QString const pollingText = polling >= 0 && polling <= 999
+          ? QString::number (polling) : QStringLiteral ("unknown");
+        JtdxLocalLog::append (
+          QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)},
+          QStringLiteral ("jtdx_recovery.log"), QStringLiteral ("rig-control"),
+          QStringLiteral ("rig_session_config phase=create generation=%1 session_purpose=%2 rig_model=%3 cat_serial_rate=%4 data_bits=%5 stop_bits=%6 handshake=%7 ptt_method=%8 polling=%9 rig_share_ptt=%10 split_mode=%11")
+            .arg (generation)
+            .arg (QString::fromLatin1 (rig_session_purpose_name (purpose)))
+            .arg (safe_rig_model_name (rig_data.rig_name))
+            .arg (safe_rig_baud (rig_data.baud))
+            .arg (QString::fromLatin1 (rig_data_bits_name (rig_data.data_bits)))
+            .arg (QString::fromLatin1 (rig_stop_bits_name (rig_data.stop_bits)))
+            .arg (QString::fromLatin1 (rig_handshake_name (rig_data.handshake)))
+            .arg (QString::fromLatin1 (rig_ptt_method_name (rig_data.ptt_type)))
+            .arg (pollingText)
+            .arg ((rig_data.poll_interval & ptt__share) ? "true" : "false")
+            .arg (QString::fromLatin1 (rig_split_mode_name (rig_data.split_mode))));
+      }
+    catch (...)
+      {
+        // Safe session configuration telemetry must not affect rig creation.
+      }
+  }
+
+  void append_rig_session_txdelay (quint64 generation, RigSessionPurpose purpose,
+                                   double seconds) noexcept
+  {
+    try
+      {
+        bool const valid = seconds >= 0.0 && seconds <= 0.5;
+        int const txdelayMs = valid ? static_cast<int> (seconds * 1000.0 + 0.5) : -1;
+        JtdxLocalLog::append (
+          QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)},
+          QStringLiteral ("jtdx_recovery.log"), QStringLiteral ("rig-control"),
+          QStringLiteral ("rig_session_config phase=effective_txdelay generation=%1 session_purpose=%2 txdelay_ms=%3 accepted=true")
+            .arg (generation)
+            .arg (QString::fromLatin1 (rig_session_purpose_name (purpose)))
+            .arg (valid ? QString::number (txdelayMs) : QStringLiteral ("unknown")));
+      }
+    catch (...)
+      {
+        // Effective runtime delay telemetry must not affect configuration.
+      }
+  }
+
   void append_configuration_failure_diagnostic (char const * stage,
-                                                quint64 generation) noexcept
+                                                quint64 generation,
+                                                quint64 current_generation,
+                                                RigSessionPurpose purpose,
+                                                char const * filter_cause) noexcept
   {
     try
       {
         JtdxLocalLog::append (
           QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)},
           QStringLiteral ("jtdx_recovery.log"), QStringLiteral ("rig-control"),
-          QStringLiteral ("configuration_failure stage=%1 generation=%2 received=true reason_present=true")
+          QStringLiteral ("configuration_failure stage=%1 generation=%2 current_generation=%3 session_purpose=%4 filter_cause=%5 received=true reason_present=true")
             .arg (QString::fromLatin1 (stage))
-            .arg (generation));
+            .arg (generation).arg (current_generation)
+            .arg (QString::fromLatin1 (rig_session_purpose_name (purpose)))
+            .arg (QString::fromLatin1 (filter_cause)));
       }
     catch (...)
       {
@@ -215,6 +473,7 @@ namespace
   }
 
   void append_configuration_failure_decision (quint64 generation,
+                                                quint64 current_generation,
                                                 RigSessionPurpose purpose,
                                                 bool forward_to_main_window) noexcept
   {
@@ -223,14 +482,48 @@ namespace
         JtdxLocalLog::append (
           QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)},
           QStringLiteral ("jtdx_recovery.log"), QStringLiteral ("rig-control"),
-          QStringLiteral ("configuration_failure stage=decision generation=%1 session_purpose=%2 forward_to_main_window=%3 reason_present=true")
+          QStringLiteral ("configuration_failure stage=decision generation=%1 current_generation=%2 session_purpose=%3 filter_cause=accepted forward_to_main_window=%4 reason_present=true")
             .arg (generation)
+            .arg (current_generation)
             .arg (QString::fromLatin1 (rig_session_purpose_name (purpose)))
             .arg (forward_to_main_window ? "true" : "false"));
       }
     catch (...)
       {
         // Failure diagnostics must not interrupt rig failure handling.
+      }
+  }
+
+  void append_configuration_rig_event (QString const& event, quint64 generation,
+                                       quint64 current_generation,
+                                       RigSessionPurpose purpose,
+                                       QString const& reason, QString const& callsite,
+                                       QString const& filter_cause = {},
+                                       unsigned sequence = 0, unsigned command = 0,
+                                       bool online = false, bool ptt_known = false,
+                                       bool ptt_on = false,
+                                       QString const& ptt_source = QStringLiteral ("none"),
+                                       quint64 ptt_readback_serial = 0) noexcept
+  {
+    try
+      {
+        JtdxLocalLog::append (
+          QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)},
+          QStringLiteral ("jtdx_recovery.log"), QStringLiteral ("rig-control"),
+          QStringLiteral ("rig_event event=%1 generation=%2 current_generation=%3 session_purpose=%4 reason=%5 callsite=%6 filter_cause=%7 sequence=%8 command_sequence=%9 online=%10 ptt_known=%11 ptt_on=%12 ptt_source=%13 ptt_readback_serial=%14")
+            .arg (event).arg (generation).arg (current_generation)
+            .arg (QString::fromLatin1 (rig_session_purpose_name (purpose)))
+            .arg (reason, callsite, filter_cause.isEmpty () ? QStringLiteral ("none") : filter_cause)
+            .arg (sequence).arg (command)
+            .arg (online ? "true" : "false")
+            .arg (ptt_known ? "true" : "false")
+            .arg (ptt_on ? "true" : "false")
+            .arg (ptt_source)
+            .arg (ptt_readback_serial));
+      }
+    catch (...)
+      {
+        // Observation must not affect transceiver lifecycle or command routing.
       }
   }
 
@@ -415,6 +708,7 @@ public:
   void transceiver_tx_frequency (Frequency);
   void transceiver_mode (MODE);
   void transceiver_ptt (bool);
+  void revoke_transceiver_ptt_start () noexcept;
   void transceiver_ft4_mode (bool);
   void transceiver_audio (bool);
   void transceiver_tune (bool);
@@ -427,6 +721,7 @@ public:
   void transceiver_trfrequency (double);
   void transceiver_txvolume (double);
   void sync_transceiver (bool force_signal);
+  bool request_read_only_cat_refresh ();
  
   Q_SLOT int exec () override;
   Q_SLOT void accept () override;
@@ -452,10 +747,11 @@ private:
       (rig_params_.split_mode != TransceiverFactory::split_mode_none);
   }
   void set_cached_mode ();
+  void emit_transceiver_state ();
   bool open_rig (bool force = false,
                  RigSessionPurpose purpose = RigSessionPurpose::runtime);
   //bool set_mode ();
-  void close_rig ();
+  void close_rig (char const * reason = "requested", char const * callsite = "unknown");
   TransceiverFactory::ParameterPack gather_rig_data ();
   void enumerate_rigs ();
   void set_rig_invariants ();
@@ -513,8 +809,30 @@ private:
   Q_SLOT void on_callsigns_clear_push_button_clicked ();
   Q_SLOT void handle_transceiver_tciframeswritten (qint64);
   Q_SLOT void handle_transceiver_tci_mod_active (bool);
-  Q_SLOT void handle_transceiver_update (TransceiverState const&, unsigned sequence_number);
+  Q_SLOT void handle_transceiver_update (TransceiverState const&, unsigned sequence_number,
+                                         quint64 generation);
   void handle_transceiver_failure (QString const& reason, quint64 generation);
+  void begin_cat_health_session (qint64 worker_time_fence_ns);
+  void handle_cat_poll_started (quint64 generation, quint64 poll_id,
+                                qint64 worker_ns, int interval_ms);
+  void handle_cat_poll_completed (quint64 generation, quint64 poll_id,
+                                  qint64 worker_started_ns,
+                                  qint64 worker_completed_ns,
+                                  int interval_ms, bool poll_failed);
+  void handle_cat_poll_read (quint64 generation, quint64 poll_id,
+                             qint64 worker_ns, QString const& operation,
+                             int api_return, bool protocol_valid,
+                             unsigned control_sequence,
+                             quint64 ptt_readback_serial);
+  void handle_cat_refresh_completed (quint64 generation, quint64 request_id,
+                                    qint64 worker_ns, int status,
+                                    QString const& operation, int api_return,
+                                    bool protocol_valid, unsigned control_sequence,
+                                    quint64 ptt_readback_serial);
+  void evaluate_cat_health ();
+  void publish_cat_health (qint64 worker_now_ns, bool allow_log = true);
+  bool current_runtime_cat_generation (quint64 generation,
+                                       qint64 worker_ns) const noexcept;
   Q_SLOT void on_countryName_check_box_clicked(bool checked);
   Q_SLOT void on_callNotif_check_box_clicked(bool checked);
   Q_SLOT void on_otherMessagesMarker_check_box_clicked(bool checked);
@@ -599,8 +917,10 @@ private:
   // typenames used as arguments must match registered type names :(
   Q_SIGNAL void start_transceiver (unsigned seqeunce_number,JTDXDateTime * jtdxtime) const;
   Q_SIGNAL void set_transceiver (Transceiver::TransceiverState const&,
-                                 unsigned sequence_number) const;
+                                 unsigned sequence_number,
+                                 PttAdmissionBlock::Token ptt_admission_token) const;
   Q_SIGNAL void stop_transceiver () const;
+  Q_SIGNAL void refresh_transceiver (quint64 request_id) const;
 
   Configuration * const self_;	// back pointer to public interface
 
@@ -665,7 +985,11 @@ private:
   bool rig_is_dummy_;
   bool is_tci_;
   bool rig_active_;
+  std::shared_ptr<PttAdmissionBlock> ptt_admission_block_;
   quint64 rig_generation_;
+  quint64 online_confirmed_generation_;
+  bool have_confirmed_rig_state_;
+  TransceiverState confirmed_rig_state_;
   RigSessionPurpose rig_session_purpose_;
   bool have_rig_;
   bool rig_changed_;
@@ -674,6 +998,12 @@ private:
   double frequency_calibration_intercept_;
   double frequency_calibration_slope_ppm_;
   unsigned transceiver_command_number_;
+  quint64 transceiver_refresh_request_id_;
+  bool rig_health_supported_;
+  CatHealthPolicy cat_health_policy_;
+  QTimer cat_health_evaluation_timer_;
+  QString cat_health_last_operation_;
+  QString cat_health_last_refresh_;
 
   // configuration fields that we publish
   QString my_callsign_;
@@ -1266,6 +1596,24 @@ bool Configuration::is_transceiver_online () const
   return m_->rig_active_;
 }
 
+quint64 Configuration::transceiver_session_generation () const
+{
+  return m_->rig_generation_;
+}
+
+bool Configuration::requires_ftx1_cat_ptt_readback () const
+{
+  auto const capabilities = m_->transceiver_factory_.supported_transceivers ()
+    .value (m_->rig_params_.rig_name);
+  return capabilities.model_number_ == 1051
+    && TransceiverFactory::PTT_method_CAT == m_->rig_params_.ptt_type;
+}
+
+bool Configuration::request_read_only_cat_refresh ()
+{
+  return m_->request_read_only_cat_refresh ();
+}
+
 bool Configuration::is_dummy_rig () const
 {
   return m_->rig_is_dummy_;
@@ -1296,7 +1644,7 @@ void Configuration::transceiver_offline ()
   qDebug () << "Configuration::transceiver_offline:" << m_->cached_rig_state_;
 #endif
 
-  m_->close_rig ();
+  m_->close_rig ("requested_offline", "transceiver_offline");
 }
 
 void Configuration::transceiver_frequency (Frequency f)
@@ -1332,6 +1680,11 @@ void Configuration::transceiver_ptt (bool on)
 #endif
 
   m_->transceiver_ptt (on);
+}
+
+void Configuration::revoke_transceiver_ptt_start () noexcept
+{
+  m_->revoke_transceiver_ptt_start ();
 }
 
 void Configuration::transceiver_ft4_mode (bool on)
@@ -1510,12 +1863,17 @@ Configuration::impl::impl (Configuration * self, QSettings * settings, QWidget *
   , rig_is_dummy_ {false}
   , is_tci_ {false}
   , rig_active_ {false}
+  , ptt_admission_block_ {}
   , rig_generation_ {0}
+  , online_confirmed_generation_ {0}
+  , have_confirmed_rig_state_ {false}
   , rig_session_purpose_ {RigSessionPurpose::runtime}
   , have_rig_ {false}
   , rig_changed_ {false}
   , rig_resolution_ {0}
   , transceiver_command_number_ {0}
+  , transceiver_refresh_request_id_ {0}
+  , rig_health_supported_ {false}
   , default_audio_input_device_selected_ {false}
   , default_audio_output_device_selected_ {false}
 {
@@ -1870,6 +2228,11 @@ Configuration::impl::impl (Configuration * self, QSettings * settings, QWidget *
 
   transceiver_thread_ = new QThread {this};
   transceiver_thread_->start ();
+
+  cat_health_evaluation_timer_.setInterval (1000);
+  connect (&cat_health_evaluation_timer_, &QTimer::timeout, this,
+           [this] { evaluate_cat_health (); });
+  cat_health_evaluation_timer_.start ();
 
 }
 
@@ -2835,10 +3198,8 @@ void Configuration::impl::read_settings ()
       // 同时关闭 Web UI，避免已启用的实例意外启动。
       web_ui_port_ = 49200;
     }
-  // Historical 127.0.0.1 values are ambiguous: older versions persisted this
-  // default on every save, so preserve any existing value to avoid overriding
-  // an explicit local-only choice. New configurations default to all IPv4 NICs.
-  web_ui_bind_address_ = settings_->value ("WebUiBindAddress", "0.0.0.0").toString ();
+  // Missing settings bind locally; preserve explicitly saved addresses.
+  web_ui_bind_address_ = settings_->value ("WebUiBindAddress", "127.0.0.1").toString ();
 
   write_decoded_ = settings_->value ("WriteDecodedALLTXT", true).toBool ();
   write_decoded_debug_ = settings_->value ("WriteDecodedDebugALLTXT", false).toBool ();
@@ -3457,7 +3818,11 @@ void Configuration::impl::accept ()
 
   // A candidate rig opened above becomes the live runtime rig only after
   // this configuration has been accepted.
-  if (rig_active_) rig_session_purpose_ = RigSessionPurpose::runtime;
+  if (rig_active_)
+    {
+      rig_session_purpose_ = RigSessionPurpose::runtime;
+      begin_cat_health_session (configuration_monotonic_ns ());
+    }
 
   sync_transceiver (true);	// force an update
 
@@ -3633,6 +3998,8 @@ void Configuration::impl::accept ()
   align_steps_ = ui_->align_spin_box->value ();
   ntrials_ = ui_->sbNtrials->value ();
   txDelay_ = ui_->sbTxDelay->value ();
+  append_rig_session_txdelay (rig_generation_, RigSessionPurpose::runtime,
+                             txDelay_);
   ntrials10_ = ui_->sbNtrials10->value ();
   ntrialsrxf10_ = ui_->sbNtrialsRXF10->value ();
   npreampass_= ui_->sbNpreampass->value ();
@@ -3868,7 +4235,7 @@ void Configuration::impl::reject ()
       else
         {
 //          printf("%s(%0.1f) Configuration impl_reject close rig\n",jtdxtime_->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),jtdxtime_->GetOffset());
-          close_rig ();
+          close_rig ("configuration_restore", "reject");
         }
     }
 
@@ -3876,6 +4243,7 @@ void Configuration::impl::reject ()
     {
       // The restored (or retained) rig is the live runtime rig again.
       rig_session_purpose_ = RigSessionPurpose::runtime;
+      begin_cat_health_session (configuration_monotonic_ns ());
     }
 
   QDialog::reject ();
@@ -6029,6 +6397,20 @@ bool Configuration::impl::have_rig ()
   return rig_active_;
 }
 
+bool Configuration::impl::request_read_only_cat_refresh ()
+{
+  if (!rig_active_ || RigSessionPurpose::runtime != rig_session_purpose_
+      || !rig_health_supported_)
+    return false;
+  ++transceiver_refresh_request_id_;
+  if (!transceiver_refresh_request_id_) ++transceiver_refresh_request_id_;
+  append_cat_refresh_queued (rig_generation_, transceiver_refresh_request_id_,
+                             configuration_monotonic_ns (),
+                             transceiver_command_number_);
+  Q_EMIT refresh_transceiver (transceiver_refresh_request_id_);
+  return true;
+}
+
 void Configuration::impl::on_web_ui_open_push_button_clicked ()
 {
   Q_EMIT self_->web_ui_open_requested ();
@@ -6052,12 +6434,16 @@ bool Configuration::impl::open_rig (bool force, RigSessionPurpose purpose)
 //    printf("%s(%0.1f) Configuration rig_open, active %d, force %d\n",jtdxtime_->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),jtdxtime_->GetOffset(),rig_active_,force);
 
           if (is_tci_ && rig_active_ && tci_audio_) restart_tci_device_ = true; 
-          close_rig ();
+          close_rig (force ? "forced_reopen" : "rig_parameters_changed", "open_rig");
           generation = rig_generation_;
           rig_session_purpose_ = purpose;
 
           // create a new Transceiver object
-          auto rig = transceiver_factory_.create (rig_data, transceiver_thread_);
+          ptt_admission_block_ = std::make_shared<PttAdmissionBlock> ();
+          auto rig = transceiver_factory_.create (
+            rig_data, transceiver_thread_, ptt_admission_block_);
+          if (auto * base = dynamic_cast<TransceiverBase *> (rig.get ()))
+            base->set_diagnostic_session_generation (generation);
           cached_rig_state_ = Transceiver::TransceiverState {};
 
           // hook up Configuration transceiver control signals to Transceiver slots
@@ -6069,21 +6455,80 @@ bool Configuration::impl::open_rig (bool force, RigSessionPurpose purpose)
           // hook up Transceiver signals to Configuration signals
           //
           // these connections cross the thread boundary
-          rig_connections_ << connect (rig.get (), &Transceiver::resolution, this, [=] (int resolution) {
+          rig_connections_ << connect (rig.get (), &Transceiver::resolution, this,
+                                       [this, generation] (int resolution) {
 //              printf("Configuration resolution from rig %d\n",resolution);
+              if (!RigSessionPolicy::callback_is_current (
+                    generation, rig_generation_, rig_active_)) return;
               rig_resolution_ = resolution;
             });
-          rig_connections_ << connect (rig.get (), &Transceiver::tciframeswritten, this, &Configuration::impl::handle_transceiver_tciframeswritten);
-          rig_connections_ << connect (rig.get (), &Transceiver::tci_mod_active, this, &Configuration::impl::handle_transceiver_tci_mod_active);
-          rig_connections_ << connect (rig.get (), &Transceiver::update, this, &Configuration::impl::handle_transceiver_update);
+          rig_connections_ << connect (rig.get (), &Transceiver::tciframeswritten, this,
+                                       [this, generation] (qint64 count) {
+              if (!RigSessionPolicy::callback_is_current (
+                    generation, rig_generation_, rig_active_)) return;
+              handle_transceiver_tciframeswritten (count);
+            });
+          rig_connections_ << connect (rig.get (), &Transceiver::tci_mod_active, this,
+                                       [this, generation] (bool on) {
+              if (!RigSessionPolicy::callback_is_current (
+                    generation, rig_generation_, rig_active_)) return;
+              handle_transceiver_tci_mod_active (on);
+            });
+          rig_connections_ << connect (rig.get (), &Transceiver::update, this,
+                                       [this, generation] (TransceiverState const& state,
+                                                           unsigned sequence_number) {
+                                         handle_transceiver_update (state, sequence_number,
+                                                                    generation);
+                                       });
           rig_connections_ << connect (rig.get (), &Transceiver::failure, this,
                                        [this, generation] (QString const& reason) {
                                          handle_transceiver_failure (reason, generation);
                                        });
+          rig_connections_ << connect (rig.get (), &Transceiver::poll_health_started, this,
+                                       [this, generation] (quint64 poll_id, qint64 worker_ns,
+                                                          int interval_ms) {
+              handle_cat_poll_started (generation, poll_id, worker_ns, interval_ms);
+            });
+          rig_connections_ << connect (rig.get (), &Transceiver::poll_health_completed, this,
+                                       [this, generation] (quint64 poll_id,
+                                                          qint64 worker_started_ns,
+                                                          qint64 worker_completed_ns,
+                                                          int interval_ms, bool poll_failed) {
+              handle_cat_poll_completed (generation, poll_id, worker_started_ns,
+                                         worker_completed_ns, interval_ms, poll_failed);
+            });
+          rig_connections_ << connect (rig.get (), &Transceiver::poll_health_read_result, this,
+                                       [this, generation] (quint64 poll_id, qint64 worker_ns,
+                                                          QString const& operation,
+                                                          int api_return,
+                                                          bool protocol_valid,
+                                                          unsigned control_sequence,
+                                                          quint64 ptt_readback_serial) {
+              handle_cat_poll_read (generation, poll_id, worker_ns, operation,
+                                    api_return, protocol_valid, control_sequence,
+                                    ptt_readback_serial);
+            });
+          rig_connections_ << connect (rig.get (), &Transceiver::read_only_refresh_completed,
+                                       this,
+                                       [this, generation] (quint64 request_id,
+                                                          qint64 worker_ns, int status,
+                                                          QString const& operation,
+                                                          int api_return,
+                                                          bool protocol_valid,
+                                                          unsigned control_sequence,
+                                                          quint64 ptt_readback_serial) {
+              handle_cat_refresh_completed (
+                generation, request_id, worker_ns, status, operation, api_return,
+                protocol_valid, control_sequence, ptt_readback_serial);
+            });
 
           // setup thread safe startup and close down semantics
           rig_connections_ << connect (this, &Configuration::impl::start_transceiver, rig.get (), &Transceiver::start);
           rig_connections_ << connect (this, &Configuration::impl::stop_transceiver, rig.get (), &Transceiver::stop);
+          rig_connections_ << connect (this, &Configuration::impl::refresh_transceiver,
+                                       rig.get (), &Transceiver::refresh_read_only);
+
+          rig_health_supported_ = rig->supports_health_observation ();
 
           auto p = rig.release ();	// take ownership
 
@@ -6102,8 +6547,21 @@ bool Configuration::impl::open_rig (bool force, RigSessionPurpose purpose)
 
           ui_->test_CAT_push_button->setStyleSheet ({});
           rig_active_ = true;
+          rig_resolution_ = 0;
+          online_confirmed_generation_ = 0;
+          have_confirmed_rig_state_ = false;
+          confirmed_rig_state_ = TransceiverState {};
+          begin_cat_health_session (configuration_monotonic_ns ());
 //    printf("%s(%0.1f) Configuration rig_open, start transceiver #:%d\n",jtdxtime_->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),jtdxtime_->GetOffset(),transceiver_command_number_+1);
           Q_EMIT start_transceiver (++transceiver_command_number_,jtdxtime_); // start rig on its thread
+          append_configuration_rig_event (
+            QStringLiteral ("create"), generation, rig_generation_, rig_session_purpose_,
+            force ? QStringLiteral ("forced_reopen") : QStringLiteral ("rig_parameters_changed"),
+            QStringLiteral ("open_rig"), {}, transceiver_command_number_,
+            transceiver_command_number_);
+          append_rig_session_config (rig_data, generation, rig_session_purpose_);
+          if (RigSessionPurpose::runtime == rig_session_purpose_)
+            append_rig_session_txdelay (generation, rig_session_purpose_, txDelay_);
           rig_params_ = gather_rig_data ();
           result = true;
         }
@@ -6120,8 +6578,19 @@ bool Configuration::impl::open_rig (bool force, RigSessionPurpose purpose)
       if (rig_active_)
         {
           // Runtime callers adopt a live session; test callers preserve its identity.
+          auto const previousPurpose = rig_session_purpose_;
           rig_session_purpose_ = RigSessionPolicy::purpose_after_reuse (
             rig_session_purpose_, purpose);
+          if (previousPurpose != rig_session_purpose_
+              && RigSessionPurpose::runtime == rig_session_purpose_)
+            begin_cat_health_session (configuration_monotonic_ns ());
+          append_configuration_rig_event (
+            previousPurpose == rig_session_purpose_ ? QStringLiteral ("reuse")
+                                                    : QStringLiteral ("adopt"),
+            rig_generation_, rig_generation_, rig_session_purpose_,
+            previousPurpose == rig_session_purpose_ ? QStringLiteral ("existing_session")
+                                                    : QStringLiteral ("purpose_transition"),
+            QStringLiteral ("open_rig"));
         }
       result = true;
     }
@@ -6159,7 +6628,7 @@ void Configuration::impl::transceiver_frequency (Frequency f)
     cached_rig_state_.frequency (apply_calibration (f + current_offset_));
 
 //    printf("%s(%0.1f) Configuration #:%d transceiver_frequency: %lld\n",jtdxtime_->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),jtdxtime_->GetOffset(),transceiver_command_number_+1,f);
-    Q_EMIT set_transceiver (cached_rig_state_, ++transceiver_command_number_);
+    emit_transceiver_state ();
   }
 }
 
@@ -6169,12 +6638,20 @@ void Configuration::impl::transceiver_tx_frequency (Frequency f)
   if (split_mode ())
     {
       cached_rig_state_.online (true); // we want the rig online
+      auto const previousMode = cached_rig_state_.mode ();
       set_cached_mode ();
-      if (cached_rig_state_.split() != f ||  cached_rig_state_.tx_frequency() != f ||
-         (f && (current_tx_offset_ != stations_.offset (f) || cached_rig_state_.tx_frequency() != apply_calibration (f + current_tx_offset_))))
+      bool const mode_change = cached_rig_state_.mode () != previousMode;
+      auto const requestedOffset = f ? stations_.offset (f) : current_tx_offset_;
+      auto const requestedTxFrequency = f
+        ? apply_calibration (f + requestedOffset) : Frequency {0};
+      bool const requestedSplit = f != 0;
+      if (TransceiverTxFrequencyPolicy::should_send (
+            cached_rig_state_.split (), requestedSplit,
+            cached_rig_state_.tx_frequency (), requestedTxFrequency,
+            current_tx_offset_, requestedOffset, mode_change))
       {
-        cached_rig_state_.split (f);
-        cached_rig_state_.tx_frequency (f);
+        cached_rig_state_.split (requestedSplit);
+        cached_rig_state_.tx_frequency (requestedTxFrequency);
 
         // lookup offset for tx and apply calibration
         if (f)
@@ -6184,12 +6661,11 @@ void Configuration::impl::transceiver_tx_frequency (Frequency f)
             // rig, we cannot absolutely determine if the offset should
             // apply but by simply picking an offset when the Rx
             // frequency is set and sticking to it we get sane behaviour
-            current_tx_offset_ = stations_.offset (f);
-            cached_rig_state_.tx_frequency (apply_calibration (f + current_tx_offset_));
+            current_tx_offset_ = requestedOffset;
           }
 
 //        printf("%s(%0.1f) Configuration #:%d transceiver_tx_frequency: %lld\n",jtdxtime_->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),jtdxtime_->GetOffset(),transceiver_command_number_+1,f);
-        Q_EMIT set_transceiver (cached_rig_state_, ++transceiver_command_number_);
+        emit_transceiver_state ();
       }
     }
 }
@@ -6201,17 +6677,61 @@ void Configuration::impl::transceiver_mode (MODE m)
   {
     cached_rig_state_.mode (m);
 //    printf("%s(%0.1f) Configuration #:%d mode: %d\n",jtdxtime_->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),jtdxtime_->GetOffset(),transceiver_command_number_+1,m);
-    Q_EMIT set_transceiver (cached_rig_state_, ++transceiver_command_number_);
+    emit_transceiver_state ();
   }
 }
 
 void Configuration::impl::transceiver_ptt (bool on)
 {
+  // The Configuration/UI thread is the only grant/revoke writer. Ordinary
+  // state emissions below only snapshot the current token.
+  if (ptt_admission_block_)
+    {
+      if (on) ptt_admission_block_->grant ();
+      else ptt_admission_block_->revoke ();
+    }
   cached_rig_state_.online (true); // we want the rig online
   set_cached_mode ();
   cached_rig_state_.ptt (on);
 //  printf("%s(%0.1f) Configuration #:%d ptt: %d\n",jtdxtime_->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),jtdxtime_->GetOffset(),transceiver_command_number_+1,on);
-  Q_EMIT set_transceiver (cached_rig_state_, ++transceiver_command_number_);
+  emit_transceiver_state ();
+  if (!on)
+    {
+      try
+        {
+          auto const local_now = QDateTime::currentDateTime ();
+          auto const utc_now = local_now.toUTC ();
+          auto const admission_token = ptt_admission_block_
+            ? ptt_admission_block_->current () : PttAdmissionBlock::Token {0};
+          JtdxLocalLog::append (
+            QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)},
+            QStringLiteral ("jtdx_recovery.log"), QStringLiteral ("rig-control"),
+            QStringLiteral ("stop_diag event=ptt_off_worker_dispatch utc=%1 local=%2 "
+                            "monotonic_ns=%3 session_generation=%4 control_sequence=%5 "
+                            "admission_token=%6 dispatch=configuration_state_emitted "
+                            "result_scope=queued_worker_not_driver_result readback=unknown")
+              .arg (utc_now.toString (Qt::ISODateWithMs))
+              .arg (local_now.toString (Qt::ISODateWithMs))
+              .arg (configuration_monotonic_ns ())
+              .arg (rig_generation_).arg (transceiver_command_number_)
+              .arg (admission_token));
+        }
+      catch (...)
+        {
+          // Dispatch diagnostics must not delay or alter the queued OFF command.
+        }
+    }
+}
+
+void Configuration::impl::revoke_transceiver_ptt_start () noexcept
+{
+  if (ptt_admission_block_) ptt_admission_block_->revoke ();
+}
+
+void Configuration::impl::emit_transceiver_state ()
+{
+  auto const token = ptt_admission_block_ ? ptt_admission_block_->current () : 0;
+  Q_EMIT set_transceiver (cached_rig_state_, ++transceiver_command_number_, token);
 }
 
 void Configuration::impl::transceiver_ft4_mode (bool on)
@@ -6222,7 +6742,7 @@ void Configuration::impl::transceiver_ft4_mode (bool on)
   {
     cached_rig_state_.ft4_mode (on);
 //    printf("%s(%0.1f) Configuration #:%d ft4_mode: %d\n",jtdxtime_->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),jtdxtime_->GetOffset(),transceiver_command_number_+1,on);
-    Q_EMIT set_transceiver (cached_rig_state_, ++transceiver_command_number_);
+    emit_transceiver_state ();
   }
 }
 
@@ -6234,7 +6754,7 @@ void Configuration::impl::transceiver_audio (bool on)
   {
     cached_rig_state_.audio (on);
 //    printf("%s(%0.1f) Configuration #:%d audio: %d\n",jtdxtime_->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),jtdxtime_->GetOffset(),transceiver_command_number_+1,on);
-    Q_EMIT set_transceiver (cached_rig_state_, ++transceiver_command_number_);
+    emit_transceiver_state ();
   }
 }
 
@@ -6246,7 +6766,7 @@ void Configuration::impl::transceiver_tune (bool on)
   {
     cached_rig_state_.tune (on);
 //    printf("%s(%0.1f) Configuration #:%d tune: %d\n",jtdxtime_->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),jtdxtime_->GetOffset(),transceiver_command_number_+1,on);
-    Q_EMIT set_transceiver (cached_rig_state_, ++transceiver_command_number_);
+    emit_transceiver_state ();
   }
 }
 
@@ -6258,7 +6778,7 @@ void Configuration::impl::transceiver_period (double period)
   {
 //    printf("%s(%0.1f) Configuration #:%d period: %0.1f cached: %0.1f\n",jtdxtime_->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),jtdxtime_->GetOffset(),transceiver_command_number_+1,period,cached_rig_state_.period());
     cached_rig_state_.period (period);
-    Q_EMIT set_transceiver (cached_rig_state_, ++transceiver_command_number_);
+    emit_transceiver_state ();
   }
 }
 
@@ -6270,7 +6790,7 @@ void Configuration::impl::transceiver_blocksize (qint32 blocksize)
   {
 //    printf("%s(%0.1f) Configuration #:%d blocksize: %d cached:%d\n",jtdxtime_->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),jtdxtime_->GetOffset(),transceiver_command_number_+1,blocksize,cached_rig_state_.blocksize());
     cached_rig_state_.blocksize (blocksize);
-    Q_EMIT set_transceiver (cached_rig_state_, ++transceiver_command_number_);
+    emit_transceiver_state ();
   }
 }
 
@@ -6282,7 +6802,7 @@ void Configuration::impl::transceiver_spread (double spread)
   {
 //    printf("%s(%0.1f) Configuration #:%d spread: %0.1f cached: %0.1f\n",jtdxtime_->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),jtdxtime_->GetOffset(),transceiver_command_number_+1,spread,cached_rig_state_.spread());
     cached_rig_state_.spread (spread);
-    Q_EMIT set_transceiver (cached_rig_state_, ++transceiver_command_number_);
+    emit_transceiver_state ();
   }
 }
 
@@ -6294,7 +6814,7 @@ void Configuration::impl::transceiver_nsym (int nsym)
   {
 //    printf("%s(%0.1f) Configuration #:%d nsym: %d cached:%d\n",jtdxtime_->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),jtdxtime_->GetOffset(),transceiver_command_number_+1,nsym,cached_rig_state_.nsym());
     cached_rig_state_.nsym (nsym);
-    Q_EMIT set_transceiver (cached_rig_state_, ++transceiver_command_number_);
+    emit_transceiver_state ();
   }
 }
 
@@ -6306,7 +6826,7 @@ void Configuration::impl::transceiver_trfrequency (double trfrequency)
   {
 //    printf("%s(%0.1f) Configuration #:%d trfrequency: %0.1f cached: %0.1f\n",jtdxtime_->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),jtdxtime_->GetOffset(),transceiver_command_number_+1,trfrequency,cached_rig_state_.trfrequency());
     cached_rig_state_.trfrequency (trfrequency);
-    Q_EMIT set_transceiver (cached_rig_state_, ++transceiver_command_number_);
+    emit_transceiver_state ();
   }
 }
 
@@ -6318,7 +6838,7 @@ void Configuration::impl::transceiver_txvolume (double txvolume)
   {
 //    printf("%s(%0.1f) Configuration #:%d txvolume: %0.1f cached: %0.1f\n",jtdxtime_->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),jtdxtime_->GetOffset(),transceiver_command_number_+1,txvolume,cached_rig_state_.volume());
     cached_rig_state_.volume (txvolume);
-    Q_EMIT set_transceiver (cached_rig_state_, ++transceiver_command_number_);
+    emit_transceiver_state ();
   }
 }
 
@@ -6337,7 +6857,7 @@ void Configuration::impl::transceiver_modulator_start (unsigned symbolslength, d
     cached_rig_state_.dbsnr (dbsnr);
     cached_rig_state_.trperiod (trperiod);
 //    printf("%s(%0.1f) Configuration #:%d modulator_start: symbolslength=%d framespersymbol=%0.1f frequency=%0.1f tonespacing=%0.1f synchronize= %d dbsnr=%0.1f trperiod=%0.1f\n",jtdxtime_->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),jtdxtime_->GetOffset(),transceiver_command_number_+1,symbolslength,framespersymbol,frequency,tonespacing,synchronize,dbsnr,trperiod);
-    Q_EMIT set_transceiver (cached_rig_state_, ++transceiver_command_number_);
+    emit_transceiver_state ();
   }
 //  else printf("%s(%0.1f) Configuration modulator_start: WAS ALLREADY RUNNING\n",jtdxtime_->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),jtdxtime_->GetOffset());
 }
@@ -6351,7 +6871,7 @@ void Configuration::impl::transceiver_modulator_stop (bool on)
     cached_rig_state_.tx_audio (false);
     cached_rig_state_.quick (on);
 //    printf("%s(%0.1f) Configuration #:%d modulator_stop: quick=%d\n",jtdxtime_->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),jtdxtime_->GetOffset(),transceiver_command_number_+1,on);
-    Q_EMIT set_transceiver (cached_rig_state_, ++transceiver_command_number_);
+    emit_transceiver_state ();
   }
 //  else printf("%s(%0.1f) Configuration modulator_stop: WAS NOT RUNNING\n",jtdxtime_->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),jtdxtime_->GetOffset());
 }
@@ -6374,54 +6894,100 @@ void Configuration::impl::handle_transceiver_tci_mod_active (bool on)
 }
 
 void Configuration::impl::handle_transceiver_update (TransceiverState const& state,
-                                                     unsigned sequence_number)
+                                                     unsigned sequence_number,
+                                                     quint64 generation)
 {
+  auto const action = TransceiverUpdatePolicy::classify (
+    generation, rig_generation_, sequence_number, transceiver_command_number_,
+    state.online (), online_confirmed_generation_ == generation);
+  if (action != TransceiverUpdatePolicy::Action::accept_current_online)
+    append_configuration_rig_event (
+      action == TransceiverUpdatePolicy::Action::report_confirmed_offline
+        ? QStringLiteral ("offline_update") : QStringLiteral ("update_filtered"),
+      generation, rig_generation_, rig_session_purpose_,
+      QStringLiteral ("transceiver_update"), QStringLiteral ("handle_transceiver_update"),
+      action == TransceiverUpdatePolicy::Action::ignore_stale_generation
+        ? QStringLiteral ("stale_generation")
+        : action == TransceiverUpdatePolicy::Action::ignore_unconfirmed_offline
+          ? QStringLiteral ("offline_before_online_confirmation")
+          : action == TransceiverUpdatePolicy::Action::ignore_stale_sequence
+            ? QStringLiteral ("stale_command_sequence")
+            : QStringLiteral ("confirmed_offline"),
+      sequence_number, transceiver_command_number_, state.online (),
+      state.online () && (!state.ptt_readback_required () || state.ptt_readback_known ()),
+      state.online () && state.ptt (),
+      !state.online () ? QStringLiteral ("none")
+        : state.ptt_readback_required ()
+          ? (state.ptt_readback_known () ? QStringLiteral ("rig_get_ptt")
+                                         : QStringLiteral ("readback_unknown"))
+          : QStringLiteral ("legacy_state"),
+      state.ptt_readback_serial ());
+
+  if (action == TransceiverUpdatePolicy::Action::ignore_stale_generation
+      || action == TransceiverUpdatePolicy::Action::ignore_unconfirmed_offline
+      || action == TransceiverUpdatePolicy::Action::ignore_stale_sequence)
+    return;
+
 #if WSJT_TRACE_CAT
   qDebug () << "Configuration::handle_transceiver_update: Transceiver State #:" << sequence_number << state;
 #endif
 
-  // only follow rig on some information, ignore other stuff
-  cached_rig_state_.online (state.online ());
+  if (action == TransceiverUpdatePolicy::Action::report_confirmed_offline)
+    {
+      // Preserve the owning generation and purpose before close_rig advances
+      // the generation. A subsequent failure from this object is stale and
+      // must not cause a second recovery notification.
+      auto const purpose = rig_session_purpose_;
+      TransceiverState offline_state = have_confirmed_rig_state_
+        ? confirmed_rig_state_ : TransceiverState {};
+      offline_state.online (false);
+      offline_state.ptt_readback_known (false);
+      auto const reason = tr ("Transceiver reported offline");
+      close_rig ("offline_update", "handle_transceiver_update");
+      if (RigSessionPurpose::runtime == purpose)
+        {
+          Q_EMIT self_->transceiver_update (offline_state);
+          Q_EMIT self_->transceiver_failure (reason);
+        }
+      else
+        message_box_critical (tr ("Rig failure"), reason);
+      return;
+    }
+
+  // Only a full online snapshot from the current command replaces state.
+  // cached_rig_state_ also carries requested values and cannot prove that the
+  // current transceiver session has completed initialization.
+  online_confirmed_generation_ = generation;
+  cached_rig_state_.online (true);
   cached_rig_state_.frequency (state.frequency ());
   cached_rig_state_.split (state.split ());
+  ui_->test_PTT_push_button->setChecked (state.ptt ());
 
-  if (state.online ())
+  if (isVisible ())
     {
-      ui_->test_PTT_push_button->setChecked (state.ptt ());
+      ui_->test_CAT_push_button->setStyleSheet ("QPushButton {background-color: green;}");
 
-      if (isVisible ())
-        {
-          ui_->test_CAT_push_button->setStyleSheet ("QPushButton {background-color: green;}");
-
-          auto const& rig = ui_->rig_combo_box->currentText ();
-          auto ptt_method = static_cast<TransceiverFactory::PTTMethod> (ui_->PTT_method_button_group->checkedId ());
-          auto CAT_PTT_enabled = transceiver_factory_.has_CAT_PTT (rig);
-          ui_->test_PTT_push_button->setEnabled ((TransceiverFactory::PTT_method_CAT == ptt_method && CAT_PTT_enabled)
-                                                 || TransceiverFactory::PTT_method_DTR == ptt_method
-                                                 || TransceiverFactory::PTT_method_RTS == ptt_method);
-        }
-    }
-  else
-    {
-//      printf("%s(%0.1f) Configuration #:%d %d transceiver_update close rig\n",jtdxtime_->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),jtdxtime_->GetOffset(),sequence_number,transceiver_command_number_);
-      if (sequence_number == transceiver_command_number_) close_rig ();
+      auto const& rig = ui_->rig_combo_box->currentText ();
+      auto ptt_method = static_cast<TransceiverFactory::PTTMethod> (ui_->PTT_method_button_group->checkedId ());
+      auto CAT_PTT_enabled = transceiver_factory_.has_CAT_PTT (rig);
+      ui_->test_PTT_push_button->setEnabled ((TransceiverFactory::PTT_method_CAT == ptt_method && CAT_PTT_enabled)
+                                             || TransceiverFactory::PTT_method_DTR == ptt_method
+                                             || TransceiverFactory::PTT_method_RTS == ptt_method);
     }
 
-  // pass on to clients if current command is processed
-  if (sequence_number == transceiver_command_number_)
+  TransceiverState reported_state {state};
+  // take off calibration & offset
+  reported_state.frequency (remove_calibration (reported_state.frequency ()) - current_offset_);
+
+  if (reported_state.tx_frequency ())
     {
-      TransceiverState reported_state {state};
       // take off calibration & offset
-      reported_state.frequency (remove_calibration (reported_state.frequency ()) - current_offset_);
-
-      if (reported_state.tx_frequency ())
-        {
-          // take off calibration & offset
-          reported_state.tx_frequency (remove_calibration (reported_state.tx_frequency ()) - current_tx_offset_);
-        }
-
-      Q_EMIT self_->transceiver_update (reported_state);
+      reported_state.tx_frequency (remove_calibration (reported_state.tx_frequency ()) - current_tx_offset_);
     }
+  confirmed_rig_state_ = reported_state;
+  have_confirmed_rig_state_ = true;
+
+  Q_EMIT self_->transceiver_update (reported_state);
 }
 
 void Configuration::impl::handle_transceiver_failure (QString const& reason,
@@ -6429,25 +6995,30 @@ void Configuration::impl::handle_transceiver_failure (QString const& reason,
 {
   if (generation != rig_generation_)
     {
-      append_configuration_failure_diagnostic ("stale_generation_ignored", generation);
+      append_configuration_failure_diagnostic ("stale_generation_ignored", generation,
+                                               rig_generation_, rig_session_purpose_,
+                                               "generation_mismatch");
       return;
     }
 
   auto const purpose = rig_session_purpose_;
   auto const action = RigSessionPolicy::failure_action (
     generation, rig_generation_, purpose);
-  append_configuration_failure_diagnostic ("entered", generation);
+  append_configuration_failure_diagnostic ("entered", generation, rig_generation_,
+                                           purpose, "accepted");
 #if WSJT_TRACE_CAT
   qDebug () << "Configuration::handle_transceiver_failure: reason:" << reason;
 #endif
 
-  close_rig ();
-  append_configuration_failure_diagnostic ("after_close_rig", generation);
+  close_rig ("transceiver_failure", "handle_transceiver_failure");
+  append_configuration_failure_diagnostic ("after_close_rig", generation, rig_generation_,
+                                           purpose, "accepted_after_close");
   ui_->test_PTT_push_button->setChecked (false);
 
   auto const forward_to_main_window =
     RigSessionPolicy::FailureAction::forward_to_runtime == action;
-  append_configuration_failure_decision (generation, purpose, forward_to_main_window);
+  append_configuration_failure_decision (generation, rig_generation_, purpose,
+                                         forward_to_main_window);
   if (forward_to_main_window)
     {
       Q_EMIT self_->transceiver_failure (reason);
@@ -6458,10 +7029,224 @@ void Configuration::impl::handle_transceiver_failure (QString const& reason,
     }
 }
 
-void Configuration::impl::close_rig ()
+void Configuration::impl::begin_cat_health_session (qint64 worker_time_fence_ns)
 {
+  cat_health_last_operation_.clear ();
+  cat_health_last_refresh_.clear ();
+  cat_health_policy_.begin_session (
+    rig_generation_, RigSessionPurpose::runtime == rig_session_purpose_,
+    rig_active_, rig_health_supported_, worker_time_fence_ns);
+  publish_cat_health (worker_time_fence_ns, false);
+}
+
+bool Configuration::impl::current_runtime_cat_generation (
+  quint64 generation, qint64 worker_ns) const noexcept
+{
+  return RigSessionPolicy::callback_is_current (
+           generation, rig_generation_, rig_active_)
+    && RigSessionPurpose::runtime == rig_session_purpose_
+    && cat_health_policy_.accepts (generation, worker_ns);
+}
+
+void Configuration::impl::handle_cat_poll_started (
+  quint64 generation, quint64 poll_id, qint64 worker_ns, int interval_ms)
+{
+  if (!current_runtime_cat_generation (generation, worker_ns)
+      || !cat_health_policy_.poll_started (generation, poll_id, worker_ns,
+                                           interval_ms))
+    return;
+  cat_health_last_operation_ = QStringLiteral ("rig_get_ptt poll");
+  publish_cat_health (configuration_monotonic_ns ());
+}
+
+void Configuration::impl::handle_cat_poll_completed (
+  quint64 generation, quint64 poll_id, qint64 worker_started_ns,
+  qint64 worker_completed_ns, int interval_ms, bool poll_failed)
+{
+  if (!current_runtime_cat_generation (generation, worker_completed_ns)
+      || !cat_health_policy_.poll_completed (
+           generation, poll_id, worker_started_ns, worker_completed_ns,
+           interval_ms, poll_failed))
+    return;
+  auto const now_ns = configuration_monotonic_ns ();
+  if (poll_failed)
+    {
+      append_cat_health_diagnostic (QStringLiteral ("poll_failed_terminal"),
+                                    generation,
+                                    cat_health_policy_.evaluate (now_ns), now_ns);
+    }
+  publish_cat_health (now_ns, !poll_failed);
+}
+
+void Configuration::impl::handle_cat_poll_read (
+  quint64 generation, quint64 poll_id, qint64 worker_ns,
+  QString const& operation, int api_return, bool protocol_valid,
+  unsigned control_sequence, quint64 ptt_readback_serial)
+{
+  if (!current_runtime_cat_generation (generation, worker_ns)
+      || !cat_health_policy_.poll_read (
+           generation, poll_id, worker_ns, 0 == api_return,
+           protocol_valid, control_sequence, ptt_readback_serial,
+           api_return))
+    return;
+  cat_health_last_operation_ = operation;
+  publish_cat_health (configuration_monotonic_ns ());
+}
+
+void Configuration::impl::handle_cat_refresh_completed (
+  quint64 generation, quint64 request_id, qint64 worker_ns, int status,
+  QString const& operation, int api_return, bool protocol_valid,
+  unsigned control_sequence, quint64 ptt_readback_serial)
+{
+  using RefreshStatus = Transceiver::ReadOnlyRefreshResult::Status;
+  auto const observation_executed =
+    static_cast<int> (RefreshStatus::api_success) == status
+    || static_cast<int> (RefreshStatus::api_failure) == status
+    || static_cast<int> (RefreshStatus::protocol_invalid) == status
+    || static_cast<int> (RefreshStatus::internal_failure) == status;
+  if (!current_runtime_cat_generation (generation, worker_ns)) return;
+
+  append_cat_refresh_diagnostic (generation, request_id, worker_ns, status,
+                                 operation, api_return, protocol_valid,
+                                 control_sequence, ptt_readback_serial);
+
+  auto const api_success = static_cast<int> (RefreshStatus::api_success) == status
+    && 0 == api_return && protocol_valid;
+  if (observation_executed)
+    {
+      if (!cat_health_policy_.refresh_read (
+            generation, worker_ns, true, api_success, protocol_valid,
+            control_sequence, ptt_readback_serial, api_return))
+        return;
+      cat_health_last_operation_ = operation;
+    }
+
+  switch (static_cast<RefreshStatus> (status))
+    {
+    case RefreshStatus::api_success:
+      cat_health_last_refresh_ = tr ("只读 PTT GET API 返回成功");
+      break;
+    case RefreshStatus::api_failure:
+      cat_health_last_refresh_ = tr ("只读 PTT GET API 返回失败");
+      break;
+    case RefreshStatus::protocol_invalid:
+      cat_health_last_refresh_ = tr ("只读 PTT GET 协议校验失败");
+      break;
+    case RefreshStatus::internal_failure:
+      cat_health_last_refresh_ = tr ("只读 PTT GET 内部失败");
+      break;
+    case RefreshStatus::inactive:
+      cat_health_last_refresh_ = tr ("只读刷新时会话尚未在线");
+      break;
+    default:
+      cat_health_last_refresh_ = tr ("此后端未支持只读刷新");
+      break;
+    }
+  publish_cat_health (configuration_monotonic_ns ());
+}
+
+void Configuration::impl::evaluate_cat_health ()
+{
+  publish_cat_health (configuration_monotonic_ns ());
+}
+
+void Configuration::impl::publish_cat_health (qint64 worker_now_ns,
+                                              bool allow_log)
+{
+  auto const state = cat_health_policy_.evaluate (worker_now_ns);
+  auto const worker_log_now_ns = configuration_monotonic_ns ();
+  if (allow_log && rig_active_
+      && RigSessionPurpose::runtime == rig_session_purpose_
+      && rig_health_supported_
+      && cat_health_policy_.should_log (worker_log_now_ns))
+    {
+      append_cat_health_diagnostic (QStringLiteral ("state_or_30s_summary"),
+                                    rig_generation_, state, worker_now_ns);
+    }
+
+  QString label;
+  QString state_text;
+  if (!rig_active_)
+    {
+      label = tr ("CAT PTT：未连接");
+      state_text = tr ("当前没有活动会话。");
+    }
+  else if (RigSessionPurpose::runtime != rig_session_purpose_)
+    {
+      label = tr ("CAT PTT：配置测试");
+      state_text = tr ("配置测试会话不参与运行时健康观察。");
+    }
+  else if (!rig_health_supported_)
+    {
+      label = tr ("CAT PTT：未支持");
+      state_text = tr ("当前后端没有启用安全的只读 PTT GET 观察。");
+    }
+  else
+    {
+      switch (state.state)
+        {
+        case CatHealthPolicy::State::healthy:
+          label = tr ("CAT PTT：GET 正常");
+          state_text = tr ("最近一次受监测的 rig_get_ptt API GET 返回成功。");
+          break;
+        case CatHealthPolicy::State::suspect:
+          label = tr ("CAT PTT：需留意");
+          state_text = tr ("观测到 GET 失败、轮询耗时或读数过期；未触发重连。");
+          break;
+        default:
+          label = tr ("CAT PTT：未观测");
+          state_text = tr ("尚无足够的运行时轮询证据。");
+          break;
+        }
+    }
+
+  auto const get_result = state.last_api_get_result_ns > 0
+    ? (state.last_api_get_succeeded ? tr ("成功") : tr ("失败或协议无效"))
+    : tr ("尚无 GET 结果");
+  auto const get_age = state.last_valid_get_ns > 0
+    && worker_now_ns >= state.last_valid_get_ns
+    ? tr ("%1 ms 前").arg ((worker_now_ns - state.last_valid_get_ns) / 1000000LL)
+    : tr ("无有效 GET");
+  auto const poll_duration_ms = state.poll_in_flight
+    && worker_now_ns >= state.last_poll_started_ns
+    ? (worker_now_ns - state.last_poll_started_ns) / 1000000LL
+    : state.last_poll_duration_ns / 1000000LL;
+  auto const poll_progress = state.poll_in_flight
+    ? tr ("当前轮询仍在运行，已耗时 %1 ms；")
+        .arg (static_cast<qlonglong> (poll_duration_ms))
+    : state.completed_poll_id
+      ? tr ("最近轮询耗时 %1 ms；")
+          .arg (static_cast<qlonglong> (poll_duration_ms))
+      : tr ("尚无已完成轮询；");
+  QString detail = QStringLiteral (
+    "%1 原因=%2。%3实际计时器间隔=%4 ms，最近 GET=%5，最近有效 GET=%6，rc=%7，协议同步校验=%8。")
+    .arg (state_text)
+    .arg (QString::fromLatin1 (cat_health_reason_name (state.reason)))
+    .arg (poll_progress)
+    .arg (state.poll_interval_ms).arg (get_result).arg (get_age)
+    .arg (state.api_return)
+    .arg (state.protocol_valid ? tr ("通过") : tr ("未通过/未观察"));
+  if (!cat_health_last_operation_.isEmpty ())
+    detail += tr (" 最近读取操作：%1。").arg (cat_health_last_operation_);
+  if (!cat_health_last_refresh_.isEmpty ())
+    detail += tr (" 最近手动刷新：%1。").arg (cat_health_last_refresh_);
+  detail += tr ("API GET 成功仅表示 Hamlib API 返回 RIG_OK 且协议同步守卫通过，不证明串口线上往返或电台响应；此状态仅供观察，不会自动关闭、重开或调速。");
+  Q_EMIT self_->transceiver_cat_health_changed (label, detail, rig_generation_);
+}
+
+void Configuration::impl::close_rig (char const * reason, char const * callsite)
+{
+  // Revoke queued starts before queuing worker stop or disconnecting signals.
+  revoke_transceiver_ptt_start ();
+  append_configuration_rig_event (
+    QStringLiteral ("close"), rig_generation_, rig_generation_, rig_session_purpose_,
+    QString::fromLatin1 (reason), QString::fromLatin1 (callsite));
   // Invalidate failures already queued from the previous transceiver.
   ++rig_generation_;
+  rig_resolution_ = 0;
+  online_confirmed_generation_ = 0;
+  have_confirmed_rig_state_ = false;
+  confirmed_rig_state_ = TransceiverState {};
   ui_->test_PTT_push_button->setEnabled (false);
 
   // revert to no rig configured
@@ -6478,6 +7263,11 @@ void Configuration::impl::close_rig ()
       rig_active_ = false;
 //      printf("%s(%0.1f) Configuration running rig closed\n",jtdxtime_->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),jtdxtime_->GetOffset());
     }
+  rig_health_supported_ = false;
+  cat_health_policy_.clear ();
+  cat_health_last_operation_.clear ();
+  cat_health_last_refresh_.clear ();
+  publish_cat_health (configuration_monotonic_ns (), false);
 }
 
 // load the available audio devices into the selection combo box and

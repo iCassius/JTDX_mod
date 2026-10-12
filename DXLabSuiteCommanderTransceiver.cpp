@@ -195,9 +195,22 @@ void DXLabSuiteCommanderTransceiver::do_ptt (bool on)
       Q_ASSERT (wrapped_);
       TransceiverState new_state {wrapped_->state ()};
       new_state.ptt (on);
-      wrapped_->set (new_state, 0);
-      update_PTT (on);
+      wrapped_->set (new_state, 0, current_set_admission_token ());
+      // The nested Base may have rejected a now-revoked queued ON.  Mirror
+      // its cached software state instead of reporting the wrapper request.
+      update_PTT (wrapped_->state ().ptt ());
     }
+}
+
+void DXLabSuiteCommanderTransceiver::bind_delegated_ptt_admission (
+  std::shared_ptr<PttAdmissionBlock> const& block) noexcept
+{
+  if (wrapped_) wrapped_->bind_ptt_admission (block);
+}
+
+void DXLabSuiteCommanderTransceiver::move_delegates_to_thread (QThread * target) noexcept
+{
+  if (wrapped_) wrapped_->move_to_thread_tree (target);
 }
 
 void DXLabSuiteCommanderTransceiver::do_frequency (Frequency f, MODE m, bool /*no_ignore*/)

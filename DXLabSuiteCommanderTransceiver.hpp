@@ -32,6 +32,9 @@ public:
                                            int poll_interval, QObject * parent = nullptr);
 
 protected:
+  void bind_delegated_ptt_admission (
+    std::shared_ptr<PttAdmissionBlock> const&) noexcept override;
+  void move_delegates_to_thread (QThread *) noexcept override;
   int do_start (JTDXDateTime*) override;
   void do_stop () override;
   void do_frequency (Frequency, MODE, bool no_ignore) override;

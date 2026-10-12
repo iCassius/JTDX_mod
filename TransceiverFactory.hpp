@@ -158,7 +158,9 @@ public:
   // PTT port and to some extent ptt_type are independent of interface
   // type
   //
-  std::unique_ptr<Transceiver> create (ParameterPack const&, QThread * target_thread = nullptr);
+  std::unique_ptr<Transceiver> create (
+    ParameterPack const&, QThread * target_thread = nullptr,
+    std::shared_ptr<PttAdmissionBlock> ptt_admission = {});
   
 private:
   Transceivers transceivers_;

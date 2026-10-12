@@ -245,8 +245,32 @@ int main (int argc, char ** argv)
   fresh.endGroup ();
   fresh.sync ();
   Configuration fresh_configuration {&fresh};
-  check (fresh_configuration.web_ui_bind_address () == QStringLiteral ("0.0.0.0"),
-         "new configuration defaults to all IPv4 interfaces when no prior bind choice exists");
+  check (fresh_configuration.web_ui_bind_address () == QStringLiteral ("127.0.0.1"),
+         "new configuration defaults to loopback when no prior bind choice exists");
+  check (!fresh.contains (QStringLiteral ("Configuration/WebUiBindAddress")),
+         "using the safe default does not write or migrate the missing bind setting");
+
+  auto check_explicit_bind_address = [&temporary] (QString const& file_name,
+                                                    QString const& address,
+                                                    char const * message) {
+    QSettings explicit_settings {temporary.filePath (file_name), QSettings::IniFormat};
+    set_safe_rig_defaults (explicit_settings);
+    explicit_settings.beginGroup (QStringLiteral ("Configuration"));
+    explicit_settings.setValue (QStringLiteral ("WebUiBindAddress"), address);
+    explicit_settings.endGroup ();
+    explicit_settings.sync ();
+    Configuration explicit_configuration {&explicit_settings};
+    check (explicit_configuration.web_ui_bind_address () == address, message);
+  };
+  check_explicit_bind_address (QStringLiteral ("explicit-loopback.ini"),
+                               QStringLiteral ("127.0.0.1"),
+                               "explicit loopback address is preserved unchanged");
+  check_explicit_bind_address (QStringLiteral ("explicit-wildcard.ini"),
+                               QStringLiteral ("0.0.0.0"),
+                               "explicit wildcard address is preserved unchanged");
+  check_explicit_bind_address (QStringLiteral ("explicit-interface.ini"),
+                               QStringLiteral ("192.168.40.8"),
+                               "explicit interface address is preserved unchanged");
 
   return failures ? 1 : 0;
 }

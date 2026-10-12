@@ -86,7 +86,9 @@ bool TransceiverFactory::has_asynchronous_CAT (QString const& name) const
   return supported_transceivers ()[name].asynchronous_;
 }
 
-std::unique_ptr<Transceiver> TransceiverFactory::create (ParameterPack const& params, QThread * target_thread)
+std::unique_ptr<Transceiver> TransceiverFactory::create (
+  ParameterPack const& params, QThread * target_thread,
+  std::shared_ptr<PttAdmissionBlock> ptt_admission)
 {
   std::unique_ptr<Transceiver> result;
   switch (supported_transceivers ()[params.rig_name].model_number_)
@@ -97,10 +99,6 @@ std::unique_ptr<Transceiver> TransceiverFactory::create (ParameterPack const& pa
 
         // wrap the basic Transceiver object instance with a decorator object that talks to TCI Commander
         result.reset (new TCITransceiver {std::move (basic_transceiver), "0", params.tci_port, PTT_method_CAT == params.ptt_type, params.poll_interval});
-        if (target_thread)
-          {
-            result->moveToThread (target_thread);
-          }
       }
       break;
 
@@ -110,10 +108,6 @@ std::unique_ptr<Transceiver> TransceiverFactory::create (ParameterPack const& pa
 
         // wrap the basic Transceiver object instance with a decorator object that talks to TCI Commander
         result.reset (new TCITransceiver {std::move (basic_transceiver), "1", params.tci_port, PTT_method_CAT == params.ptt_type, params.poll_interval});
-        if (target_thread)
-          {
-            result->moveToThread (target_thread);
-          }
       }
       break;
 
@@ -124,18 +118,10 @@ std::unique_ptr<Transceiver> TransceiverFactory::create (ParameterPack const& pa
           {
             // we start with a dummy HamlibTransceiver object instance that can support direct PTT
             basic_transceiver.reset (new HamlibTransceiver {params.ptt_type, params.ptt_port});
-            if (target_thread)
-              {
-                basic_transceiver.get ()->moveToThread (target_thread);
-              }
           }
 
         // wrap the basic Transceiver object instance with a decorator object that talks to DX Lab Suite Commander
         result.reset (new DXLabSuiteCommanderTransceiver {std::move (basic_transceiver), params.network_port, PTT_method_CAT == params.ptt_type, params.poll_interval});
-        if (target_thread)
-          {
-            result->moveToThread (target_thread);
-          }
       }
       break;
 
@@ -146,18 +132,10 @@ std::unique_ptr<Transceiver> TransceiverFactory::create (ParameterPack const& pa
           {
             // we start with a dummy HamlibTransceiver object instance that can support direct PTT
             basic_transceiver.reset (new HamlibTransceiver {params.ptt_type, params.ptt_port});
-            if (target_thread)
-              {
-                basic_transceiver.get ()->moveToThread (target_thread);
-              }
           }
 
         // wrap the basic Transceiver object instance with a decorator object that talks to ham Radio Deluxe
         result.reset (new HRDTransceiver {std::move (basic_transceiver), params.network_port, PTT_method_CAT == params.ptt_type, params.audio_source, params.poll_interval});
-        if (target_thread)
-          {
-            result->moveToThread (target_thread);
-          }
       }
       break;
 
@@ -169,18 +147,10 @@ std::unique_ptr<Transceiver> TransceiverFactory::create (ParameterPack const& pa
           {
             // we start with a dummy HamlibTransceiver object instance that can support direct PTT
             basic_transceiver.reset (new HamlibTransceiver {params.ptt_type, params.ptt_port});
-            if (target_thread)
-              {
-                basic_transceiver.get ()->moveToThread (target_thread);
-              }
           }
 
         // wrap the basic Transceiver object instance with a decorator object that talks to OmniRig rig one
         result.reset (new OmniRigTransceiver {std::move (basic_transceiver), OmniRigTransceiver::One, params.ptt_type, params.ptt_port});
-        if (target_thread)
-          {
-            result->moveToThread (target_thread);
-          }
       }
       break;
 
@@ -191,28 +161,16 @@ std::unique_ptr<Transceiver> TransceiverFactory::create (ParameterPack const& pa
           {
             // we start with a dummy HamlibTransceiver object instance that can support direct PTT
             basic_transceiver.reset (new HamlibTransceiver {params.ptt_type, params.ptt_port});
-            if (target_thread)
-              {
-                basic_transceiver.get ()->moveToThread (target_thread);
-              }
           }
 
         // wrap the basic Transceiver object instance with a decorator object that talks to OmniRig rig two
         result.reset (new OmniRigTransceiver {std::move (basic_transceiver), OmniRigTransceiver::Two, params.ptt_type, params.ptt_port});
-        if (target_thread)
-          {
-            result->moveToThread (target_thread);
-          }
       }
       break;
 #endif
 
     default:
       result.reset (new HamlibTransceiver {supported_transceivers ()[params.rig_name].model_number_, params});
-      if (target_thread)
-        {
-          result->moveToThread (target_thread);
-        }
       break;
     }
 
@@ -220,12 +178,15 @@ std::unique_ptr<Transceiver> TransceiverFactory::create (ParameterPack const& pa
     {
       // wrap the Transceiver object instance with a decorator that emulates split mode
       result.reset (new EmulateSplitTransceiver {std::move (result)});
-      if (target_thread)
-        {
-          result->moveToThread (target_thread);
-        }
     }
 
+  if (result)
+    {
+      // Bind recursively while every decorator is still in its construction
+      // thread, then move the complete tree before Configuration queues start.
+      result->bind_ptt_admission (std::move (ptt_admission));
+      if (target_thread) result->move_to_thread_tree (target_thread);
+    }
   return result;
 }
 

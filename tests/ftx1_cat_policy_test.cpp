@@ -150,6 +150,48 @@ int main ()
       Operation::protocol_sync, protocol_ptt),
            "protocol mismatch during PTT transition must fail immediately");
 
+  // A clean poll clears both the aggregate and protocol-sync consecutive
+  // counters only when a successful CAT read actually occurred.
+  State interrupted_protocol_sync;
+  interrupted_protocol_sync.begin_poll ();
+  require (Decision::soft_ignore == interrupted_protocol_sync.observe_failure (
+      Operation::protocol_sync, idle ()),
+           "a first protocol mismatch is soft while PTT is confirmed idle");
+  interrupted_protocol_sync.complete_poll ();
+  require (1 == interrupted_protocol_sync.failure_count (Operation::protocol_sync),
+           "a wrong-reply poll retains its protocol-sync count until real success");
+  interrupted_protocol_sync.begin_poll ();
+  interrupted_protocol_sync.observe_success (Operation::ptt);
+  require (1 == interrupted_protocol_sync.observe_success (Operation::protocol_sync),
+           "a clean poll with a successful PTT read clears protocol-sync count");
+  interrupted_protocol_sync.complete_poll ();
+  require (0 == interrupted_protocol_sync.failure_count (Operation::protocol_sync)
+               && 0 == interrupted_protocol_sync.overall_failure_streak (),
+           "a successful clean poll resets per-operation and aggregate streaks");
+  interrupted_protocol_sync.begin_poll ();
+  require (Decision::soft_ignore == interrupted_protocol_sync.observe_failure (
+      Operation::protocol_sync, idle ()),
+           "failure after a clean successful poll restarts at one");
+  interrupted_protocol_sync.complete_poll ();
+  interrupted_protocol_sync.begin_poll ();
+  require (Decision::soft_ignore == interrupted_protocol_sync.observe_failure (
+      Operation::protocol_sync, idle ()),
+           "the second uninterrupted protocol mismatch remains soft");
+  interrupted_protocol_sync.complete_poll ();
+  interrupted_protocol_sync.begin_poll ();
+  require (Decision::escalate == interrupted_protocol_sync.observe_failure (
+      Operation::protocol_sync, idle ()),
+           "the third uninterrupted protocol mismatch still escalates");
+
+  State no_successful_read;
+  no_successful_read.begin_poll ();
+  no_successful_read.observe_failure (Operation::protocol_sync, idle ());
+  no_successful_read.complete_poll ();
+  no_successful_read.begin_poll ();
+  no_successful_read.complete_poll ();
+  require (1 == no_successful_read.failure_count (Operation::protocol_sync),
+           "a poll without any successful read cannot fabricate protocol-sync success");
+
   require (!has_new_protocol_sync_events (17, 17),
            "unchanged generation must not create a poll event");
   require (has_new_protocol_sync_events (17, 18),

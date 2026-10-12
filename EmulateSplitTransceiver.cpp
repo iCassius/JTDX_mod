@@ -17,11 +17,16 @@ EmulateSplitTransceiver::EmulateSplitTransceiver (std::unique_ptr<Transceiver> w
   connect (wrapped_.get (), &Transceiver::resolution, this, &Transceiver::resolution);
   connect (wrapped_.get (), &Transceiver::tciframeswritten, this, &Transceiver::tciframeswritten);
   connect (wrapped_.get (), &Transceiver::tci_mod_active, this, &Transceiver::tci_mod_active);
+  connect (wrapped_.get (), &Transceiver::poll_health_started, this, &Transceiver::poll_health_started);
+  connect (wrapped_.get (), &Transceiver::poll_health_completed, this, &Transceiver::poll_health_completed);
+  connect (wrapped_.get (), &Transceiver::poll_health_read_result, this, &Transceiver::poll_health_read_result);
+  connect (wrapped_.get (), &Transceiver::read_only_refresh_completed, this, &Transceiver::read_only_refresh_completed);
   connect (wrapped_.get (), &Transceiver::finished, this, &Transceiver::finished);
   connect (wrapped_.get (), &Transceiver::failure, this, &EmulateSplitTransceiver::handle_failure);
 }
 
-void EmulateSplitTransceiver::set (TransceiverState const& s, unsigned sequence_number) noexcept
+void EmulateSplitTransceiver::set (TransceiverState const& s, unsigned sequence_number,
+                                   PttAdmissionBlock::Token ptt_admission_token) noexcept
 {
 #if WSJT_TRACE_CAT
   qDebug () << "EmulateSplitTransceiver::set: state:" << s << "#:" << sequence_number;
@@ -31,13 +36,48 @@ void EmulateSplitTransceiver::set (TransceiverState const& s, unsigned sequence_
   rx_frequency_ = s.frequency ();
   tx_frequency_ = s.tx_frequency ();
   split_ = s.split ();
-  state_policy_.request (rx_frequency_, tx_frequency_, split_, s.ptt ());
+  bool const admittedOn = !s.ptt () || ptt_start_admitted (ptt_admission_token);
+  // A rejected queued ON cannot create a new fake-TX phase. If the wrapped
+  // rig was already observed on, retain that existing phase until its normal
+  // readback changes; cancellation itself never synthesizes an OFF.
+  bool effectivePtt = s.ptt () && (admittedOn || last_observed_ptt_);
+  state_policy_.request (rx_frequency_, tx_frequency_, split_, effectivePtt);
+  // The admission may be revoked while the queued wrapper slot is running.
+  // Reconcile before choosing the wrapped dial so an unstarted old ON cannot
+  // switch the emulated VFO to TX. An already observed PTT-on is preserved.
+  if (s.ptt () && effectivePtt && !last_observed_ptt_
+      && !ptt_start_admitted (ptt_admission_token))
+    {
+      effectivePtt = false;
+      state_policy_.request (rx_frequency_, tx_frequency_, split_, false);
+    }
 
   TransceiverState emulated_state {s};
   emulated_state.frequency (state_policy_.emulatedFrequency (s.frequency ()));
   emulated_state.split (false);
   emulated_state.tx_frequency (0);
-  wrapped_->set (emulated_state, sequence_number);
+  wrapped_->set (emulated_state, sequence_number, ptt_admission_token);
+}
+
+void EmulateSplitTransceiver::refresh_read_only (quint64 request_id) noexcept
+{
+  wrapped_->refresh_read_only (request_id);
+}
+
+bool EmulateSplitTransceiver::supports_health_observation () const noexcept
+{
+  return wrapped_ && wrapped_->supports_health_observation ();
+}
+
+void EmulateSplitTransceiver::bind_delegated_ptt_admission (
+  std::shared_ptr<PttAdmissionBlock> const& block) noexcept
+{
+  if (wrapped_) wrapped_->bind_ptt_admission (block);
+}
+
+void EmulateSplitTransceiver::move_delegates_to_thread (QThread * target) noexcept
+{
+  if (wrapped_) wrapped_->move_to_thread_tree (target);
 }
 
 void EmulateSplitTransceiver::handle_failure (QString const& reason)
@@ -70,11 +110,14 @@ void EmulateSplitTransceiver::handle_update (TransceiverState const& state,
   else
     {
       TransceiverState new_state {state};
+      last_observed_ptt_ = state.ptt ();
       // Do not infer the emulated VFO from a wrapped PTT poll.  In
       // particular, a rig with PTT type None may report a stale PTT state,
       // and a late TX-frequency update must never become the next RX dial.
       new_state.frequency (state_policy_.reportedFrequency (state.frequency ()));
-      new_state.ptt (state_policy_.reportedPtt (state.ptt ()));
+      new_state.ptt (state.ptt_readback_required ()
+                     ? state.ptt ()
+                     : state_policy_.reportedPtt (state.ptt ()));
 
       // These are always what was requested in prior set state operation
       new_state.tx_frequency (tx_frequency_);

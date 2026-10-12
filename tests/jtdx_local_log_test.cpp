@@ -46,6 +46,10 @@ int main ()
   QTemporaryDir temporary;
   check (temporary.isValid (), "temporary diagnostic directory is available");
   QDir const directory {temporary.path ()};
+  JtdxLocalLog::Limits const default_limits;
+  check (default_limits.max_bytes == 2 * 1024 * 1024
+             && default_limits.rotated_files == 3,
+         "all default log callers share a 2 MiB active file and three archives");
   JtdxLocalLog::Limits limits;
   limits.max_bytes = 256;
   limits.rotated_files = 1;
@@ -130,6 +134,27 @@ int main ()
          "active and rotated logs stay within the byte limit");
   check (!QFileInfo::exists (directory.absoluteFilePath (QStringLiteral ("control.log.2"))),
          "rotation is limited to one file");
+
+  JtdxLocalLog::Limits archive_limits;
+  archive_limits.max_bytes = 128;
+  archive_limits.rotated_files = 3;
+  for (int i = 0; i != 10; ++i)
+    check (JtdxLocalLog::append (directory, QStringLiteral ("archive.log"),
+                                 QStringLiteral ("auto-call"),
+                                 QString (100, QLatin1Char ('a')) + QString::number (i),
+                                 archive_limits),
+           "multi-archive diagnostic append succeeds");
+  for (int index = 0; index <= archive_limits.rotated_files; ++index)
+    {
+      QString const archive_name = QStringLiteral ("archive.log")
+        + (index ? QLatin1Char ('.') + QString::number (index) : QString {});
+      QFileInfo const archive_info {directory.absoluteFilePath (archive_name)};
+      check (archive_info.size () <= archive_limits.max_bytes,
+             "active and each configured archive stay within the shared bound");
+    }
+  check (QFileInfo::exists (directory.absoluteFilePath (QStringLiteral ("archive.log.3")))
+             && !QFileInfo::exists (directory.absoluteFilePath (QStringLiteral ("archive.log.4"))),
+         "three archives are retained without creating a fourth file");
 
   JtdxWebControl control {100};
   control.bind_server_epoch (control.server_epoch ());

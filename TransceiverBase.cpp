@@ -1,7 +1,9 @@
 #include "TransceiverBase.hpp"
 
 #include <exception>
+#include <chrono>
 
+#include <QDateTime>
 #include <QString>
 #include <QTimer>
 #include <QThread>
@@ -14,25 +16,134 @@ namespace
 {
   auto const unexpected = TransceiverBase::tr ("Unexpected rig error");
 
-  void append_failure_diagnostic (char const * stage) noexcept
+  qint64 stop_diagnostic_monotonic_ns () noexcept
+  {
+    auto const now = std::chrono::steady_clock::now ().time_since_epoch ();
+    return static_cast<qint64> (
+      std::chrono::duration_cast<std::chrono::nanoseconds> (now).count ());
+  }
+
+  void append_failure_diagnostic (QDir const& directory, char const * stage,
+                                  char const * failure_signal) noexcept
+    {
+      try
+        {
+          JtdxLocalLog::append (
+            directory,
+            QStringLiteral ("jtdx_recovery.log"), QStringLiteral ("rig-control"),
+            QStringLiteral ("transceiver_offline stage=%1 failure_signal=%2 reason_present=true")
+              .arg (QString::fromLatin1 (stage),
+                    QString::fromLatin1 (failure_signal)));
+        }
+      catch (...)
+        {
+          // A diagnostic write must not escape into transceiver control flow.
+        }
+    }
+
+  void append_retired_command_diagnostic (QDir const& directory,
+                                          char const * action,
+                                          unsigned sequence,
+                                          unsigned last_sequence) noexcept
   {
     try
       {
         JtdxLocalLog::append (
-          QDir {QStandardPaths::writableLocation (QStandardPaths::DataLocation)},
+          directory,
           QStringLiteral ("jtdx_recovery.log"), QStringLiteral ("rig-control"),
-          QStringLiteral ("transceiver_offline %1 reason_present=true")
-            .arg (QString::fromLatin1 (stage)));
+          QStringLiteral ("retired_command_ignored action=%1 sequence=%2 last_sequence=%3 retired=true")
+            .arg (QString::fromLatin1 (action))
+            .arg (sequence).arg (last_sequence));
       }
     catch (...)
       {
         // A diagnostic write must not escape into transceiver control flow.
       }
   }
+
+  void append_ptt_admission_rejected (QDir const& directory,
+                                      unsigned sequence,
+                                      PttAdmissionBlock::Token queued_token,
+                                      PttAdmissionBlock::Token current_token,
+                                      char const * stage) noexcept
+  {
+    try
+      {
+        JtdxLocalLog::append (
+          directory, QStringLiteral ("jtdx_recovery.log"),
+          QStringLiteral ("rig-control"),
+          QStringLiteral ("ptt_on_suppressed sequence=%1 queued_token=%2 current_token=%3 stage=%4")
+            .arg (sequence).arg (queued_token).arg (current_token)
+            .arg (QString::fromLatin1 (stage)));
+      }
+    catch (...)
+      {
+        // Diagnostics must not change control flow.
+      }
+  }
+
+  void append_ptt_off_diagnostic (QString const& directory_path,
+                                  char const * event, quint64 generation,
+                                  unsigned sequence,
+                                  PttAdmissionBlock::Token admission_token,
+                                  char const * outcome, char const * exception_type,
+                                  bool requested_online, bool cleanup_needed,
+                                  char const * reason) noexcept
+  {
+    try
+      {
+        QDir const directory {directory_path.isEmpty ()
+          ? QStandardPaths::writableLocation (QStandardPaths::DataLocation)
+          : directory_path};
+        auto const local_now = QDateTime::currentDateTime ();
+        auto const utc_now = local_now.toUTC ();
+        JtdxLocalLog::append (
+          directory, QStringLiteral ("jtdx_recovery.log"),
+          QStringLiteral ("rig-control"),
+          QStringLiteral ("stop_diag event=%1 utc=%2 local=%3 worker_monotonic_ns=%4 "
+                          "session_generation=%5 control_sequence=%6 admission_token=%7 "
+                          "outcome=%8 exception_type=%9 requested_online=%10 "
+                          "cleanup_needed=%11 reason=%12 result_scope=driver_method_only "
+                          "readback=unknown")
+            .arg (QString::fromLatin1 (event ? event : "unknown"))
+            .arg (utc_now.toString (Qt::ISODateWithMs))
+            .arg (local_now.toString (Qt::ISODateWithMs))
+            .arg (stop_diagnostic_monotonic_ns ())
+            .arg (generation).arg (sequence).arg (admission_token)
+            .arg (QString::fromLatin1 (outcome ? outcome : "unknown"))
+            .arg (QString::fromLatin1 (exception_type ? exception_type : "unknown"))
+            .arg (requested_online ? 1 : 0).arg (cleanup_needed ? 1 : 0)
+            .arg (QString::fromLatin1 (reason ? reason : "none")));
+      }
+    catch (...)
+      {
+        // Stop diagnostics must not change driver or worker control flow.
+      }
+  }
+}
+
+qint64 TransceiverBase::worker_monotonic_ns () noexcept
+{
+  return stop_diagnostic_monotonic_ns ();
 }
 
 void TransceiverBase::start (unsigned sequence_number,JTDXDateTime * jtdxdatetime) noexcept
 {
+  if (retired_)
+    {
+      if (!retired_start_logged_)
+        {
+          retired_start_logged_ = true;
+          QDir const diagnostic_directory {failure_diagnostic_directory_.isEmpty ()
+            ? QStandardPaths::writableLocation (QStandardPaths::DataLocation)
+            : failure_diagnostic_directory_};
+          append_retired_command_diagnostic (diagnostic_directory, "start",
+                                             sequence_number, last_sequence_number_);
+          TRACE_CAT ("TransceiverBase", "retired command ignored action=start #:" << sequence_number);
+        }
+      return;
+    }
+
   QString message;
 #if JTDX_DEBUG_TO_FILE
   FILE * pFile = fopen (debug_file_.c_str(),"a");
@@ -47,7 +158,7 @@ void TransceiverBase::start (unsigned sequence_number,JTDXDateTime * jtdxdatetim
       last_sequence_number_ = sequence_number;
       jtdxtime_ = jtdxdatetime;
       may_update u {this, true};
-      shutdown ();
+      shutdown (true);
 #if JTDX_DEBUG_TO_FILE
       pFile = fopen (debug_file_.c_str(),"a");
       if (jtdxtime_ == nullptr)
@@ -89,9 +200,28 @@ void TransceiverBase::start (unsigned sequence_number,JTDXDateTime * jtdxdatetim
 }
 
 void TransceiverBase::set (TransceiverState const& s,
-                           unsigned sequence_number) noexcept
+                           unsigned sequence_number,
+                           PttAdmissionBlock::Token ptt_admission_token) noexcept
 {
+  if (retired_)
+    {
+      if (!retired_set_logged_)
+        {
+          retired_set_logged_ = true;
+          QDir const diagnostic_directory {failure_diagnostic_directory_.isEmpty ()
+            ? QStandardPaths::writableLocation (QStandardPaths::DataLocation)
+            : failure_diagnostic_directory_};
+          append_retired_command_diagnostic (diagnostic_directory, "set",
+                                             sequence_number, last_sequence_number_);
+          TRACE_CAT ("TransceiverBase", "retired command ignored action=set #:" << sequence_number);
+        }
+      return;
+    }
+
   TRACE_CAT ("TransceiverBase", "#:" << sequence_number << s);
+  bool ptt_off_attempted {false};
+  char const * ptt_off_outcome {"not_attempted"};
+  char const * ptt_off_exception_type {"none"};
 #if JTDX_DEBUG_TO_FILE
   long long ms = 0;
   FILE * pFile = fopen (debug_file_.c_str(),"a");
@@ -107,8 +237,24 @@ void TransceiverBase::set (TransceiverState const& s,
   try
     {
       last_sequence_number_ = sequence_number;
+      current_set_admission_token_ = ptt_admission_token;
       may_update u {this, true};
+      QDir const diagnostic_directory {failure_diagnostic_directory_.isEmpty ()
+        ? QStandardPaths::writableLocation (QStandardPaths::DataLocation)
+        : failure_diagnostic_directory_};
+      auto log_suppressed_ptt_on = [this, &diagnostic_directory,
+                                    sequence_number, ptt_admission_token]
+        (char const * stage) {
+          if (suppressed_ptt_on_logged_
+              && last_suppressed_ptt_on_token_ == ptt_admission_token) return;
+          suppressed_ptt_on_logged_ = true;
+          last_suppressed_ptt_on_token_ = ptt_admission_token;
+          append_ptt_admission_rejected (
+            diagnostic_directory, sequence_number, ptt_admission_token,
+            current_ptt_admission_token (), stage);
+        };
       bool was_online {requested_.online ()};
+      if (!s.online ()) retired_ = true;
       if (!s.online () && was_online)
         {
 #if JTDX_DEBUG_TO_FILE
@@ -131,7 +277,7 @@ void TransceiverBase::set (TransceiverState const& s,
             fprintf(pFile,"%s restart shutdown #:%d ",jtdxtime_->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),sequence_number);
           fclose (pFile);
 #endif
-          shutdown ();
+          shutdown (true);
 #if JTDX_DEBUG_TO_FILE
           pFile = fopen (debug_file_.c_str(),"a");
           if (jtdxtime_ == nullptr)
@@ -294,11 +440,18 @@ void TransceiverBase::set (TransceiverState const& s,
             }
             if (s.ptt () != requested_.ptt ())
               {
-                ptt_on = s.ptt ();
+                // Reject revoked queued ON commands before their state can
+                // influence backend about-to-TX frequency handling.
+                auto const admitted = ptt_start_admitted (ptt_admission_token);
+                ptt_on = s.ptt () && admitted;
+                if (s.ptt () && !admitted)
+                  log_suppressed_ptt_on ("revoked_before_tx_frequency");
                 ptt_off = !s.ptt ();
               }
             if (ptt_off)
               {
+                ptt_off_attempted = true;
+                ptt_off_outcome = "pending";
   #if JTDX_DEBUG_TO_FILE
                 pFile = fopen (debug_file_.c_str(),"a");
                 if (jtdxtime_ == nullptr)
@@ -307,7 +460,23 @@ void TransceiverBase::set (TransceiverState const& s,
                   fprintf(pFile,"%s Timing #:%d ptt_off\n",jtdxtime_->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),sequence_number);
                 fclose (pFile);
   #endif
-                do_ptt (false);
+                try
+                  {
+                    do_ptt (false);
+                  }
+                catch (std::exception const&)
+                  {
+                    ptt_off_outcome = "exception";
+                    ptt_off_exception_type = "std_exception";
+                    throw;
+                  }
+                catch (...)
+                  {
+                    ptt_off_outcome = "exception";
+                    ptt_off_exception_type = "unknown";
+                    throw;
+                  }
+                ptt_off_outcome = "returned";
                 do_post_ptt (false);
                 if (!requested_.audio()) QThread::msleep (100); // some rigs cannot process CAT
                                        // commands while switching from
@@ -344,7 +513,12 @@ void TransceiverBase::set (TransceiverState const& s,
                     // || s.split () != requested_.split ())) // or split change
                     || (s.tx_frequency () && ptt_on)) // or about to tx split
                   {
-  #if JTDX_DEBUG_TO_FILE
+                    if (ptt_on && !ptt_start_admitted (ptt_admission_token))
+                      {
+                        ptt_on = false;
+                        log_suppressed_ptt_on ("revoked_before_tx_frequency");
+                      }
+#if JTDX_DEBUG_TO_FILE
                     pFile = fopen (debug_file_.c_str(),"a");
                     if (jtdxtime_ == nullptr)
                       fprintf(pFile,"#:%d do_tx_frequency %lld\n",sequence_number,s.tx_frequency ());
@@ -362,6 +536,11 @@ void TransceiverBase::set (TransceiverState const& s,
                     requested_.split (actual_.split ());
                   }
               }
+            if (ptt_on && !ptt_start_admitted (ptt_admission_token))
+              {
+                ptt_on = false;
+                log_suppressed_ptt_on ("revoked_before_ptt");
+              }
             if (ptt_on)
               {
   #if JTDX_DEBUG_TO_FILE
@@ -373,7 +552,10 @@ void TransceiverBase::set (TransceiverState const& s,
                 fclose (pFile);
   #endif
                 do_ptt (true);
-                do_post_ptt (true);
+                // Cancellation cannot retract an entered driver call, but it
+                // must prevent a post hook from re-enabling TX.
+                if (ptt_start_admitted (ptt_admission_token))
+                  do_post_ptt (true);
   //              QThread::msleep (100 + ms); // some rigs cannot process CAT
                                        // commands while switching from
                                        // Rx to Tx
@@ -414,6 +596,12 @@ void TransceiverBase::set (TransceiverState const& s,
 #endif
       offline (message);
     }
+  if (ptt_off_attempted)
+    append_ptt_off_diagnostic (
+      failure_diagnostic_directory_, "ptt_off_driver",
+      diagnostic_session_generation_, sequence_number,
+      current_set_admission_token_, ptt_off_outcome, ptt_off_exception_type,
+      requested_.online (), cleanup_needed_, "runtime_set");
 #if JTDX_DEBUG_TO_FILE
       pFile = fopen (debug_file_.c_str(),"a");
       if (jtdxtime_ == nullptr)
@@ -440,6 +628,9 @@ void TransceiverBase::startup ()
 #endif
   try
     {
+      // Mark cleanup as required before entering driver code: do_start may
+      // partially open a device and then throw.
+      cleanup_needed_ = true;
       actual_.online (true);
       requested_.online (true);
       auto res = do_start (jtdxtime_);
@@ -484,7 +675,7 @@ void TransceiverBase::startup ()
 #endif
 }
 
-void TransceiverBase::shutdown ()
+void TransceiverBase::shutdown (bool force_cleanup)
 {
 #if JTDX_DEBUG_TO_FILE
   long long ms = 0;
@@ -499,6 +690,12 @@ void TransceiverBase::shutdown ()
   fclose (pFile);
 #endif
   may_update u {this};
+  if (!cleanup_needed_ && !force_cleanup) return;
+  if (force_cleanup) cleanup_needed_ = true;
+  bool const shutdown_requested_online = requested_.online ();
+  bool const shutdown_cleanup_needed = cleanup_needed_;
+  char const * shutdown_ptt_outcome = shutdown_requested_online ? "pending" : "skipped";
+  char const * shutdown_ptt_exception_type = "none";
 #if JTDX_DEBUG_TO_FILE
   pFile = fopen (debug_file_.c_str(),"a");
   if (jtdxtime_ == nullptr)
@@ -512,7 +709,23 @@ void TransceiverBase::shutdown ()
       try
         {
           // try and ensure PTT isn't left set
-          do_ptt (false);
+          try
+            {
+              do_ptt (false);
+            }
+          catch (std::exception const&)
+            {
+              shutdown_ptt_outcome = "exception";
+              shutdown_ptt_exception_type = "std_exception";
+              throw;
+            }
+          catch (...)
+            {
+              shutdown_ptt_outcome = "exception";
+              shutdown_ptt_exception_type = "unknown";
+              throw;
+            }
+          shutdown_ptt_outcome = "returned";
 #if JTDX_DEBUG_TO_FILE
           pFile = fopen (debug_file_.c_str(),"a");
           if (jtdxtime_ == nullptr)
@@ -543,7 +756,42 @@ void TransceiverBase::shutdown ()
         }
     }
 //  printf("Transceiver shutdow b4 dostop()\n");
-  do_stop ();
+  try
+    {
+      do_stop ();
+    }
+  catch (std::exception const&)
+    {
+      append_ptt_off_diagnostic (
+        failure_diagnostic_directory_, "shutdown_ptt_off",
+        diagnostic_session_generation_, last_sequence_number_,
+        current_set_admission_token_, shutdown_ptt_outcome,
+        shutdown_ptt_exception_type, shutdown_requested_online,
+        shutdown_cleanup_needed,
+        shutdown_requested_online ? "driver_call" : "rig_not_requested_online");
+      append_ptt_off_diagnostic (
+        failure_diagnostic_directory_, "shutdown_backend_stop",
+        diagnostic_session_generation_, last_sequence_number_,
+        current_set_admission_token_, "exception", "std_exception",
+        requested_.online (), cleanup_needed_, "backend_stop");
+      throw;
+    }
+  catch (...)
+    {
+      append_ptt_off_diagnostic (
+        failure_diagnostic_directory_, "shutdown_ptt_off",
+        diagnostic_session_generation_, last_sequence_number_,
+        current_set_admission_token_, shutdown_ptt_outcome,
+        shutdown_ptt_exception_type, shutdown_requested_online,
+        shutdown_cleanup_needed,
+        shutdown_requested_online ? "driver_call" : "rig_not_requested_online");
+      append_ptt_off_diagnostic (
+        failure_diagnostic_directory_, "shutdown_backend_stop",
+        diagnostic_session_generation_, last_sequence_number_,
+        current_set_admission_token_, "exception", "unknown",
+        requested_.online (), cleanup_needed_, "backend_stop");
+      throw;
+    }
 #if JTDX_DEBUG_TO_FILE
   pFile = fopen (debug_file_.c_str(),"a");
   if (jtdxtime_ == nullptr)
@@ -553,6 +801,7 @@ void TransceiverBase::shutdown ()
   fclose (pFile);
 #endif
   do_post_stop ();
+  cleanup_needed_ = false;
   actual_ = TransceiverState {};
   requested_ = TransceiverState {};
 #if JTDX_DEBUG_TO_FILE
@@ -561,13 +810,28 @@ void TransceiverBase::shutdown ()
     fprintf(pFile,"Transceiver shutdown end\n");
   else
     fprintf(pFile,"%s Transceiver shutdown end %lld ms.\n",jtdxtime_->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),jtdxtime_->currentMSecsSinceEpoch2() - ms);
-  fclose (pFile);
+      fclose (pFile);
 #endif
 //  jtdxtime_ = nullptr;
+  append_ptt_off_diagnostic (
+    failure_diagnostic_directory_, "shutdown_ptt_off",
+    diagnostic_session_generation_, last_sequence_number_,
+    current_set_admission_token_, shutdown_ptt_outcome,
+    shutdown_ptt_exception_type, shutdown_requested_online,
+    shutdown_cleanup_needed,
+    shutdown_requested_online ? "driver_call" : "rig_not_requested_online");
+  append_ptt_off_diagnostic (
+    failure_diagnostic_directory_, "shutdown_backend_stop",
+    diagnostic_session_generation_, last_sequence_number_,
+    current_set_admission_token_, "returned", "none",
+    shutdown_requested_online, shutdown_cleanup_needed, "backend_stop_and_post_stop_returned");
 }
 
 void TransceiverBase::stop () noexcept
 {
+  if (finished_emitted_) return;
+
+  retired_ = true;
   QString message;
 #if JTDX_DEBUG_TO_FILE
   FILE * pFile = fopen (debug_file_.c_str(),"a");
@@ -589,12 +853,12 @@ void TransceiverBase::stop () noexcept
     {
       message = unexpected;
     }
-  if (!message.isEmpty ())
+  if (!message.isEmpty ()) offline (message);
+  if (!finished_emitted_)
     {
-      offline (message);
-    }
-  else
-    {
+      // A stop is terminal even when cleanup failed twice: give the owner a
+      // chance to delete this retired worker after best-effort cleanup.
+      finished_emitted_ = true;
       Q_EMIT finished ();
     }
 #if JTDX_DEBUG_TO_FILE
@@ -637,6 +901,68 @@ void TransceiverBase::update_PTT (bool state)
   actual_.ptt (state);
 }
 
+void TransceiverBase::refresh_read_only (quint64 request_id) noexcept
+{
+  ReadOnlyRefreshResult result;
+  if (retired_ || !requested_.online () || !actual_.online ())
+    {
+      result.status = ReadOnlyRefreshResult::inactive;
+    }
+  else
+    {
+      try
+        {
+          result = do_read_only_refresh ();
+        }
+      catch (...)
+        {
+          result.status = ReadOnlyRefreshResult::internal_failure;
+          result.state_changed = state ().ptt_readback_required ()
+            && state ().ptt_readback_known ();
+          if (state ().ptt_readback_required ())
+            update_PTT_readback_known (false);
+        }
+    }
+
+  if (result.state_changed)
+    {
+      try
+        {
+          // Use the ordinary update gate and preserve the sequence of the
+          // last control command.  A diagnostic refresh is not a command.
+          update_complete ();
+        }
+      catch (...)
+        {
+          // A read-only probe must not escape through a Qt slot.
+        }
+    }
+
+  Q_EMIT read_only_refresh_completed (
+    request_id, worker_monotonic_ns (), static_cast<int> (result.status),
+    result.operation, result.api_return, result.protocol_valid,
+    current_control_sequence (), state ().ptt_readback_serial ());
+}
+
+void TransceiverBase::update_PTT_readback_known (bool known)
+{
+  actual_.ptt_readback_known (known);
+}
+
+void TransceiverBase::update_PTT_readback_required (bool required)
+{
+  actual_.ptt_readback_required (required);
+}
+
+void TransceiverBase::confirm_PTT_readback (bool state)
+{
+  auto serial = actual_.ptt_readback_serial () + 1;
+  if (!serial) ++serial;
+  actual_.ptt_readback_serial (serial);
+  actual_.ptt_readback_known (true);
+  actual_.ptt (state);
+}
+
 void TransceiverBase::update_level (int l)
 {
   actual_.level (l);
@@ -666,7 +992,21 @@ void TransceiverBase::update_complete (bool force_signal)
 
 void TransceiverBase::offline (QString const& reason)
 {
-  append_failure_diagnostic ("stage=entered failure_signal=not_yet_emitted");
+  retired_ = true;
+  QDir const diagnostic_directory {failure_diagnostic_directory_.isEmpty ()
+    ? QStandardPaths::writableLocation (QStandardPaths::DataLocation)
+    : failure_diagnostic_directory_};
+  if (finished_emitted_)
+    {
+      append_failure_diagnostic (diagnostic_directory, "finished",
+                                 failure_emitted_ ? "already_emitted"
+                                                  : "suppressed_finished");
+      return;
+    }
+  bool const emitFailureThisCall = !failure_emitted_;
+  append_failure_diagnostic (diagnostic_directory, "entered",
+                             emitFailureThisCall ? "will_emit_this_call"
+                                                 : "already_emitted");
 #if JTDX_DEBUG_TO_FILE
   FILE * pFile = fopen (debug_file_.c_str(),"a");
   if (jtdxtime_ == nullptr)
@@ -675,8 +1015,14 @@ void TransceiverBase::offline (QString const& reason)
     fprintf(pFile,"%s Transceiver offline %s\n",jtdxtime_->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),reason.toStdString().c_str());
   fclose (pFile);
 #endif
-  Q_EMIT failure (reason);
-  append_failure_diagnostic ("stage=after_emit failure_signal=emitted");
+  if (emitFailureThisCall)
+    {
+      failure_emitted_ = true;
+      Q_EMIT failure (reason);
+    }
+  append_failure_diagnostic (diagnostic_directory, "after_emit",
+                             emitFailureThisCall ? "emitted_this_call"
+                                                 : "already_emitted");
   try
     {
       shutdown ();

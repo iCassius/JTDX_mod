@@ -66,8 +66,7 @@ void register_types ()
   qRegisterMetaTypeStreamOperators<StationList::Stations> ("Stations");
 
   // Transceiver
-  qRegisterMetaType<Transceiver::TransceiverState> ("Transceiver::TransceiverState");
-  qRegisterMetaType<Transceiver::MODE> ("Transceiver::MODE");
+  register_transceiver_meta_types ();
 
   // Transceiver factory
   qRegisterMetaType<TransceiverFactory::DataBits> ("TransceiverFactory::DataBits");

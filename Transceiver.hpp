@@ -2,12 +2,20 @@
 #define TRANSCEIVER_HPP__
 
 #include <QObject>
+#include <QString>
+#include <cstdint>
+#include <memory>
+#include <utility>
 
 #include "qt_helpers.hpp"
 #include "Radio.hpp"
 #include "JTDXDateTime.h"
+#include "ptt_admission_policy.hpp"
 
-class QString;
+class QThread;
+
+// Shared registration entry for the application and queued-command tests.
+void register_transceiver_meta_types ();
 
 //
 // Abstract Transceiver Interface
@@ -57,11 +65,49 @@ class Transceiver
 public:
   using Frequency = Radio::Frequency;
 
+  struct ReadOnlyRefreshResult
+  {
+    enum Status {unsupported, inactive, api_success, api_failure,
+                 protocol_invalid, internal_failure};
+
+    ReadOnlyRefreshResult (Status status = unsupported, int api_return = 0,
+                           bool protocol_valid = false,
+                           bool state_changed = false,
+                           QString operation = QString {})
+      : status {status}
+      , api_return {api_return}
+      , protocol_valid {protocol_valid}
+      , state_changed {state_changed}
+      , operation {std::move (operation)}
+    {}
+
+    Status status;
+    int api_return;
+    bool protocol_valid;
+    bool state_changed;
+    QString operation;
+  };
+
 protected:
   Transceiver (QObject * parent) : QObject {parent} {}
 
 public:
   virtual ~Transceiver () {}
+
+protected:
+  bool ptt_start_admitted (PttAdmissionBlock::Token token) const noexcept
+  {
+    return ptt_admission_ && ptt_admission_->allows (token);
+  }
+  PttAdmissionBlock::Token current_ptt_admission_token () const noexcept
+  {
+    return ptt_admission_ ? ptt_admission_->current () : 0;
+  }
+  virtual void bind_delegated_ptt_admission (
+    std::shared_ptr<PttAdmissionBlock> const&) noexcept {}
+  virtual void move_delegates_to_thread (QThread *) noexcept {}
+
+public:
 
   enum MODE {UNK, CW, CW_R, USB, LSB, FSK, FSK_R, DIG_U, DIG_L, AM, FM, DIG_FM};
   Q_ENUM (MODE)
@@ -80,6 +126,9 @@ public:
       , mode_ {UNK}
       , split_ {Split::unknown}
       , ptt_ {false}
+      , ptt_readback_known_ {false}
+      , ptt_readback_required_ {false}
+      , ptt_readback_serial_ {0}
       , ft4_mode_ {false}
       , audio_ {false}
       , tx_audio_ {false}
@@ -109,6 +158,9 @@ public:
     bool split () const {return Split::on == split_;}
     MODE mode () const {return mode_;}
     bool ptt () const {return ptt_;}
+    bool ptt_readback_known () const {return ptt_readback_known_;}
+    bool ptt_readback_required () const {return ptt_readback_required_;}
+    std::uint64_t ptt_readback_serial () const {return ptt_readback_serial_;}
     bool ft4_mode () const {return ft4_mode_;}
     bool audio () const {return audio_;}
     bool tx_audio () const {return tx_audio_;}
@@ -136,6 +188,9 @@ public:
     void split (bool state) {split_ = state ? Split::on : Split::off;}
     void mode (MODE m) {mode_ = m;}
     void ptt (bool state) {ptt_ = state;}
+    void ptt_readback_known (bool state) {ptt_readback_known_ = state;}
+    void ptt_readback_required (bool state) {ptt_readback_required_ = state;}
+    void ptt_readback_serial (std::uint64_t serial) {ptt_readback_serial_ = serial;}
     void ft4_mode (bool state) {ft4_mode_ = state;}
     void audio (bool state) {audio_ = state;}
     void tx_audio (bool state) {tx_audio_ = state;}
@@ -157,6 +212,19 @@ public:
     void power (unsigned int mwpower) {power_ = mwpower;}
     void swr (unsigned int mswr) {swr_ = mswr;}
 
+    // Polling stabilization compares rig-controlled values only. Readback
+    // validity/capability changes still participate in operator!= so they
+    // are emitted to clients, but must not consume command retry polls.
+    bool same_control_state (TransceiverState const& other) const
+    {
+      auto lhs = *this;
+      auto rhs = other;
+      lhs.ptt_readback_known_ = rhs.ptt_readback_known_ = false;
+      lhs.ptt_readback_required_ = rhs.ptt_readback_required_ = false;
+      lhs.ptt_readback_serial_ = rhs.ptt_readback_serial_ = 0;
+      return !(lhs != rhs);
+    }
+
   private:
     bool online_;
     Frequency rx_frequency_;
@@ -164,6 +232,9 @@ public:
     MODE mode_;
     enum class Split {unknown, off, on} split_;
     bool ptt_;
+    bool ptt_readback_known_;
+    bool ptt_readback_required_;
+    std::uint64_t ptt_readback_serial_;
     bool ft4_mode_;
     bool audio_;
     bool tx_audio_;
@@ -185,8 +256,8 @@ public:
     unsigned int power_;
     unsigned int swr_;
     
-    // Don't forget to update the debug print and != operator if you
-    // add more members here
+    // Don't forget to update the debug print, != operator, and
+    // same_control_state() if you add more members here.
 
     friend QDebug operator << (QDebug, TransceiverState const&);
     friend bool operator != (TransceiverState const&, TransceiverState const&);
@@ -206,11 +277,20 @@ public:
   // have been processed thus avoiding any unwanted "ping-pong" due to
   // signals crossing in transit.
   Q_SLOT virtual void set (Transceiver::TransceiverState const&,
-                           unsigned sequence_number) noexcept = 0;
+                           unsigned sequence_number,
+                           PttAdmissionBlock::Token ptt_admission_token) noexcept = 0;
+
+  void bind_ptt_admission (std::shared_ptr<PttAdmissionBlock> block) noexcept;
+  void move_to_thread_tree (QThread * target) noexcept;
 
   // Connect and disconnect.
   Q_SLOT virtual void start (unsigned sequence_number,JTDXDateTime* jtdxtime) noexcept = 0;
   Q_SLOT virtual void stop () noexcept = 0;
+
+  // Read-only diagnostic refresh for the already active session.  This is
+  // deliberately independent of the control-command sequence.
+  Q_SLOT virtual void refresh_read_only (quint64 request_id) noexcept;
+  virtual bool supports_health_observation () const noexcept {return false;}
 
   //
   // asynchronous status updates
@@ -237,6 +317,34 @@ public:
 
   // Ready to be destroyed.
   Q_SIGNAL void finished () const;
+
+  // Worker-stamped observation events.  These are telemetry only; they do
+  // not imply a device-level response beyond the reported API result.
+  Q_SIGNAL void poll_health_started (quint64 poll_id, qint64 worker_mono_ns,
+                                     int next_interval_ms) const;
+  Q_SIGNAL void poll_health_completed (quint64 poll_id,
+                                       qint64 worker_started_mono_ns,
+                                       qint64 worker_completed_mono_ns,
+                                       int next_interval_ms,
+                                       bool poll_failed) const;
+  Q_SIGNAL void poll_health_read_result (quint64 poll_id,
+                                         qint64 worker_mono_ns,
+                                         QString const& operation,
+                                         int api_return,
+                                         bool protocol_valid,
+                                         unsigned control_sequence,
+                                         quint64 ptt_readback_serial) const;
+  Q_SIGNAL void read_only_refresh_completed (quint64 request_id,
+                                             qint64 worker_mono_ns,
+                                             int status,
+                                             QString const& operation,
+                                             int api_return,
+                                             bool protocol_valid,
+                                             unsigned control_sequence,
+                                             quint64 ptt_readback_serial) const;
+
+private:
+  std::shared_ptr<PttAdmissionBlock> ptt_admission_;
 };
 
 Q_DECLARE_METATYPE (Transceiver::TransceiverState);

@@ -348,6 +348,7 @@ HamlibTransceiver::HamlibTransceiver (TransceiverFactory::PTTMethod ptt_type, QS
   , one_VFO_ {false}
   , is_dummy_ {true}
   , ptt_on_ {false}
+  , ptt_readback_required_ {false}
   , reversed_ {false}
   , freq_query_works_ {true}
   , mode_query_works_ {true}
@@ -364,6 +365,7 @@ HamlibTransceiver::HamlibTransceiver (TransceiverFactory::PTTMethod ptt_type, QS
   , ftx1_nonessential_hold_polls_ {0}
   , ptt_transition_hold_polls_ {0}
   , ptt_state_known_ {false}
+  , ftx1_poll_has_successful_read_ {false}
   , debug_file_ {QDir(QStandardPaths::writableLocation (QStandardPaths::DataLocation)).absoluteFilePath ("jtdx_debug.txt").toStdString()}
 {
   if (!rig_)
@@ -437,6 +439,8 @@ HamlibTransceiver::HamlibTransceiver (unsigned model_number, TransceiverFactory:
   , one_VFO_ {false}
   , is_dummy_ {RIG_MODEL_DUMMY == model_}
   , ptt_on_ {false}
+  , ptt_readback_required_ {is_ftx1_model (model_number)
+      && TransceiverFactory::PTT_method_CAT == params.ptt_type}
   , reversed_ {false}
   , freq_query_works_ {rig_ && rig_get_function_ptr (model_, RIG_FUNCTION_GET_FREQ)}
   , mode_query_works_ {rig_ && rig_get_function_ptr (model_, RIG_FUNCTION_GET_MODE)}
@@ -453,6 +457,7 @@ HamlibTransceiver::HamlibTransceiver (unsigned model_number, TransceiverFactory:
   , ftx1_nonessential_hold_polls_ {0}
   , ptt_transition_hold_polls_ {0}
   , ptt_state_known_ {false}
+  , ftx1_poll_has_successful_read_ {false}
   , debug_file_ {QDir(QStandardPaths::writableLocation (QStandardPaths::DataLocation)).absoluteFilePath ("jtdx_debug.txt").toStdString()}
 {
   if (!rig_)
@@ -641,6 +646,8 @@ void HamlibTransceiver::error_check (int ret_code, QString const& doing) const
 void HamlibTransceiver::observe_poll_success (Ftx1CatPollPolicy::Operation operation)
 {
   if (!is_ftx1_model (model_)) return;
+  if (Ftx1CatPollPolicy::Operation::protocol_sync != operation)
+    ftx1_poll_has_successful_read_ = true;
   auto const cleared = ftx1_poll_policy_.observe_success (operation);
   if (cleared)
     {
@@ -762,6 +769,11 @@ m_jtdxtime = jtdxtime;
   ftx1_nonessential_hold_polls_ = 0;
   ptt_transition_hold_polls_ = 0;
   ptt_state_known_ = false;
+  if (ptt_readback_required_)
+    {
+      update_PTT_readback_required (true);
+      update_PTT_readback_known (false);
+    }
 //printf("rig id %d do_snr_ %d caps %llx do_pwr_ %d do_pwr2_ %d\n",model_,do_snr_,rig_get_caps_int (model_, RIG_CAPS_HAS_GET_LEVEL),do_pwr_,do_pwr2_);
 #if JTDX_DEBUG_TO_FILE
   pFile = fopen (debug_file_.c_str(),"a");
@@ -1323,6 +1335,51 @@ void HamlibTransceiver::do_mode (MODE mode)
   update_mode (mode);
 }
 
+bool HamlibTransceiver::supports_health_observation () const noexcept
+{
+  return is_ftx1_model (model_) && ptt_readback_required_;
+}
+
+Transceiver::ReadOnlyRefreshResult HamlibTransceiver::do_read_only_refresh ()
+{
+  if (!supports_health_observation () || !rig_
+      || RIG_PTT_NONE == rig_->state.pttport.type.ptt
+      || !rig_get_function_ptr (model_, RIG_FUNCTION_GET_PTT))
+    {
+      return {ReadOnlyRefreshResult::unsupported, 0, false, false,
+              QStringLiteral ("rig_get_ptt")};
+    }
+
+  ptt_t ptt {RIG_PTT_OFF};
+  auto const generation_before = hamlib_wrong_reply_generation;
+  auto const rc = rig_get_ptt (rig_.data (), RIG_VFO_CURR, &ptt);
+  auto const generation_after = hamlib_wrong_reply_generation;
+  bool const protocol_valid = !Ftx1CatPollPolicy::has_new_protocol_sync_events (
+    generation_before, generation_after);
+  bool const was_known = state ().ptt_readback_known ();
+
+  if (!protocol_valid)
+    {
+      ptt_state_known_ = false;
+      update_PTT_readback_known (false);
+      return {ReadOnlyRefreshResult::protocol_invalid, rc, false, was_known,
+              QStringLiteral ("rig_get_ptt")};
+    }
+
+  if (RIG_OK != rc)
+    {
+      ptt_state_known_ = false;
+      update_PTT_readback_known (false);
+      return {ReadOnlyRefreshResult::api_failure, rc, true, was_known,
+              QStringLiteral ("rig_get_ptt")};
+    }
+
+  ptt_state_known_ = true;
+  confirm_PTT_readback (RIG_PTT_OFF != ptt);
+  return {ReadOnlyRefreshResult::api_success, rc, true, true,
+          QStringLiteral ("rig_get_ptt")};
+}
+
 void HamlibTransceiver::do_poll ()
 {
 #if !WSJT_TRACE_CAT_POLLS
@@ -1339,7 +1396,11 @@ void HamlibTransceiver::do_poll ()
   split_t s;
   bool const ftx1 = is_ftx1_model (model_);
   bool meter_only = false;
-  if (ftx1) ftx1_poll_policy_.begin_poll ();
+  if (ftx1)
+    {
+      ftx1_poll_policy_.begin_poll ();
+      ftx1_poll_has_successful_read_ = false;
+    }
   auto const poll_generation = hamlib_wrong_reply_generation;
   bool poll_finished = false;
   auto finish_ftx1_poll = [&] ()
@@ -1359,6 +1420,8 @@ void HamlibTransceiver::do_poll ()
                            tr ("checking FTX-1 CAT protocol synchronization"),
                            false, mismatch_count);
         }
+      else if (ftx1_poll_has_successful_read_)
+        observe_poll_success (Ftx1CatPollPolicy::Operation::protocol_sync);
       ftx1_poll_policy_.complete_poll ();
     };
 #if JTDX_DEBUG_TO_FILE
@@ -1377,19 +1440,41 @@ void HamlibTransceiver::do_poll ()
       if (ptt_read_available)
         {
           ptt_t p {RIG_PTT_OFF};
+          auto const readback_generation = hamlib_wrong_reply_generation;
           auto const rc = rig_get_ptt (rig_.data (), RIG_VFO_CURR, &p);
+          auto const generation_after_readback = hamlib_wrong_reply_generation;
+          if (Ftx1CatPollPolicy::has_new_protocol_sync_events (
+                readback_generation, generation_after_readback))
+            {
+              // A newcat wrong reply can return RIG_OK with another
+              // command's payload; this PTT value is not trustworthy.
+              ptt_state_known_ = false;
+              if (ptt_readback_required_) update_PTT_readback_known (false);
+              report_poll_read_result (QStringLiteral ("rig_get_ptt"), rc, false);
+              finish_ftx1_poll ();
+              return;
+            }
 #if JTDX_DEBUG_TO_FILE
           pFile = fopen (debug_file_.c_str(),"a");
           fprintf(pFile,"%s get ptt %d %d\n",m_jtdxtime->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),p,rc);
           fclose (pFile);
 #endif
+          if (RIG_OK != rc)
+            {
+              // Preserve the terminal API result before policy handling can
+              // transition the worker offline and throw.
+              report_poll_read_result (QStringLiteral ("rig_get_ptt"), rc, true);
+            }
           check_poll_read (Ftx1CatPollPolicy::Operation::ptt, rc,
                            tr ("getting PTT state"));
           if (RIG_OK == rc)
             {
               ptt_state_known_ = true;
               TRACE_CAT_POLL ("HamlibTransceiver", "rig_get_ptt PTT =" << p);
-              update_PTT (!(RIG_PTT_OFF == p));
+              auto const ptt_on = !(RIG_PTT_OFF == p);
+              if (ptt_readback_required_) confirm_PTT_readback (ptt_on);
+              else update_PTT (ptt_on);
+              report_poll_read_result (QStringLiteral ("rig_get_ptt"), rc, true);
               if (ptt_transition_hold_polls_)
                 {
                   --ptt_transition_hold_polls_;
@@ -1744,6 +1829,8 @@ void HamlibTransceiver::do_poll ()
         {
           error_check (rc, tr ("getting PTT state"));
           TRACE_CAT_POLL ("HamlibTransceiver", "rig_get_ptt PTT =" << p);
+          if (ptt_readback_required_ && RIG_OK == rc)
+            update_PTT_readback_known (true);
           update_PTT (!(RIG_PTT_OFF == p));
         }
     }
@@ -1772,6 +1859,9 @@ void HamlibTransceiver::do_poll ()
 void HamlibTransceiver::do_ptt (bool on)
 {
   TRACE_CAT ("HamlibTransceiver", on << state () << "reversed =" << reversed_);
+  // A successful rig_set_ptt is a command echo, not a confirmed rig state.
+  if (ptt_readback_required_) update_PTT_readback_known (false);
+  if (is_ftx1_model (model_)) ptt_state_known_ = false;
   ptt_on_ = on;
   if (on)
     {

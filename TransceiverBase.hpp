@@ -63,10 +63,19 @@ class TransceiverBase
   Q_OBJECT;
 
 protected:
-  TransceiverBase (QObject * parent)
+  TransceiverBase (QObject * parent,
+                   QString failure_diagnostic_directory = QString {})
     : Transceiver {parent}
     , jtdxtime_ {nullptr}
     , last_sequence_number_ {0}
+    , diagnostic_session_generation_ {0}
+    , retired_ {false}
+    , failure_emitted_ {false}
+    , finished_emitted_ {false}
+    , retired_start_logged_ {false}
+    , retired_set_logged_ {false}
+    , cleanup_needed_ {false}
+    , failure_diagnostic_directory_ {failure_diagnostic_directory}
     , debug_file_ {QDir(QStandardPaths::writableLocation (QStandardPaths::DataLocation)).absoluteFilePath ("jtdx_debug.txt").toStdString()}
   {}
 
@@ -76,13 +85,19 @@ public:
   //
   void start (unsigned sequence_number, JTDXDateTime* jtdxdatetime) noexcept override final;
   void set (TransceiverState const&,
-            unsigned sequence_number) noexcept override final;
+            unsigned sequence_number,
+            PttAdmissionBlock::Token ptt_admission_token) noexcept override final;
   void stop () noexcept override final;
+  void refresh_read_only (quint64 request_id) noexcept override final;
 
   //
   // Query operations
   //
   TransceiverState const& state () const {return actual_;}
+  void set_diagnostic_session_generation (quint64 generation) noexcept
+  {
+    diagnostic_session_generation_ = generation;
+  }
 
 protected:
   //
@@ -129,6 +144,24 @@ protected:
   virtual void do_modulator_start(unsigned, double, double, double, bool, double, double) {}
   virtual void do_modulator_stop(bool) {}
 
+  // Unsupported unless a concrete backend explicitly implements a bounded,
+  // already-open read-only operation.  Implementations must not open or
+  // mutate the rig and must report API/protocol validity separately.
+  virtual ReadOnlyRefreshResult do_read_only_refresh ()
+  {
+    return {ReadOnlyRefreshResult::unsupported};
+  }
+
+  static qint64 worker_monotonic_ns () noexcept;
+  unsigned current_control_sequence () const noexcept
+  {
+    return last_sequence_number_;
+  }
+  PttAdmissionBlock::Token current_set_admission_token () const noexcept
+  {
+    return current_set_admission_token_;
+  }
+
   virtual bool do_pre_update () {return true;}
 
   // sub classes report rig state changes with these methods
@@ -137,6 +170,9 @@ protected:
   void update_split (bool);
   void update_mode (MODE);
   void update_PTT (bool = true);
+  void update_PTT_readback_known (bool);
+  void update_PTT_readback_required (bool);
+  void confirm_PTT_readback (bool);
   void update_level (int = 0);
   void update_power (unsigned int = 0);
   void update_swr (unsigned int = 0);
@@ -148,7 +184,7 @@ protected:
 
 private:
   void startup ();
-  void shutdown ();
+  void shutdown (bool force_cleanup = false);
   bool maybe_low_resolution (Frequency low_res, Frequency high_res);
   JTDXDateTime * jtdxtime_;
   // use this convenience class to notify in update methods
@@ -169,6 +205,19 @@ private:
   TransceiverState actual_;
   TransceiverState last_;
   unsigned last_sequence_number_;    // from set state operation
+  quint64 diagnostic_session_generation_;
+  PttAdmissionBlock::Token current_set_admission_token_ {0};
+  // A Transceiver instance belongs to one rig session. Once it is stopped or
+  // goes offline, queued control slots from that session must not reopen it.
+  bool retired_;
+  bool failure_emitted_;
+  bool finished_emitted_;
+  bool retired_start_logged_;
+  bool retired_set_logged_;
+  bool suppressed_ptt_on_logged_ {false};
+  PttAdmissionBlock::Token last_suppressed_ptt_on_token_ {0};
+  bool cleanup_needed_;
+  QString failure_diagnostic_directory_;
   std::string debug_file_;
 };
 

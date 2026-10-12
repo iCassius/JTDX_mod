@@ -323,6 +323,14 @@ public:
 
   // This method queries if a CAT and PTT connection is operational.
   bool is_transceiver_online () const;
+  // An online request does not imply that the current session has produced
+  // a confirmed transceiver state update.
+  quint64 transceiver_session_generation () const;
+  // FTX-1 CAT PTT needs a real GET_PTT before a transmit request can start.
+  bool requires_ftx1_cat_ptt_readback () const;
+  // Request one read-only PTT refresh from an already active runtime rig.
+  // This call never creates or reopens a transceiver.
+  bool request_read_only_cat_refresh ();
 
   // Start the rig connection, safe and normal to call when rig is
   // already open.
@@ -362,6 +370,8 @@ public:
   // the "Emulate Split" mode requires PTT information to coordinate
   // frequency changes.
   Q_SLOT void transceiver_ptt (bool = true);
+  // Revoke queued PTT-on admission immediately without sending a rig command.
+  void revoke_transceiver_ptt_start () noexcept;
 
   // Set/unset Fast_mode for polling tranceiver for FT4.
   //
@@ -454,6 +464,9 @@ public:
   // re-established with a call to transceiver_online(true) assuming
   // the fault condition has been rectified or is transient.
   Q_SIGNAL void transceiver_failure (QString const& reason) const;
+  Q_SIGNAL void transceiver_cat_health_changed (QString const& label,
+                                                QString const& detail,
+                                                quint64 generation) const;
 
 private:
   class impl;

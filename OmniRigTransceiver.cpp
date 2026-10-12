@@ -676,6 +676,7 @@ void OmniRigTransceiver::handle_custom_reply (int rig_number, QVariant const& co
 void OmniRigTransceiver::do_ptt (bool on)
 {
   TRACE_CAT ("OmniRigTransceiver", on << state ());
+  bool reported_ptt {on};
   if (use_for_ptt_ && TransceiverFactory::PTT_method_CAT == ptt_type_)
     {
       TRACE_CAT ("OmniRigTransceiver", "set PTT");
@@ -701,10 +702,22 @@ void OmniRigTransceiver::do_ptt (bool on)
           TRACE_CAT ("OmniRigTransceiver", "set PTT using basic transceiver");
           TransceiverState new_state {wrapped_->state ()};
           new_state.ptt (on);
-          wrapped_->set (new_state, 0);
+          wrapped_->set (new_state, 0, current_set_admission_token ());
+          reported_ptt = wrapped_->state ().ptt ();
         }
     }
-  update_PTT (on);
+  update_PTT (reported_ptt);
+}
+
+void OmniRigTransceiver::bind_delegated_ptt_admission (
+  std::shared_ptr<PttAdmissionBlock> const& block) noexcept
+{
+  if (wrapped_) wrapped_->bind_ptt_admission (block);
+}
+
+void OmniRigTransceiver::move_delegates_to_thread (QThread * target) noexcept
+{
+  if (wrapped_) wrapped_->move_to_thread_tree (target);
 }
 
 void OmniRigTransceiver::do_frequency (Frequency f, MODE m, bool /*no_ignore*/)

@@ -40,6 +40,10 @@ PollingTransceiver::PollingTransceiver (int poll_interval, QObject * parent)
   , ft4_mode_ {false}
   , fast_mode_ {interval_ == 500}
   , retries_ {0}
+  , next_poll_id_ {0}
+  , current_poll_id_ {0}
+  , current_poll_started_mono_ns_ {0}
+  , current_poll_interval_ms_ {interval_}
   , debug_file_ {QDir(QStandardPaths::writableLocation (QStandardPaths::DataLocation)).absoluteFilePath ("jtdx_debug.txt").toStdString()}
   , m_jtdxtime {nullptr}
 {
@@ -48,6 +52,16 @@ FILE * pFile = fopen (debug_file_.c_str(),"a");
 fprintf (pFile,"Polling Tranceiver created interval %d\n",poll_interval & 0x7fff);
 fclose (pFile);
 #endif
+}
+
+void PollingTransceiver::report_poll_read_result (QString const& operation,
+                                                  int api_return,
+                                                  bool protocol_valid)
+{
+  if (!current_poll_id_) return;
+  Q_EMIT poll_health_read_result (
+    current_poll_id_, worker_monotonic_ns (), operation, api_return,
+    protocol_valid, current_control_sequence (), state ().ptt_readback_serial ());
 }
 
 void PollingTransceiver::start_timer ()
@@ -201,7 +215,7 @@ void PollingTransceiver::do_post_ptt (bool p)
 bool PollingTransceiver::do_pre_update ()
 {
   // if we are holding off a change then withhold the signal
-  if (retries_ && state () != next_state_)
+  if (retries_ && !state ().same_control_state (next_state_))
     {
       return false;
     }
@@ -212,6 +226,9 @@ void PollingTransceiver::handle_timeout ()
 {
   QString message;
   bool force_signal {false};
+  quint64 health_poll_id {0};
+  qint64 health_poll_started_ns {0};
+  int health_poll_interval_ms {0};
 
   // we must catch all exceptions here since we are called by Qt and
   // inform our parent of the failure via the offline() message
@@ -251,6 +268,14 @@ void PollingTransceiver::handle_timeout ()
           poll_timer_->start (interval_);
 //          printf("New interval %d ",interval_);
         }
+
+        ++next_poll_id_;
+        if (!next_poll_id_) ++next_poll_id_;
+        current_poll_id_ = health_poll_id = next_poll_id_;
+        current_poll_started_mono_ns_ = health_poll_started_ns = worker_monotonic_ns ();
+        current_poll_interval_ms_ = health_poll_interval_ms = interval_;
+        Q_EMIT poll_health_started (health_poll_id, health_poll_started_ns,
+                                    health_poll_interval_ms);
         
 //        printf("%s %d Poll start retries=%d fast_mode=%d ft4_mode=%d sec=%d ms=%lld\n",m_jtdxtime->currentDateTimeUtc2().toString("hh:mm:ss.zzz").toStdString().c_str(),sec,retries_,fast_mode_,ft4_mode_,sec,ms);
         do_poll ();              // tell sub-classes to update our state
@@ -267,7 +292,7 @@ void PollingTransceiver::handle_timeout ()
         if (retries_)
           {
             --retries_;
-            if (state () == next_state_ || !retries_)
+            if (state ().same_control_state (next_state_) || !retries_)
               {
                 // the expected state has arrived or there are no more
                 // retries
@@ -307,11 +332,18 @@ void PollingTransceiver::handle_timeout ()
     {
       message = e.what ();
     }
-  catch (...)
+    catch (...)
     {
       message = tr ("Unexpected rig error");
     }
-  if (!message.isEmpty ())
+    if (health_poll_id)
+      {
+        Q_EMIT poll_health_completed (
+          health_poll_id, health_poll_started_ns, worker_monotonic_ns (),
+          health_poll_interval_ms, !message.isEmpty ());
+        current_poll_id_ = 0;
+      }
+    if (!message.isEmpty ())
     {
       append_poll_failure_diagnostic ();
       offline (message);

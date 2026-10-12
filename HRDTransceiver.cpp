@@ -483,6 +483,7 @@ void HRDTransceiver::set_dropdown (int dd, int value)
 void HRDTransceiver::do_ptt (bool on)
 {
   TRACE_CAT ("HRDTransceiver", on);
+  bool reported_ptt {on};
   if (use_for_ptt_)
     {
       if (alt_ptt_button_ >= 0 && TransceiverFactory::TX_audio_source_rear == audio_source_)
@@ -502,9 +503,21 @@ void HRDTransceiver::do_ptt (bool on)
       Q_ASSERT (wrapped_);
       TransceiverState new_state {wrapped_->state ()};
       new_state.ptt (on);
-      wrapped_->set (new_state, 0);
+      wrapped_->set (new_state, 0, current_set_admission_token ());
+      reported_ptt = wrapped_->state ().ptt ();
     }
-  update_PTT (on);
+  update_PTT (reported_ptt);
+}
+
+void HRDTransceiver::bind_delegated_ptt_admission (
+  std::shared_ptr<PttAdmissionBlock> const& block) noexcept
+{
+  if (wrapped_) wrapped_->bind_ptt_admission (block);
+}
+
+void HRDTransceiver::move_delegates_to_thread (QThread * target) noexcept
+{
+  if (wrapped_) wrapped_->move_to_thread_tree (target);
 }
 
 void HRDTransceiver::set_button (int button_index, bool checked)

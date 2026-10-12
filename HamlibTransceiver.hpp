@@ -43,6 +43,9 @@ class HamlibTransceiver final
   void do_mode (MODE) override;
   void do_ptt (bool) override;
 
+  bool supports_health_observation () const noexcept override;
+  ReadOnlyRefreshResult do_read_only_refresh () override;
+
   void do_poll () override;
 
   void error_check (int ret_code, QString const& doing) const;
@@ -64,6 +67,7 @@ class HamlibTransceiver final
   bool one_VFO_;
   bool is_dummy_;
   bool ptt_on_;
+  bool ptt_readback_required_;
   // these are saved on destruction so we can start new instances
   // where the last one left off
   static freq_t dummy_frequency_;
@@ -86,6 +90,7 @@ class HamlibTransceiver final
   unsigned ftx1_nonessential_hold_polls_;
   unsigned ptt_transition_hold_polls_;
   bool ptt_state_known_;
+  bool ftx1_poll_has_successful_read_;
   std::string debug_file_;
 };
 

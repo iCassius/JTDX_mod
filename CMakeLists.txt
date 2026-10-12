@@ -1334,6 +1334,32 @@ install (FILES
   #COMPONENT runtime
   )
 
+if (WIN32)
+  install (FILES
+    local-support/scripts/export-jtdx-diagnostics.cmd
+    local-support/scripts/export-jtdx-diagnostics.ps1
+    DESTINATION ${CMAKE_INSTALL_BINDIR}
+    COMPONENT runtime
+    )
+  install (FILES
+    docs/CHANGELOG_P032_用户版_zh-CN.md
+    docs/CHANGELOG_P033_用户版_zh-CN.md
+    docs/CHANGELOG_P034_用户版_zh-CN.md
+    docs/CHANGELOG_P035_用户版_zh-CN.md
+    DESTINATION ${CMAKE_INSTALL_DOCDIR}
+    COMPONENT runtime
+    )
+  install (FILES
+    docs/autoseq/P032_日志与起呼停滞收尾_zh-CN.md
+    docs/autoseq/P032_故障反馈导出指南_zh-CN.md
+    docs/autoseq/P033_CAT长挂机与首发射修复_zh-CN.md
+    docs/autoseq/P034_CAT与PTT反馈指南_zh-CN.md
+    docs/autoseq/P035_CAT与PTT反馈指南_zh-CN.md
+    DESTINATION ${CMAKE_INSTALL_DOCDIR}/autoseq
+    COMPONENT runtime
+    )
+endif (WIN32)
+
 install (FILES
   cty.dat
   cty.dat_copyright.txt
@@ -1626,6 +1652,257 @@ if (JTDX_BUILD_LOCAL_TESTS)
   target_include_directories (ftx1_cat_policy_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   add_test (NAME ftx1_cat_policy_test COMMAND ftx1_cat_policy_test)
 
+  add_executable (transceiver_update_policy_test
+    tests/transceiver_update_policy_test.cpp)
+  target_include_directories (transceiver_update_policy_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR})
+  add_test (NAME transceiver_update_policy_test
+    COMMAND transceiver_update_policy_test)
+
+  add_executable (cat_health_policy_test tests/cat_health_policy_test.cpp)
+  target_include_directories (cat_health_policy_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR})
+  target_link_libraries (cat_health_policy_test Qt5::Core)
+  target_compile_definitions (cat_health_policy_test PRIVATE
+    JTDX_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+  add_test (NAME cat_health_policy_test COMMAND cat_health_policy_test)
+
+  add_executable (ptt_start_policy_test tests/ptt_start_policy_test.cpp)
+  target_include_directories (ptt_start_policy_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR})
+  add_test (NAME ptt_start_policy_test COMMAND ptt_start_policy_test)
+
+  find_package (Python3 REQUIRED COMPONENTS Interpreter)
+  set (P0_TX_SLOT_SOURCE_FILE "${CMAKE_CURRENT_SOURCE_DIR}/mainwindow.cpp"
+    CACHE FILEPATH "Production source input for the isolated P0 TX slot test")
+  if (NOT EXISTS "${P0_TX_SLOT_SOURCE_FILE}")
+    message (FATAL_ERROR
+      "P0_TX_SLOT_SOURCE_FILE does not exist: ${P0_TX_SLOT_SOURCE_FILE}")
+  endif ()
+  set (P0_TX_SLOT_GENERATED_DIR
+    "${CMAKE_CURRENT_BINARY_DIR}/p0_tx_slot_control_flow_generated")
+  set (P0_TX_SLOT_GENERATED_FILES
+    "${P0_TX_SLOT_GENERATED_DIR}/production_slot_current.inc"
+    "${P0_TX_SLOT_GENERATED_DIR}/production_scope_current.inc")
+  set (P0_TX_SLOT_EXTRACTOR
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/p0_tx_slot_control_flow_extract.py")
+  set (P0_TX_SLOT_BASELINE_FIXTURE
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures/p0_tx_slot_scope_038.inc")
+  add_custom_command (OUTPUT ${P0_TX_SLOT_GENERATED_FILES}
+    COMMAND "${Python3_EXECUTABLE}" "${P0_TX_SLOT_EXTRACTOR}"
+      "${P0_TX_SLOT_SOURCE_FILE}" "${P0_TX_SLOT_BASELINE_FIXTURE}"
+      "${P0_TX_SLOT_GENERATED_DIR}"
+    DEPENDS "${P0_TX_SLOT_SOURCE_FILE}" "${P0_TX_SLOT_EXTRACTOR}"
+      "${P0_TX_SLOT_BASELINE_FIXTURE}"
+    COMMENT "Extracting P0 TX slot control flow from current production source"
+    VERBATIM)
+  add_custom_target (p0_tx_slot_current_source_extraction
+    DEPENDS ${P0_TX_SLOT_GENERATED_FILES})
+  add_executable (p0_tx_slot_control_flow_test
+    tests/p0_tx_slot_control_flow_test.cpp
+    ${P0_TX_SLOT_GENERATED_FILES})
+  add_dependencies (p0_tx_slot_control_flow_test
+    p0_tx_slot_current_source_extraction)
+  target_include_directories (p0_tx_slot_control_flow_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures
+    ${P0_TX_SLOT_GENERATED_DIR})
+  target_link_libraries (p0_tx_slot_control_flow_test Qt5::Core)
+  add_test (NAME p0_tx_slot_baseline_038_signature_matches
+    COMMAND p0_tx_slot_control_flow_test --verify-baseline-038)
+  add_test (NAME p0_tx_slot_current_production_scope_passes
+    COMMAND p0_tx_slot_control_flow_test --current)
+
+  set (P0_TX_STOP_GENERATED_DIR
+    "${CMAKE_CURRENT_BINARY_DIR}/p0_tx_stop_path_generated")
+  set (P0_TX_STOP_GENERATED_FILE
+    "${P0_TX_STOP_GENERATED_DIR}/p0_tx_stop_methods_generated.inc")
+  set (P0_TX_STOP_EXTRACTOR
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/p0_tx_stop_path_extract.py")
+  add_custom_command (OUTPUT "${P0_TX_STOP_GENERATED_FILE}"
+    COMMAND "${Python3_EXECUTABLE}" "${P0_TX_STOP_EXTRACTOR}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/mainwindow.cpp"
+      "${P0_TX_STOP_GENERATED_FILE}"
+    DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/mainwindow.cpp"
+      "${P0_TX_STOP_EXTRACTOR}"
+    COMMENT "Extracting P0 stop methods from current production source"
+    VERBATIM)
+  add_custom_target (p0_tx_stop_path_source_extraction
+    DEPENDS "${P0_TX_STOP_GENERATED_FILE}")
+  add_executable (p0_tx_stop_path_test
+    tests/p0_tx_stop_path_test.cpp
+    "${P0_TX_STOP_GENERATED_FILE}")
+  add_dependencies (p0_tx_stop_path_test p0_tx_stop_path_source_extraction)
+  target_include_directories (p0_tx_stop_path_test PRIVATE
+    "${CMAKE_CURRENT_SOURCE_DIR}"
+    "${P0_TX_STOP_GENERATED_DIR}")
+  target_link_libraries (p0_tx_stop_path_test Qt5::Core)
+  add_test (NAME p0_tx_stop_path_current_production
+    COMMAND p0_tx_stop_path_test)
+
+  # This target links the actual application C++ sources (including
+  # MainWindow) with only the production entry point removed.  Its private
+  # compile definition enables the narrowly scoped, test-only MainWindow
+  # constructor guards; the jtdx target never receives that definition.
+  # The Qt import-pointer wrapper below is specific to the Windows MinGW
+  # import ABI and is not a portable test target.
+  if (WIN32 AND MINGW)
+  set (P0_TX_MAINWINDOW_CXXSRCS ${wsjtx_CXXSRCS})
+  list (REMOVE_ITEM P0_TX_MAINWINDOW_CXXSRCS main.cpp)
+  set (P0_TX_QSTANDARDPATHS_WRAP_SYMBOL
+    "__imp__ZN14QStandardPaths16writableLocationENS_16StandardLocationE")
+  set (P0_TX_QSTANDARDPATHS_WRAP_LINK_OPTION
+    "-Wl,--wrap=${P0_TX_QSTANDARDPATHS_WRAP_SYMBOL}")
+  set (P0_TX_MAINWINDOW_TEST_ALLOWED_ROOT
+    "${CMAKE_CURRENT_SOURCE_DIR}/local-support/temp/P0-S4.2")
+
+  # This preflight links only QtCore and the test-only import wrapper.  It
+  # proves all write-capable Qt paths are redirected before any MainWindow is
+  # constructed; it has no application or device sources.
+  add_executable (p0_qstandardpaths_preflight EXCLUDE_FROM_ALL
+    tests/p0_qstandardpaths_preflight.cpp
+    tests/p0_qstandardpaths_test_wrap.cpp)
+  target_compile_definitions (p0_qstandardpaths_preflight PRIVATE
+    P0_TX_QSTANDARDPATHS_ALLOWED_ROOT="${P0_TX_MAINWINDOW_TEST_ALLOWED_ROOT}")
+  target_link_options (p0_qstandardpaths_preflight PRIVATE
+    "${P0_TX_QSTANDARDPATHS_WRAP_LINK_OPTION}")
+  target_link_libraries (p0_qstandardpaths_preflight Qt5::Core)
+  add_test (NAME p0_qstandardpaths_write_path_preflight
+    COMMAND p0_qstandardpaths_preflight)
+
+  add_executable (p0_mainwindow_integration_test EXCLUDE_FROM_ALL
+    tests/p0_mainwindow_integration_test.cpp
+    tests/p0_qstandardpaths_test_wrap.cpp
+    ${P0_TX_MAINWINDOW_CXXSRCS}
+    ${wsjtx_GENUISRCS}
+    ${wsjtx_RESOURCES_RCC})
+  target_compile_definitions (p0_mainwindow_integration_test PRIVATE
+    P0_TX_MAINWINDOW_INTEGRATION_TEST
+    P0_TX_MAINWINDOW_TEST_ALLOWED_ROOT="${P0_TX_MAINWINDOW_TEST_ALLOWED_ROOT}"
+    P0_TX_QSTANDARDPATHS_ALLOWED_ROOT="${P0_TX_MAINWINDOW_TEST_ALLOWED_ROOT}")
+  target_link_options (p0_mainwindow_integration_test PRIVATE
+    "${P0_TX_QSTANDARDPATHS_WRAP_LINK_OPTION}")
+  target_include_directories (p0_mainwindow_integration_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_BINARY_DIR}
+    ${FFTW3_INCLUDE_DIRS})
+  if (APPLE)
+    target_link_libraries (p0_mainwindow_integration_test
+      Qt5::Widgets Qt5::SerialPort wsjt_fort wsjt_cxx wsjt_qt wsjt_qtmm
+      ${FFTW3_LIBRARIES})
+  else (APPLE)
+    target_link_libraries (p0_mainwindow_integration_test
+      Qt5::Widgets Qt5::SerialPort wsjt_fort_omp wsjt_cxx wsjt_qt wsjt_qtmm
+      ${FFTW3_LIBRARIES})
+  endif (APPLE)
+  add_test (NAME p0_mainwindow_full_tx_integration
+    COMMAND p0_mainwindow_integration_test)
+  add_test (NAME p0_mainwindow_stale_reopen_integration
+    COMMAND p0_mainwindow_integration_test --stale-only)
+  add_test (NAME p0_mainwindow_autoseq_retry_cleanup_integration
+    COMMAND p0_mainwindow_integration_test --autoseq-retry-cleanup-only)
+  set (P0_TX_MAINWINDOW_TEST_ENV_ROOT
+    "${CMAKE_CURRENT_SOURCE_DIR}/local-support/temp/P0-S4.2")
+  set_tests_properties (p0_mainwindow_full_tx_integration
+    p0_mainwindow_stale_reopen_integration
+    p0_mainwindow_autoseq_retry_cleanup_integration PROPERTIES
+    TIMEOUT 90
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;TEMP=${P0_TX_MAINWINDOW_TEST_ENV_ROOT}/TEMP;TMP=${P0_TX_MAINWINDOW_TEST_ENV_ROOT}/TMP;APPDATA=${P0_TX_MAINWINDOW_TEST_ENV_ROOT}/APPDATA;LOCALAPPDATA=${P0_TX_MAINWINDOW_TEST_ENV_ROOT}/LOCALAPPDATA")
+  set_tests_properties (p0_qstandardpaths_write_path_preflight PROPERTIES
+    TIMEOUT 15
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;TEMP=${P0_TX_MAINWINDOW_TEST_ENV_ROOT}/TEMP;TMP=${P0_TX_MAINWINDOW_TEST_ENV_ROOT}/TMP;APPDATA=${P0_TX_MAINWINDOW_TEST_ENV_ROOT}/APPDATA;LOCALAPPDATA=${P0_TX_MAINWINDOW_TEST_ENV_ROOT}/LOCALAPPDATA")
+  else ()
+    message (STATUS
+      "P0 MainWindow/QStandardPaths integration tests require the Windows MinGW import-pointer ABI; targets are not registered on this platform")
+  endif ()
+
+  add_executable (transceiver_state_readback_test
+    tests/transceiver_state_readback_test.cpp)
+  target_include_directories (transceiver_state_readback_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR})
+  target_link_libraries (transceiver_state_readback_test wsjt_qt Qt5::Core)
+  add_test (NAME transceiver_state_readback_test
+    COMMAND transceiver_state_readback_test)
+  add_executable (transceiver_worker_retirement_test
+    tests/transceiver_worker_retirement_test.cpp)
+  target_include_directories (transceiver_worker_retirement_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR})
+  target_link_libraries (transceiver_worker_retirement_test
+    wsjt_qt Qt5::Core)
+  set_target_properties (transceiver_worker_retirement_test PROPERTIES
+    AUTOMOC OFF)
+  add_test (NAME transceiver_worker_retirement_test
+    COMMAND transceiver_worker_retirement_test
+      "${CMAKE_CURRENT_BINARY_DIR}/test-evidence/transceiver_worker_retirement_test")
+  set_tests_properties (transceiver_worker_retirement_test PROPERTIES
+    TIMEOUT 60
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+  # A3 integration test: combine the current Configuration emitter body with
+  # the production typed Transceiver signal/worker path.
+  set_property (DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/Configuration.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/transceiver_command_delivery_test.cpp")
+  file (READ "${CMAKE_CURRENT_SOURCE_DIR}/Configuration.cpp" _a3_configuration_source)
+  file (READ "${CMAKE_CURRENT_SOURCE_DIR}/tests/transceiver_command_delivery_test.cpp" _a3_delivery_test_source)
+  set (_a3_emit_start "void Configuration::impl::emit_transceiver_state ()")
+  set (_a3_emit_end "void Configuration::impl::transceiver_ft4_mode (bool on)")
+  string (FIND "${_a3_configuration_source}" "${_a3_emit_start}" _a3_emit_begin)
+  string (FIND "${_a3_configuration_source}" "${_a3_emit_end}" _a3_emit_after)
+  if (_a3_emit_begin LESS 0 OR _a3_emit_after LESS 0
+      OR _a3_emit_after LESS_EQUAL _a3_emit_begin)
+    message (FATAL_ERROR "Cannot extract production Configuration::impl::emit_transceiver_state")
+  endif ()
+  math (EXPR _a3_emit_length "${_a3_emit_after} - ${_a3_emit_begin}")
+  string (SUBSTRING "${_a3_configuration_source}" ${_a3_emit_begin} ${_a3_emit_length} _a3_emit_body)
+  string (REPLACE "Configuration::impl::emit_transceiver_state ()"
+    "ConfigurationEmitAdapter::emit_transceiver_state ()" _a3_emit_body "${_a3_emit_body}")
+  set (_a3_delivery_generated_source "${CMAKE_CURRENT_BINARY_DIR}/transceiver_command_delivery_test.cpp")
+  file (WRITE "${_a3_delivery_generated_source}"
+    "${_a3_delivery_test_source}\n\n${_a3_emit_body}\n")
+  add_executable (transceiver_command_delivery_test
+    "${_a3_delivery_generated_source}")
+  target_include_directories (transceiver_command_delivery_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR})
+  target_compile_definitions (transceiver_command_delivery_test PRIVATE
+    JTDX_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+  target_link_libraries (transceiver_command_delivery_test
+    wsjt_qt Qt5::Core)
+  add_test (NAME transceiver_command_delivery_test
+    COMMAND transceiver_command_delivery_test
+      "${CMAKE_CURRENT_BINARY_DIR}/test-evidence/transceiver_command_delivery_test")
+  set_tests_properties (transceiver_command_delivery_test PROPERTIES
+    TIMEOUT 60
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+
+  add_executable (transceiver_readonly_refresh_test
+    tests/transceiver_readonly_refresh_test.cpp)
+  target_include_directories (transceiver_readonly_refresh_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR})
+  target_link_libraries (transceiver_readonly_refresh_test wsjt_qt Qt5::Core)
+  set_target_properties (transceiver_readonly_refresh_test PROPERTIES
+    AUTOMOC OFF)
+  add_test (NAME transceiver_readonly_refresh_test
+    COMMAND transceiver_readonly_refresh_test
+      "${CMAKE_CURRENT_BINARY_DIR}/test-evidence/transceiver_readonly_refresh_test")
+  set_tests_properties (transceiver_readonly_refresh_test PROPERTIES
+    TIMEOUT 60
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+  add_executable (transceiver_ptt_admission_wrapper_test
+    tests/transceiver_ptt_admission_wrapper_test.cpp)
+  target_include_directories (transceiver_ptt_admission_wrapper_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR})
+  target_compile_definitions (transceiver_ptt_admission_wrapper_test PRIVATE
+    JTDX_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+  target_link_libraries (transceiver_ptt_admission_wrapper_test
+    wsjt_qt Qt5::Core)
+  set_target_properties (transceiver_ptt_admission_wrapper_test PROPERTIES
+    AUTOMOC OFF)
+  add_test (NAME transceiver_ptt_admission_wrapper_test
+    COMMAND transceiver_ptt_admission_wrapper_test
+      "${CMAKE_CURRENT_BINARY_DIR}/test-evidence/transceiver_ptt_admission_wrapper_test")
+  set_tests_properties (transceiver_ptt_admission_wrapper_test PROPERTIES
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
+
   add_executable (autoseq_recovery_policy_test
     tests/autoseq_recovery_policy_test.cpp
     qsohistory.cpp
@@ -1646,6 +1923,46 @@ if (JTDX_BUILD_LOCAL_TESTS)
   target_compile_definitions (ui_contract_test PRIVATE JTDX_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
   target_link_libraries (ui_contract_test Qt5::Core)
   add_test (NAME ui_contract_test COMMAND ui_contract_test)
+
+  # A1 behavior test: generate a local-only test unit from exact production bodies.
+  set_property (DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
+    "${CMAKE_CURRENT_SOURCE_DIR}/mainwindow.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/Configuration.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/tests/read_frequency_action_test.cpp")
+  file (READ "${CMAKE_CURRENT_SOURCE_DIR}/mainwindow.cpp" _readfreq_mainwindow_source)
+  file (READ "${CMAKE_CURRENT_SOURCE_DIR}/Configuration.cpp" _readfreq_configuration_source)
+  file (READ "${CMAKE_CURRENT_SOURCE_DIR}/tests/read_frequency_action_test.cpp" _readfreq_harness_source)
+  set (_readfreq_handler_start "void MainWindow::on_readFreq_clicked()")
+  set (_readfreq_handler_end "void MainWindow::on_pbTxMode_clicked()")
+  string (FIND "${_readfreq_mainwindow_source}" "${_readfreq_handler_start}" _readfreq_handler_begin)
+  string (FIND "${_readfreq_mainwindow_source}" "${_readfreq_handler_end}" _readfreq_handler_after)
+  if (_readfreq_handler_begin LESS 0 OR _readfreq_handler_after LESS 0
+      OR _readfreq_handler_after LESS_EQUAL _readfreq_handler_begin)
+    message (FATAL_ERROR "Cannot extract production MainWindow readFreq handler")
+  endif ()
+  math (EXPR _readfreq_handler_length "${_readfreq_handler_after} - ${_readfreq_handler_begin}")
+  string (SUBSTRING "${_readfreq_mainwindow_source}" ${_readfreq_handler_begin} ${_readfreq_handler_length} _readfreq_handler_body)
+  set (_readfreq_sync_start "void Configuration::sync_transceiver (bool force_signal, bool enforce_mode_and_split)")
+  set (_readfreq_sync_end "bool Configuration::valid_udp2 () const")
+  string (FIND "${_readfreq_configuration_source}" "${_readfreq_sync_start}" _readfreq_sync_begin)
+  string (FIND "${_readfreq_configuration_source}" "${_readfreq_sync_end}" _readfreq_sync_after)
+  if (_readfreq_sync_begin LESS 0 OR _readfreq_sync_after LESS 0
+      OR _readfreq_sync_after LESS_EQUAL _readfreq_sync_begin)
+    message (FATAL_ERROR "Cannot extract production Configuration::sync_transceiver wrapper")
+  endif ()
+  math (EXPR _readfreq_sync_length "${_readfreq_sync_after} - ${_readfreq_sync_begin}")
+  string (SUBSTRING "${_readfreq_configuration_source}" ${_readfreq_sync_begin} ${_readfreq_sync_length} _readfreq_sync_body)
+  string (FIND "${_readfreq_sync_body}" "transceiver_tx_frequency (0)" _readfreq_zero_branch)
+  if (_readfreq_zero_branch LESS 0)
+    message (FATAL_ERROR "Extracted Configuration sync wrapper lacks its zero-frequency branch")
+  endif ()
+  set (_readfreq_generated_source "${CMAKE_CURRENT_BINARY_DIR}/read_frequency_action_production_body_test.cpp")
+  file (WRITE "${_readfreq_generated_source}" "${_readfreq_harness_source}\n\n${_readfreq_sync_body}\n\n${_readfreq_handler_body}\n")
+  add_executable (read_frequency_action_test "${_readfreq_generated_source}")
+  add_test (NAME read_frequency_action_test COMMAND read_frequency_action_test)
+  set_tests_properties (read_frequency_action_test PROPERTIES
+    TIMEOUT 30
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}")
   add_executable (widegraph_visibility_test tests/widegraph_visibility_test.cpp)
   target_include_directories (widegraph_visibility_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
   target_link_libraries (widegraph_visibility_test Qt5::Core Qt5::Gui Qt5::Widgets)
@@ -1653,6 +1970,12 @@ if (JTDX_BUILD_LOCAL_TESTS)
   set_tests_properties (widegraph_visibility_test PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
   add_executable (version_title_test tests/version_title_test.cpp revision_utils.cpp)
   target_link_libraries (version_title_test Qt5::Core)
+  target_compile_definitions (version_title_test PRIVATE
+    JTDX_EXPECTED_VERSION_STRING="${wsjtx_VERSION}"
+    JTDX_EXPECTED_PE_MAJOR=${WSJTX_VERSION_MAJOR}
+    JTDX_EXPECTED_PE_MINOR=${WSJTX_VERSION_MINOR}
+    JTDX_EXPECTED_PE_PATCH=${WSJTX_VERSION_SUB}
+    JTDX_EXPECTED_PE_TWEAK=${WSJTX_VERSION_TWEAK})
   add_test (NAME version_title_test COMMAND version_title_test)
   add_executable (udp_mirror_test tests/udp_mirror_test.cpp MessageClient.cpp)
   target_include_directories (udp_mirror_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
@@ -1711,10 +2034,45 @@ if (JTDX_BUILD_LOCAL_TESTS)
   target_link_libraries (autoseq_cat_diagnostics_contract_test Qt5::Core)
   add_test (NAME autoseq_cat_diagnostics_contract_test
     COMMAND autoseq_cat_diagnostics_contract_test)
+  add_executable (autoseq_diagnostic_formatter_test
+    tests/autoseq_diagnostic_formatter_test.cpp)
+  target_include_directories (autoseq_diagnostic_formatter_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR})
+  target_link_libraries (autoseq_diagnostic_formatter_test Qt5::Core)
+  add_test (NAME autoseq_diagnostic_formatter_test
+    COMMAND autoseq_diagnostic_formatter_test)
+  add_executable (autoseq_initial_call_stall_policy_test
+    tests/autoseq_initial_call_stall_policy_test.cpp)
+  target_include_directories (autoseq_initial_call_stall_policy_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR})
+  target_link_libraries (autoseq_initial_call_stall_policy_test Qt5::Core)
+  add_test (NAME autoseq_initial_call_stall_policy_test
+    COMMAND autoseq_initial_call_stall_policy_test)
+  add_executable (autoseq_ptt_observation_policy_test
+    tests/autoseq_ptt_observation_policy_test.cpp)
+  target_include_directories (autoseq_ptt_observation_policy_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR})
+  add_test (NAME autoseq_ptt_observation_policy_test
+    COMMAND autoseq_ptt_observation_policy_test)
+  add_executable (autoseq_initial_call_stall_contract_test
+    tests/autoseq_initial_call_stall_contract_test.cpp)
+  target_compile_definitions (autoseq_initial_call_stall_contract_test PRIVATE
+    JTDX_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
+  target_link_libraries (autoseq_initial_call_stall_contract_test Qt5::Core)
+  add_test (NAME autoseq_initial_call_stall_contract_test
+    COMMAND autoseq_initial_call_stall_contract_test)
   add_executable (rig_session_policy_test tests/rig_session_policy_test.cpp)
+  target_compile_definitions (rig_session_policy_test PRIVATE
+    JTDX_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}")
   target_include_directories (rig_session_policy_test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR})
   add_test (NAME rig_session_policy_test COMMAND rig_session_policy_test)
+  add_executable (transceiver_tx_frequency_policy_test
+    tests/transceiver_tx_frequency_policy_test.cpp)
+  target_include_directories (transceiver_tx_frequency_policy_test PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR})
+  add_test (NAME transceiver_tx_frequency_policy_test
+    COMMAND transceiver_tx_frequency_policy_test)
   add_executable (mainwindow_web_frequency_contract_test
     tests/mainwindow_web_frequency_contract_test.cpp
     JtdxWebControl.cpp
@@ -1743,16 +2101,28 @@ if (JTDX_BUILD_LOCAL_TESTS)
   add_executable (configuration_web_ui_test
     tests/configuration_web_ui_test.cpp
     Configuration.cpp
+    Configuration.ui
     JTDXMessageBox.cpp
     JTDXDateTime.cpp
     getfile.cpp)
   target_include_directories (configuration_web_ui_test PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR})
   set_target_properties (configuration_web_ui_test PROPERTIES
-    AUTOMOC_COMPILER_PREDEFINES OFF)
+    AUTOMOC_COMPILER_PREDEFINES OFF
+    AUTOUIC ON)
   target_link_libraries (configuration_web_ui_test
     wsjt_qt wsjt_qtmm wsjt_cxx
     Qt5::Widgets Qt5::Multimedia Qt5::SerialPort Qt5::Network)
+  if (WIN32 AND MINGW)
+    set (P3_CONFIGURATION_WEBUI_TEST_ALLOWED_ROOT
+      "${CMAKE_CURRENT_SOURCE_DIR}/local-support/temp/P0-S4.3-configuration-webui")
+    target_sources (configuration_web_ui_test PRIVATE
+      tests/p0_qstandardpaths_test_wrap.cpp)
+    target_compile_definitions (configuration_web_ui_test PRIVATE
+      P0_TX_QSTANDARDPATHS_ALLOWED_ROOT="${P3_CONFIGURATION_WEBUI_TEST_ALLOWED_ROOT}")
+    target_link_options (configuration_web_ui_test PRIVATE
+      "${P0_TX_QSTANDARDPATHS_WRAP_LINK_OPTION}")
+  endif ()
   if (APPLE)
     target_link_libraries (configuration_web_ui_test wsjt_fort)
   elseif (OPENMP_FOUND)
@@ -1766,6 +2136,7 @@ if (JTDX_BUILD_LOCAL_TESTS)
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
   add_executable (logqso_persistence_test
     tests/logqso_persistence_test.cpp
+    ${CMAKE_CURRENT_BINARY_DIR}/ui_logqso.h
     logqso.cpp
     Configuration.cpp
     JTDXMessageBox.cpp
@@ -1780,6 +2151,17 @@ if (JTDX_BUILD_LOCAL_TESTS)
   target_link_libraries (logqso_persistence_test
     wsjt_qt wsjt_qtmm wsjt_cxx
     Qt5::Widgets Qt5::Multimedia Qt5::SerialPort Qt5::Network)
+  if (WIN32 AND MINGW)
+    set (P19_LOGQSO_TEST_ALLOWED_ROOT
+      "${CMAKE_CURRENT_SOURCE_DIR}/local-support/temp/P0-S4.3-logqso")
+    target_sources (logqso_persistence_test PRIVATE
+      tests/p0_qstandardpaths_test_wrap.cpp)
+    target_compile_definitions (logqso_persistence_test PRIVATE
+      P0_TX_QSTANDARDPATHS_ALLOWED_ROOT="${P19_LOGQSO_TEST_ALLOWED_ROOT}"
+      P19_LOGQSO_ALLOWED_ROOT="${P19_LOGQSO_TEST_ALLOWED_ROOT}")
+    target_link_options (logqso_persistence_test PRIVATE
+      "${P0_TX_QSTANDARDPATHS_WRAP_LINK_OPTION}")
+  endif ()
   if (APPLE)
     target_link_libraries (logqso_persistence_test wsjt_fort)
   elseif (OPENMP_FOUND)
