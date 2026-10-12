@@ -168,6 +168,10 @@ jobs:
       - name: Build all targets
         run: '& $env:MINGW_CMAKE --build build --parallel 2'
 
+      - name: Build focused tests excluded from the default target
+        run: |
+          & $env:MINGW_CMAKE --build build --target p0_qstandardpaths_preflight p0_mainwindow_integration_test --parallel 2
+
       - name: Run the full CTest suite
         run: |
           $env:PATH = "$env:MINGW_BIN;$env:HAMLIB_BIN_DIR;$env:PATH"
