@@ -42,6 +42,7 @@ jobs:
           gh api "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$tag" --silent 2>$null
           $tagLookupExitCode = $LASTEXITCODE
           if ($tagLookupExitCode -eq 0) { throw "Tag $tag already exists; refusing to reuse it." }
+          $LASTEXITCODE = 0
           "RELEASE_TAG=$tag" >> $env:GITHUB_ENV
 
       - name: Install MSYS2 MinGW64 build dependencies
