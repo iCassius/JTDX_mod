@@ -66,11 +66,24 @@ jobs:
 
       - name: Fetch and verify official Hamlib 4.7.2 Windows x64 SDK
         run: |
+          $PSNativeCommandUseErrorActionPreference = $false
           $gcc = (Get-Command gcc.exe -ErrorAction Stop).Source
           $mingwBin = Split-Path $gcc -Parent
           $mingwPrefix = Split-Path $mingwBin -Parent
-          $qtPlatformPlugins = Join-Path $mingwPrefix 'share/qt5/plugins/platforms'
-          if (!(Test-Path -LiteralPath $qtPlatformPlugins)) { throw "Qt platform plugins are missing: $qtPlatformPlugins" }
+          $qtPlatformPlugins = $null
+          $qmake = Get-Command qmake.exe -ErrorAction SilentlyContinue
+          if ($qmake) {
+            $qtPluginRoot = (& $qmake.Source -query QT_INSTALL_PLUGINS 2>$null | Select-Object -Last 1)
+            $qmakeExitCode = $LASTEXITCODE
+            if ($qmakeExitCode -eq 0 -and $qtPluginRoot) { $qtPlatformPlugins = Join-Path $qtPluginRoot.Trim() 'platforms' }
+          }
+          if (!$qtPlatformPlugins -or !(Test-Path -LiteralPath (Join-Path $qtPlatformPlugins 'qwindows.dll'))) {
+            $qwindows = Get-ChildItem -LiteralPath $mingwPrefix -Filter qwindows.dll -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+            if (!$qwindows) { throw "Could not locate Qt qwindows.dll under MinGW prefix $mingwPrefix." }
+            $qtPlatformPlugins = $qwindows.DirectoryName
+          }
+          if (!(Test-Path -LiteralPath (Join-Path $qtPlatformPlugins 'qwindows.dll'))) { throw "Qt platform plugin qwindows.dll is missing from: $qtPlatformPlugins" }
+          $LASTEXITCODE = 0
           $archive = Join-Path $env:RUNNER_TEMP 'hamlib-w64-4.7.2.zip'
           $extract = Join-Path $env:RUNNER_TEMP 'hamlib-4.7.2'
           Invoke-WebRequest -Uri $env:HAMLIB_URL -OutFile $archive
