@@ -118,6 +118,22 @@ jobs:
           $binDir >> $env:GITHUB_PATH
           $mingwBin >> $env:GITHUB_PATH
 
+      - name: Fetch the official LoTW user activity dataset
+        run: |
+          $csvPath = Join-Path $env:GITHUB_WORKSPACE 'lotw-user-activity.csv'
+          Invoke-WebRequest -Uri 'https://lotw.arrl.org/lotw-user-activity.csv' -OutFile $csvPath
+          $csvFile = Get-Item -LiteralPath $csvPath
+          if ($csvFile.Length -lt 1000000) { throw "LoTW activity CSV is unexpectedly small ($($csvFile.Length) bytes)." }
+          $firstLine = Get-Content -LiteralPath $csvPath -TotalCount 1
+          $fields = $firstLine.Split(',')
+          if ($fields.Count -ne 3 -or [string]::IsNullOrWhiteSpace($fields[0]) -or
+              $fields[1] -notmatch '^\d{4}-\d{2}-\d{2}$' -or $fields[2] -notmatch '^\d{2}:\d{2}:\d{2}$') {
+            throw "LoTW activity CSV does not have the expected callsign,date,time format: $firstLine"
+          }
+          $csvHash = (Get-FileHash -LiteralPath $csvPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          "LOTW_DATA_SHA256=$csvHash" >> $env:GITHUB_ENV
+          "Validated official LoTW dataset: $($csvFile.Length) bytes; SHA-256 $csvHash"
+
       - name: Configure MinGW64 Release with OmniRig disabled
         run: |
           $missing = @(
@@ -190,19 +206,19 @@ jobs:
       - name: Publish unsigned prerelease for this run attempt
         run: |
           $changeNotes = Get-Content -Raw -Encoding UTF8 'docs/CHANGELOG_P066_用户版_zh-CN.md'
-          $notes = @"
-          # P066 — JTDX 2.2.159.066 Windows x64
-
-          $changeNotes
-
-          ## Build and validation boundary
-
-          - Hamlib 4.7.2 was downloaded from the upstream Windows x64 release ZIP and SHA-256 verified as `$env:HAMLIB_SHA256`; this upstream binary package differs from local P21.
-          - This prerelease is unsigned and has no Authenticode signature.
-          - Hardware-in-the-loop (HIL) validation was not run.
-          - The license audit is incomplete.
-          - Full Windows MinGW64 build, CTest, CMake install, ZIP packaging, and SHA-256 generation ran in this workflow.
-          "@
+          $notes = @(
+            '# P066 — JTDX 2.2.159.066 Windows x64'
+            $changeNotes
+            ''
+            '## Build and validation boundary'
+            ''
+            "- Hamlib 4.7.2 was downloaded from the upstream Windows x64 release ZIP and SHA-256 verified as $env:HAMLIB_SHA256; this upstream binary package differs from local P21."
+            "- The embedded LoTW user activity CSV was fetched from the official ARRL endpoint during this run (SHA-256: $env:LOTW_DATA_SHA256)."
+            '- This prerelease is unsigned and has no Authenticode signature.'
+            '- Hardware-in-the-loop (HIL) validation was not run.'
+            '- The license audit is incomplete.'
+            '- Full Windows MinGW64 build, CTest, CMake install, ZIP packaging, and SHA-256 generation ran in this workflow.'
+          ) -join "`n"
           $notesPath = Join-Path $env:RUNNER_TEMP 'release-notes.md'
           [System.IO.File]::WriteAllText($notesPath, $notes, [System.Text.UTF8Encoding]::new($false))
           gh release create $env:RELEASE_TAG $env:RELEASE_ZIP $env:RELEASE_SHA256 `
