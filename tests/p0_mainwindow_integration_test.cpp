@@ -833,7 +833,10 @@ namespace
       }
     else
       {
-        for (auto const sample_ms : {15000, 22500, 29900})
+        // pump_for(125) advances the corrected clock while allowing the real
+        // 100 ms guiTimer to run. Keep the final sample 250 ms before the next
+        // slot so the observation remains in RX instead of crossing into TX.
+        for (auto const sample_ms : {15000, 22500, 29750})
           {
             MainWindowP0IntegrationTestAccess::set_virtual_time_ms (window, boundary + sample_ms);
             pump_for (125);
